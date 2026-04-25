@@ -1,0 +1,42 @@
+{
+  "name": "lts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Multi-agency white-label SaaS for insurance brokerage agencies",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @lts/web dev",
+    "build": "pnpm --filter @lts/web build",
+    "start": "pnpm --filter @lts/web start",
+    "test": "pnpm --filter @lts/web test",
+    "test:e2e": "pnpm --filter @lts/web test:e2e",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r typecheck",
+    "prisma": "prisma",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "prisma db seed",
+    "prepare": "node -e \"process.exit(0)\""
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma",
+    "seed": "tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@types/node": "20.14.10",
+    "prisma": "5.22.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0"
+  }
+}
