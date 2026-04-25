@@ -24,7 +24,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  // biome-ignore lint/suspicious/noConsoleLog: intentional dev script output
   console.error('[seed] failed:', error);
   process.exitCode = 1;
 });
