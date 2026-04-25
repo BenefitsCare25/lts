@@ -61,7 +61,7 @@ pnpm prisma db seed             run prisma/seed.ts
 pnpm build                      production build
 ```
 
-Always run `pnpm typecheck && pnpm lint && pnpm test` before opening a PR. CI will run the same.
+Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will run the same on every push to `main` and gate the staging deploy.
 
 ## Conventions
 
@@ -92,7 +92,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before opening a PR. CI wi
 
 **Migrations.** One migration per logical change. Migration names are descriptive (`add_product_type_version_immutability_trigger`, not `update_schema`). Destructive migrations in production require a separate data migration + application deploy pair.
 
-**Commits.** Conventional Commits. Small, focused, one concern per commit. PR titles match the commit type (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`).
+**Commits.** Conventional Commits, pushed directly to `main`. Small, focused, one concern per commit. The first line is the changelog entry; only use a body when the *why* needs more space. Run the full local check suite (`pnpm typecheck && pnpm check && pnpm test && pnpm build`) before every push — there is no PR review gate.
 
 ## Architecture principles
 
@@ -143,7 +143,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before opening a PR. CI wi
 
 Check the two reference docs first — `docs/architecture.md` and `docs/build_brief.md`. If the question is architectural and the docs don't answer it, write an ADR proposing an answer, tag it `status: proposed`, and ask the human. If it's tactical (a library quirk, a type error), search the codebase for similar patterns, then search the web, then ask.
 
-Never silently invent behaviour. If a requirement is ambiguous, ask. If you made an assumption to keep moving, leave a `// TODO(assumption):` comment and flag it in the PR description.
+Never silently invent behaviour. If a requirement is ambiguous, ask. If you made an assumption to keep moving, leave a `// TODO(assumption):` comment and flag it in the commit body and the next progress-log entry.
 
 ## Things that will probably confuse you
 

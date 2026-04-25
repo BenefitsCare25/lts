@@ -17,7 +17,7 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 - Prisma 5.22 installed at root. `prisma/seed.ts` is a no-op stub that prints a one-liner pointing at Story S8. The starter `prisma/schema.prisma` is left in place as reference content; **no migrations are generated or applied during bootstrap** — that's S6's job.
 - Placeholder workspace packages: `@insurance-saas/catalogue-schemas` and `@insurance-saas/shared-types`, each with a `package.json` flagging the Phase 1 placeholder status. Real content lands in S6 / S8.
 - `scripts/dev-setup.sh` — verifies Docker, enables Corepack/pnpm, copies `.env.example` → `.env`, installs deps, brings up Docker, waits for Postgres, runs the seed stub. Idempotent.
-- `.github/workflows/ci.yml` — lint + format check (Biome) + typecheck + tests + build, on PR to `main` and pushes to `main`. Uses pnpm cache via `actions/cache@v4`.
+- `.github/workflows/ci.yml` — lint + format check (Biome) + typecheck + tests + build, on every push to `main` (PR triggers removed when the workflow flipped to direct-to-main pushes). Uses pnpm cache via `actions/cache@v4`.
 - `.env.example` covers Postgres, Redis, Next.js, WorkOS (S3), Azure Blob (S17), App Insights (S1) with `[now]` / `[later]` markers indicating which stories populate each block.
 
 **Decisions and rationale.**
