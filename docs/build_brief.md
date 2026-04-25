@@ -65,7 +65,7 @@ Below these, four surfaces auto-generate from the catalogue: the admin form (via
 insurance-saas/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                  # lint, typecheck, test on every PR
+│       ├── ci.yml                  # lint, typecheck, test, build on push to main
 │       └── deploy.yml              # build + deploy to Azure on main merge
 ├── apps/
 │   └── web/                        # the Next.js app
@@ -137,7 +137,7 @@ Before the first story card, Claude Code should complete environment bootstrap. 
 4. Commit an initial `CLAUDE.md` (provided separately) to the repo root.
 5. Commit an initial `schema.prisma` (provided separately).
 6. Write a `scripts/dev-setup.sh` that brings up Docker, runs migrations, seeds catalogue.
-7. Set up GitHub Actions workflow for CI (typecheck, lint, unit tests, build) triggered on PR.
+7. Set up GitHub Actions workflow for CI (typecheck, lint, unit tests, build) triggered on every push to `main`.
 
 **Verification before proceeding to Story 1:** Fresh clone plus `./scripts/dev-setup.sh` should yield a working local app at `localhost:3000` with a seeded database.
 
@@ -152,8 +152,8 @@ Bicep templates for: Container Apps environment + single app, Postgres Flexible 
 *Done when:* running the deployment against a clean Azure subscription produces a reachable Container App URL (even with a placeholder image) plus a Postgres instance reachable from it.
 
 **S2. GitHub Actions CI/CD.**
-CI workflow on every PR: install, typecheck, lint, unit tests, build. CD workflow on merge to `main`: build Docker image, push to Azure Container Registry, deploy to staging Container App. Use GitHub OIDC federated identity for Azure auth — no long-lived secrets.
-*Done when:* a merge to main results in a deployed staging app within 10 minutes.
+CI workflow on every push to `main`: install, typecheck, lint, unit tests, build. On CI success, the same workflow (or a triggered CD job) builds the Docker image, pushes to Azure Container Registry, and deploys to staging Container App. Use GitHub OIDC federated identity for Azure auth — no long-lived secrets.
+*Done when:* a push to main results in a deployed staging app within 10 minutes.
 
 **S3. WorkOS AuthKit integration.**
 Install WorkOS SDK. Create sign-in, sign-out, and callback routes. Store WorkOS user id plus organization id in session. Create middleware that rejects unauthenticated requests to `(admin)` routes. Set up WorkOS dashboard for the dev organization and configure at least one test user.
@@ -308,7 +308,9 @@ Even before the platform touches live claims data, these are mandatory:
 
 Start a Claude Code session with the repo checked out. Point Claude Code at this brief plus `CLAUDE.md` (committed at repo root). For each story, feed Claude Code the story block from section 6 and ask it to implement. Claude Code will break it down further into its own sub-tasks.
 
-Keep stories in flight to one at a time. Land each story behind a PR (even solo — the PR title and description becomes free documentation of what changed and why). CI must pass before merge. Merge to `main` triggers deploy to staging. Test on staging. When the story's acceptance criteria pass on staging, close the story and move to the next.
+Keep stories in flight to one at a time. Push completed work directly to `main` — no feature branches, no pull requests. Each story produces a focused series of Conventional Commits (one concern per commit) on `main`. Run the full local check suite (`pnpm typecheck && pnpm check && pnpm test && pnpm build`) before pushing; the CI workflow re-runs the same gates on every push and triggers the staging deploy on success. Test on staging. When the story's acceptance criteria pass on staging, close the story and move to the next.
+
+The git history is the change log — commit messages need to stand on their own without a PR description to lean on. Treat the first line as the changelog entry; only use a body when the *why* genuinely needs more space than the title affords.
 
 Update `CLAUDE.md` as conventions solidify and pitfalls emerge. Future Claude Code sessions pick up the evolved context automatically.
 
