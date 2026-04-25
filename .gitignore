@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+.vitest/
+
+# Prisma generated client (regenerated on install)
+apps/web/src/generated/
+
+# Next.js
+next-env.d.ts
+
+# Local docker volumes
+.docker/
+
+# Bicep build output
+*.bicepparam.json
