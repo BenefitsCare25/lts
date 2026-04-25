@@ -1,0 +1,13 @@
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build artefacts
+dist/
+*.tsbuildinfo
+
+# Test artefacts
+playwright-report/
+test-results/
+coverage/
