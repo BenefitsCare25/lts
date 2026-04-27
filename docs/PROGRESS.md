@@ -11,7 +11,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | Phase | Stories | State | Notes |
 |---|---|---|---|
 | **1A** Foundation | S1–S5 | ✅ complete | S2 shipped Auth.js Credentials, not WorkOS — see ADR 0003 |
-| **1B** Registries / Screen 0 | S6–S12 | 🔄 4 / 7 done | S10–S12 pending; S8 has a documented field deferral |
+| **1B** Registries / Screen 0 | S6–S12 | 🔄 5 / 7 done | S11–S12 pending; S8 has a documented field deferral |
 | **1C** Client onboarding | S13–S17 | ⏳ not started | |
 | **1D** Predicate builder | S18–S20 | ⏳ not started | |
 | **1E** Per-product config | S21–S25 | ⏳ not started | |
@@ -51,7 +51,7 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 - [x] **S7** Operator Library seeding — `OperatorLibrary` per v2 §3.2. 6 data type rows (string, integer, number, boolean, date, enum). (2026-04-27 — `prisma/seeds/operators.ts`)
 - [x] **S8** Insurer Registry CRUD UI — Screen 0b. (2026-04-27 — `/admin/catalogue/insurers` list + inline add form + edit page; `insurers` tRPC router with list/byId/create/update/delete via `tenantProcedure`. **Deviation:** `claimFeedProtocol` removed per ADR 0004 — re-add at S35. Plan AC's productsSupported half is satisfied; the claimFeedProtocol half is the documented deferral.)
 - [x] **S9** TPA Registry CRUD UI — Screen 0c. (2026-04-27 — `/admin/catalogue/tpas` list + inline add form + edit page; `tpas` tRPC router with cross-reference validation against insurer registry. Apple water glass theme + CSS variable design system landed in the same commit and applies retroactively to S2/S8 surfaces.)
-- [ ] **S10** Pool Registry CRUD UI — Screen 0d. Catalogue admin can add "Generali Pool — Captive" with Great Eastern as member.
+- [x] **S10** Pool Registry CRUD UI — Screen 0d. (2026-04-27 — `/admin/catalogue/pools` list + inline add form + edit page; `pools` tRPC router with nested `PoolMembership` writes (delete-and-recreate on update, transactional delete) and cross-tenant insurer validation. Repeating-row member control with insurer dropdown + share basis points; shared `MemberRows` component between create and edit forms.)
 - [ ] **S11** Employee Schema editor — Screen 0a with built-in/standard/custom tiers. Built-ins immutable; standards toggleable; customs added with name validation `^employee\.[a-z_]+$`.
 - [ ] **S12** Product Catalogue editor — Screen 0e. Edit GHS productType: add `maternity_rider` field, save, publish v2.5; downstream form renders the new field.
 

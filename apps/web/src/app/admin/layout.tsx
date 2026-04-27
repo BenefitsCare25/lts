@@ -25,6 +25,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             <a className="nav-link" href="/admin/catalogue/tpas">
               TPAs
             </a>
+            <a className="nav-link" href="/admin/catalogue/pools">
+              Pools
+            </a>
           </nav>
         </div>
         <div className="app-header__user">

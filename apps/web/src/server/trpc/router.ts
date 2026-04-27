@@ -9,11 +9,13 @@
 import { router } from './init';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
+import { poolsRouter } from './routers/pools';
 import { tpasRouter } from './routers/tpas';
 
 export const appRouter = router({
   health: healthRouter,
   insurers: insurersRouter,
+  pools: poolsRouter,
   tpas: tpasRouter,
 });
 
