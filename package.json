@@ -20,6 +20,7 @@
     "test": "pnpm -r --if-present test",
     "test:e2e": "pnpm --filter @insurance-saas/web test:e2e",
     "prisma": "prisma",
+    "postinstall": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
