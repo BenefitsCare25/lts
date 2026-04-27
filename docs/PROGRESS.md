@@ -23,8 +23,8 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 
 ## Phase 1B — Registries / Screen 0 (S6–S12)
 
-- [ ] **S6** Global Reference seeding — Country, Currency, Industry. 249 countries; SG has `uenPattern`.
-- [ ] **S7** Operator Library seeding — `OperatorLibrary` per v2 §3.2. 6 data type rows present.
+- [x] **S6** Global Reference seeding — Country (249), Currency (9), Industry (SSIC 2020 subclasses). (2026-04-27 — `prisma/seeds/global-reference.ts`; SG has uenPattern `^[0-9]{8,10}[A-Z]$`, MY has SSM pattern; seed runs via `pnpm prisma db seed`)
+- [x] **S7** Operator Library seeding — `OperatorLibrary` per v2 §3.2. 6 data type rows (string, integer, number, boolean, date, enum). (2026-04-27 — `prisma/seeds/operators.ts`)
 - [ ] **S8** Insurer Registry CRUD UI — Screen 0b. Catalogue admin can add Tokio Marine Life with productsSupported and claimFeedProtocol = IHP.
 - [ ] **S9** TPA Registry CRUD UI — Screen 0c. Catalogue admin can add IHP supporting Tokio Marine Life.
 - [ ] **S10** Pool Registry CRUD UI — Screen 0d. Catalogue admin can add "Generali Pool — Captive" with Great Eastern as member.
