@@ -11,22 +11,20 @@ export default async function AdminHomePage() {
   const session = await requireSession();
 
   return (
-    <section>
-      <h1>Welcome, {session.user.email}</h1>
-      <dl>
-        <dt>User id</dt>
-        <dd>
-          <code>{session.user.id}</code>
-        </dd>
-        <dt>Tenant id</dt>
-        <dd>
-          <code>{session.user.tenantId}</code>
-        </dd>
-        <dt>Role</dt>
-        <dd>
-          <code>{session.user.role}</code>
-        </dd>
-      </dl>
+    <section className="section">
+      <p className="eyebrow">Welcome back</p>
+      <h1 style={{ marginBottom: '1.5rem' }}>{session.user.email}</h1>
+      <div className="card card-padded">
+        <h3>Session</h3>
+        <dl className="dl">
+          <dt>User id</dt>
+          <dd>{session.user.id}</dd>
+          <dt>Tenant id</dt>
+          <dd>{session.user.tenantId}</dd>
+          <dt>Role</dt>
+          <dd>{session.user.role}</dd>
+        </dl>
+      </div>
     </section>
   );
 }

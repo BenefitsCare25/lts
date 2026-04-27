@@ -31,3 +31,10 @@ export type ProductTypeCode = (typeof PRODUCT_TYPE_CODES)[number];
 export const CLAIM_FEED_PROTOCOLS = ['IHP', 'TMLS', 'DIRECT_API'] as const;
 
 export type ClaimFeedProtocol = (typeof CLAIM_FEED_PROTOCOLS)[number];
+
+// Per v2 plan §2.6.1 — formats a TPA delivers claims data in.
+// Extend this list as new TPAs are onboarded; values are not tenant-
+// scoped because they describe wire formats, not business policy.
+export const TPA_FEED_FORMATS = ['CSV_V1', 'CSV_V2', 'JSON_API', 'XLSX'] as const;
+
+export type TpaFeedFormat = (typeof TPA_FEED_FORMATS)[number];
