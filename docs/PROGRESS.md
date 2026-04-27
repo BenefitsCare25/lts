@@ -6,6 +6,30 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 
 ---
 
+## Phase status
+
+| Phase | Stories | State | Notes |
+|---|---|---|---|
+| **1A** Foundation | S1–S5 | ✅ complete | S2 shipped Auth.js Credentials, not WorkOS — see ADR 0003 |
+| **1B** Registries / Screen 0 | S6–S12 | 🔄 4 / 7 done | S10–S12 pending; S8 has a documented field deferral |
+| **1C** Client onboarding | S13–S17 | ⏳ not started | |
+| **1D** Predicate builder | S18–S20 | ⏳ not started | |
+| **1E** Per-product config | S21–S25 | ⏳ not started | |
+| **1F** Review + publish | S26–S28 | ⏳ not started | |
+| **1G** Excel ingestion | S29–S32 | ⏳ not started | |
+| **1H** Employees + claims | S33–S35 | ⏳ not started | S35 also re-adds `Insurer.claimFeedProtocol` per ADR 0004 |
+
+## Documented deviations from v2 plan
+
+These are conscious, recorded deviations — each has an ADR and a re-add trigger:
+
+| Deviation | Decided | ADR | Re-add when |
+|---|---|---|---|
+| Auth: WorkOS → Auth.js Credentials | 2026-04-27 | [ADR 0003](ADRs/0003-auth-path-deferred-workos.md) | First prospect asks for SSO, or MAS TRM compliance review |
+| `Insurer.claimFeedProtocol` removed | 2026-04-27 | [ADR 0004](ADRs/0004-defer-claim-feed-protocol.md) | S35 (claims feed pipeline) |
+
+---
+
 ## Pre-stories
 
 - [x] Bootstrap — repo + tooling + Next.js scaffold + dev-setup + CI (2026-04-25, see `progress-log.md`)
@@ -13,20 +37,20 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 
 ---
 
-## Phase 1A — Foundation (S1–S5)
+## Phase 1A — Foundation (S1–S5) ✅
 
-- [x] **S1** Repo + Bicep + CI/CD — Next.js + Prisma + tRPC monorepo, Azure Bicep templates for Container Apps, GitHub Actions pipeline. (2026-04-27 — deployed live at https://insurance-saas-staging-web.ambitiousisland-ce22282e.southeastasia.azurecontainerapps.io)
-- [x] **S2** Auth via WorkOS — SSO + MFA. (2026-04-27 — code landed; live SSO + MFA gated on WorkOS dev project provisioning. App boots in "auth disabled" mode without keys; `/admin` and `/sign-in` render help notices instead of erroring.)
-- [x] **S3** Multi-tenancy middleware + RLS — Postgres RLS on every tenant-scoped table; middleware sets `app.current_tenant_id`. Cross-tenant query returns 0 rows; integration test confirms isolation. (2026-04-27 — RLS policies applied to staging; `requireTenantContext()` + Prisma `$extends` auto-inject tenantId on all tenant-scoped models)
-- [x] **S4** Database baseline + Prisma schema — apply v2 schema. `prisma migrate deploy` clean; seed script creates one demo tenant. (2026-04-27 — migration `20260427055126_initial_schema` applied to staging Postgres; seed.ts creates "Acme Brokers" demo tenant via upsert)
+- [x] **S1** Repo + Bicep + CI/CD — Next.js + Prisma + tRPC monorepo, Azure Bicep templates for Container Apps, GitHub Actions pipeline. (2026-04-27 — deployed live at https://insurance-saas-staging-web.ambitiousisland-ce22282e.southeastasia.azurecontainerapps.io; auto-deploy + Docker layer cache landed same day in `.github/workflows/ci.yml`)
+- [x] **S2** Auth — code landed and verified end-to-end. (2026-04-27 — Auth.js v5 Credentials provider per ADR 0003; WorkOS path deferred. Plan AC for SSO + MFA is **not satisfied** by current implementation; tracked as a known gap until the swap-back.)
+- [x] **S3** Multi-tenancy middleware + RLS — Postgres RLS on every tenant-scoped table; middleware sets `app.current_tenant_id`. Cross-tenant query returns 0 rows. (2026-04-27 — RLS policies applied to staging; `requireTenantContext()` + Prisma `$extends` auto-inject tenantId on all 8 tenant-scoped models)
+- [x] **S4** Database baseline + Prisma schema — apply v2 schema. `prisma migrate deploy` clean; seed script creates one demo tenant. (2026-04-27 — migration `20260427055126_initial_schema` applied to staging Postgres; `seed.ts` creates "Acme Brokers" demo tenant + dev admin user via upsert)
 - [x] **S5** Background job queue (BullMQ + Redis) — sample `hello-world` job dispatched and processed; Redis health check at `/api/health/redis`. (2026-04-27 — BullMQ worker + ioredis in `apps/web/src/server/jobs/`; started via `instrumentation.ts`; Azure Cache for Redis Basic C0 deployed to staging; `/api/health/redis` pings live Redis)
 
-## Phase 1B — Registries / Screen 0 (S6–S12)
+## Phase 1B — Registries / Screen 0 (S6–S12) 🔄
 
-- [x] **S6** Global Reference seeding — Country (249), Currency (9), Industry (SSIC 2020 subclasses). (2026-04-27 — `prisma/seeds/global-reference.ts`; SG has uenPattern `^[0-9]{8,10}[A-Z]$`, MY has SSM pattern; seed runs via `pnpm prisma db seed`)
+- [x] **S6** Global Reference seeding — Country (249), Currency (9), Industry (588 SSIC 2020 subclasses). (2026-04-27 — `prisma/seeds/global-reference.ts`; SG has uenPattern `^[0-9]{8,10}[A-Z]$`, MY has SSM pattern; seed runs via `pnpm prisma db seed`, applied automatically on every deploy by the CI/CD migrate+seed step)
 - [x] **S7** Operator Library seeding — `OperatorLibrary` per v2 §3.2. 6 data type rows (string, integer, number, boolean, date, enum). (2026-04-27 — `prisma/seeds/operators.ts`)
-- [x] **S8** Insurer Registry CRUD UI — Screen 0b. (2026-04-27 — `/admin/catalogue/insurers` list + inline add form + edit page; `insurers` tRPC router with list/byId/create/update/delete via `tenantProcedure`. `claimFeedProtocol` deferred until S35 (claims feed pipeline) — re-add column then.)
-- [x] **S9** TPA Registry CRUD UI — Screen 0c. (2026-04-27 — `/admin/catalogue/tpas` list + inline add form + edit page; `tpas` tRPC router with cross-reference validation against insurer registry. Apple water glass theme + CSS variable design system landed in the same commit.)
+- [x] **S8** Insurer Registry CRUD UI — Screen 0b. (2026-04-27 — `/admin/catalogue/insurers` list + inline add form + edit page; `insurers` tRPC router with list/byId/create/update/delete via `tenantProcedure`. **Deviation:** `claimFeedProtocol` removed per ADR 0004 — re-add at S35. Plan AC's productsSupported half is satisfied; the claimFeedProtocol half is the documented deferral.)
+- [x] **S9** TPA Registry CRUD UI — Screen 0c. (2026-04-27 — `/admin/catalogue/tpas` list + inline add form + edit page; `tpas` tRPC router with cross-reference validation against insurer registry. Apple water glass theme + CSS variable design system landed in the same commit and applies retroactively to S2/S8 surfaces.)
 - [ ] **S10** Pool Registry CRUD UI — Screen 0d. Catalogue admin can add "Generali Pool — Captive" with Great Eastern as member.
 - [ ] **S11** Employee Schema editor — Screen 0a with built-in/standard/custom tiers. Built-ins immutable; standards toggleable; customs added with name validation `^employee\.[a-z_]+$`.
 - [ ] **S12** Product Catalogue editor — Screen 0e. Edit GHS productType: add `maternity_rider` field, save, publish v2.5; downstream form renders the new field.
@@ -70,7 +94,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 
 - [ ] **S33** Employee admin CRUD against tenant EmployeeSchema — adding an STM employee with `hay_job_grade=8`, `work_pass_type=WORK_PERMIT` auto-matches "Foreign Workers WP/SP HJG 08-10" group.
 - [ ] **S34** CSV import of employees — CSV columns map to EmployeeSchema fields by header; rows failing validation surface for fix; successful rows create Employee records.
-- [ ] **S35** TPA claims feed (IHP) — sample IHP claim feed CSV ingested; Enrollment lookups match claims to employees + plans; unmatched claims flagged.
+- [ ] **S35** TPA claims feed (IHP) — sample IHP claim feed CSV ingested; Enrollment lookups match claims to employees + plans; unmatched claims flagged. **Also re-introduces `Insurer.claimFeedProtocol`** per ADR 0004.
 
 ---
 
@@ -86,7 +110,7 @@ When all 35 stories are done, this end-to-end test must pass:
 
 - [ ] All 35 stories landed behind green CI.
 - [ ] Three Clients scenarios all pass.
-- [ ] SEC-001 through SEC-010 (v2 §7) implemented with integration tests.
+- [ ] SEC-001 through SEC-010 (v2 §7) implemented with integration tests. **SEC-001 (MFA) blocked by ADR 0003** — closes when WorkOS is re-added.
 - [ ] A new client (CUBER-complexity) can be onboarded end-to-end in <30 min through the UI alone.
 - [ ] A catalogue admin can add a new ProductType in-session with no deploy.
 - [ ] Cross-tenant isolation has a passing test.
