@@ -8,9 +8,11 @@
 
 import { router } from './init';
 import { healthRouter } from './routers/health';
+import { insurersRouter } from './routers/insurers';
 
 export const appRouter = router({
   health: healthRouter,
+  insurers: insurersRouter,
 });
 
 export type AppRouter = typeof appRouter;
