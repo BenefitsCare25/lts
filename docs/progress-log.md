@@ -4,6 +4,57 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-27 — Phase 1B close-out (S10, S11, S12)
+
+**Session focus.** Land the remaining three Phase 1B stories — Pool Registry, Employee Schema editor, Product Catalogue editor — and close the phase with a complete catalogue layer ready to feed Phase 1C client onboarding.
+
+**What landed.**
+
+- **S10 Pool Registry** — `/admin/catalogue/pools` list + create + edit. tRPC router under `apps/web/src/server/trpc/routers/pools.ts` with nested `PoolMembership` writes (Prisma's `members: { create: [...] }` on creation, `members: { deleteMany: {}, create: [...] }` on update — cleaner than diffing for the size we expect, ≤20 members per pool). Cross-tenant insurer validation via the same `assertInsurersBelongToTenant` pattern used in S9. Repeating-row member control with `insurerId` dropdown (disabled for already-selected rows so the same insurer can't be added twice) + `shareBps` integer input (0-10000 bps = 0-100%, null = unspecified). Shared `MemberRows` component between the create form and the edit form. Delete is a transactional two-step: wipe `PoolMembership` rows then delete the `Pool`.
+- **S11 Employee Schema editor** — `/admin/catalogue/employee-schema` Screen 0a. Single-row-per-tenant `EmployeeSchema.fields` JSON array containing built-in + standard + custom fields, discriminated by `field.tier`. Three on-page sections: Built-in (read-only table), Standard (table with toggle column), Custom (table + form). Defaults for the 5 built-in + 5 standard fields live as constants in `packages/shared-types/src/employee-schema.ts`; `prisma/seed.ts` initializes the demo tenant's schema via `seedEmployeeSchemaForTenant`. Router enforces tier immutability: `setStandardEnabled` rejects non-STANDARD fields, `addCustom`/`updateCustom`/`removeCustom` reject non-CUSTOM fields. Custom-field name regex `^employee\.[a-z][a-z0-9_]*$` validated server-side. Schema version increments on every save for downstream consumers (S18 predicate builder + S33 employee CRUD will key cache invalidation off it). The "schema migration job" mentioned in v2 §8 S11 AC is a no-op in Phase 1B (no employee data exists yet); revisit when S33 adds employee CRUD.
+- **S12 Product Catalogue editor** — `/admin/catalogue/product-types` list + `/admin/catalogue/product-types/new` + `/admin/catalogue/product-types/[id]/edit`. The list view is a thin row-per-type with Edit / Delete; create and edit share the same `ProductTypeForm` component. Code regex `^[A-Z][A-Z0-9_]*$`, premium strategy dropdown sourced from new `PREMIUM_STRATEGIES` constant in shared-types (5 codes per v2 §4). The four JSON fields (`schema`, `planSchema`, `parsingRules`, `displayTemplate`) use a reusable `JsonTextarea` component that parses on change and surfaces parse errors inline; the submit button stays disabled until all four parse. Version increments on every save. Delete handles P2003 foreign-key violations as a friendly "in use by one or more products" conflict, in anticipation of S15+ Product instances referencing ProductType.
+- **Cross-package zod schema move.** Original draft of `customFieldSchema` lived in shared-types. tRPC's `.input(schema)` couldn't infer the parsed type because the workspace's two Prisma client extension types and shared-types' zod resolved to different brand registrations across pnpm boundaries. Fix: keep types + constants in shared-types; keep the Zod validator inline in the app's tRPC router. Documented at the top of `apps/web/src/server/trpc/routers/employee-schema.ts`.
+- **Prisma JSONB null shape.** Setting a JSONB column to literal SQL `NULL` (vs JSON `null`) requires `Prisma.JsonNull` — passing raw `null` triggers a TypeScript `InputJsonValue` mismatch under strict mode. Both `parsingRules` and `displayTemplate` go through that adapter on create + update.
+- **`exactOptionalPropertyTypes: true` strictness.** Zod-output types use `T | undefined` for `.optional()` fields, but our `EmployeeField` type uses `T?`. Spread-merging the Zod output into the target type fails. Fix: small `buildCustomField` helper that constructs the record key-by-key, only setting optional keys when present.
+- **Nav links.** Admin layout now shows `Employee Schema · Product Types · Insurers · TPAs · Pools` in catalogue order.
+
+**Decisions and rationale.**
+
+1. **Visual schema editor for S12 is JSON textareas.** v2 §5.5 calls for "schema JSON (rendered as visual schema editor)". A real visual JSON Schema editor is multi-week UI work (drag-reorder fields, type-aware controls, conditional sub-form renderer). The S12 AC is "add a `maternity_rider` field, save, publish v2.5; downstream form renders the new field" — JSON textareas satisfy that AC fully because the downstream form (S15+) reads `schema` regardless of how it was authored. The editor surface gets revisited at S21 (per-product config) if it becomes the bottleneck. Captured in PROGRESS.md S12 deviation note.
+2. **Pool memberships use delete-and-recreate on update.** Diffing 20 rows is more code than the simpler approach saves in DB round-trips. Prisma's nested `deleteMany: {}` + `create: [...]` runs in one transaction; the "lost ID" cost is zero because PoolMembership has no business identity outside (poolId, insurerId).
+3. **Auto-create `EmployeeSchema` on first read, not on tenant creation.** The seed handles the demo tenant; new tenants in production get their schema lazily on first `employeeSchema.get` call. Saves a code path on tenant creation while preserving idempotence.
+4. **`PREMIUM_STRATEGIES` and `TPA_FEED_FORMATS` belong in shared-types, not in seed scripts.** They're referenced from the UI dropdowns; centralising them avoids the "edit the seed AND the form constant" trap.
+5. **Don't seed the 12 ProductTypes yet.** v2 §3.5 lists 12 default types but S16 (Phase 1C) is the seed-script story. S12 just builds the editor. The S12 list view shows an empty-state hint pointing at S16 — admins create them manually for now.
+
+**Verification.**
+
+- Three deploys all green: S10 in 24985014239, S11 in 24985474879 (queued and watched), S12 in 24985948194.
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean across the workspace.
+- Routes in the build manifest: `/admin/catalogue/employee-schema`, `/admin/catalogue/insurers`, `/admin/catalogue/pools`, `/admin/catalogue/product-types`, `/admin/catalogue/product-types/new`, `/admin/catalogue/product-types/[id]/edit`, `/admin/catalogue/tpas`, plus all the existing routes — 13 dynamic + 2 static.
+- Live at staging; sign-in flow works; nav cycles through all five catalogue sections.
+
+**Phase 1B status.**
+
+| Story | Plan AC satisfied? | Note |
+|---|---|---|
+| S6 | ✅ | 249 countries, 9 currencies, 588 SSIC industries seeded live |
+| S7 | ✅ | 6 operator library rows seeded live |
+| S8 | ⚠️ partial | productsSupported half ✅; claimFeedProtocol deferred per ADR 0004 |
+| S9 | ✅ | TPA registry with cross-tenant insurer validation |
+| S10 | ✅ | Pool registry with member-insurer + share bps |
+| S11 | ✅ | Built-in/standard/custom tiers, regex validation, version bumps |
+| S12 | ⚠️ partial | All AC steps work; "rendered as visual schema editor" deferred to JSON textareas |
+
+**Open items / next.**
+
+- **Phase 1C — Client onboarding (S13-S17).** S13 Client CRUD (Screen 1, UEN validator), S14 Policy + entities, S15 Product selection (filtered insurer dropdown — first feature that actually consumes the registries we just built), S16 Catalogue seed scripts (the 12 default ProductTypes + Tokio Marine + Great Eastern parsing rules), S17 Benefit year + draft state.
+- **S16 will retroactively populate the empty-state in S12's list view.** Once S16 lands, admins see all 12 ProductTypes pre-seeded.
+- **Cross-tenant isolation test** still on the Definition of Done list. Add before any of S13-S15 since they introduce more tenant-scoped reads.
+- **Visual JSON Schema editor for S21.** If Phase 1E reveals admins struggling with the textarea, build a proper visual editor as a S21 sub-task. Otherwise leave it.
+- **WorkOS swap-back (ADR 0003)** still gated on a real prospect ask.
+
+---
+
 ## 2026-04-27 — Phase 1A close-out + Phase 1B start (S3–S9, auth swap, theme)
 
 **Session focus.** Push from S3 through S9 in one continuous session, deploy everything live to staging, swap the auth path so registry stories can be verified end-to-end without external SaaS provisioning, and apply a coherent design system across every surface.
