@@ -9,6 +9,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Opt JS-based actions into Node.js 24. Becomes the default June 2026;
+# setting this now silences deprecation warnings without waiting.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 # ---------------------------------------------------------------------------
 # Required GitHub repository secrets (Settings → Secrets → Actions):
 #
