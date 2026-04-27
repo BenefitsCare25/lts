@@ -22,6 +22,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             <a className="nav-link" href="/admin/catalogue/employee-schema">
               Employee Schema
             </a>
+            <a className="nav-link" href="/admin/catalogue/product-types">
+              Product Types
+            </a>
             <a className="nav-link" href="/admin/catalogue/insurers">
               Insurers
             </a>

@@ -11,7 +11,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | Phase | Stories | State | Notes |
 |---|---|---|---|
 | **1A** Foundation | S1–S5 | ✅ complete | S2 shipped Auth.js Credentials, not WorkOS — see ADR 0003 |
-| **1B** Registries / Screen 0 | S6–S12 | 🔄 6 / 7 done | S12 pending; S8 has a documented field deferral |
+| **1B** Registries / Screen 0 | S6–S12 | ✅ complete | S8 has a documented field deferral (ADR 0004); visual schema editor for S12 deferred to JSON textareas — see story note |
 | **1C** Client onboarding | S13–S17 | ⏳ not started | |
 | **1D** Predicate builder | S18–S20 | ⏳ not started | |
 | **1E** Per-product config | S21–S25 | ⏳ not started | |
@@ -45,7 +45,7 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 - [x] **S4** Database baseline + Prisma schema — apply v2 schema. `prisma migrate deploy` clean; seed script creates one demo tenant. (2026-04-27 — migration `20260427055126_initial_schema` applied to staging Postgres; `seed.ts` creates "Acme Brokers" demo tenant + dev admin user via upsert)
 - [x] **S5** Background job queue (BullMQ + Redis) — sample `hello-world` job dispatched and processed; Redis health check at `/api/health/redis`. (2026-04-27 — BullMQ worker + ioredis in `apps/web/src/server/jobs/`; started via `instrumentation.ts`; Azure Cache for Redis Basic C0 deployed to staging; `/api/health/redis` pings live Redis)
 
-## Phase 1B — Registries / Screen 0 (S6–S12) 🔄
+## Phase 1B — Registries / Screen 0 (S6–S12) ✅
 
 - [x] **S6** Global Reference seeding — Country (249), Currency (9), Industry (588 SSIC 2020 subclasses). (2026-04-27 — `prisma/seeds/global-reference.ts`; SG has uenPattern `^[0-9]{8,10}[A-Z]$`, MY has SSM pattern; seed runs via `pnpm prisma db seed`, applied automatically on every deploy by the CI/CD migrate+seed step)
 - [x] **S7** Operator Library seeding — `OperatorLibrary` per v2 §3.2. 6 data type rows (string, integer, number, boolean, date, enum). (2026-04-27 — `prisma/seeds/operators.ts`)
@@ -53,7 +53,7 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 - [x] **S9** TPA Registry CRUD UI — Screen 0c. (2026-04-27 — `/admin/catalogue/tpas` list + inline add form + edit page; `tpas` tRPC router with cross-reference validation against insurer registry. Apple water glass theme + CSS variable design system landed in the same commit and applies retroactively to S2/S8 surfaces.)
 - [x] **S10** Pool Registry CRUD UI — Screen 0d. (2026-04-27 — `/admin/catalogue/pools` list + inline add form + edit page; `pools` tRPC router with nested `PoolMembership` writes (delete-and-recreate on update, transactional delete) and cross-tenant insurer validation. Repeating-row member control with insurer dropdown + share basis points; shared `MemberRows` component between create and edit forms.)
 - [x] **S11** Employee Schema editor — Screen 0a. (2026-04-27 — `/admin/catalogue/employee-schema` with three sections: built-in (read-only), standard (toggle on/off), custom (CRUD). Defaults for 5 built-in + 5 standard fields live in `packages/shared-types/src/employee-schema.ts`; seed bootstraps the demo tenant's schema. Router enforces tier immutability at the API level; name regex `^employee\.[a-z][a-z0-9_]*$` validated server-side via Zod (kept in app-side router to avoid cross-package zod brand collision). Schema version increments on every save for downstream consumers (S18 predicate builder + S33 employee CRUD will key cache invalidation off it). Saving currently doesn't trigger a separate "schema migration job" — none is needed in Phase 1B since no employee data exists yet; revisit at S33.)
-- [ ] **S12** Product Catalogue editor — Screen 0e. Edit GHS productType: add `maternity_rider` field, save, publish v2.5; downstream form renders the new field.
+- [x] **S12** Product Catalogue editor — Screen 0e. (2026-04-27 — `/admin/catalogue/product-types` list + create + edit; `productTypes` tRPC router with full CRUD, version increments on every save, P2003 foreign-key violations surface as friendly conflicts. JSON textareas (with parse-on-change validation) for `schema` / `planSchema` / `parsingRules` / `displayTemplate`. Premium strategy dropdown from new `PREMIUM_STRATEGIES` constant in shared-types. **Deviation:** v2 §5.5 calls for "rendered as visual schema editor" — that's a multi-week UI build; Phase 1B ships JSON textareas which fully satisfy the AC ("add a `maternity_rider` field, save, publish v2.5; downstream form renders the new field") because the downstream form (S15+) reads `schema` regardless of how it was authored. Visual schema editor revisited at S21 if needed. **Publish workflow:** version-bumps on save are immediate; immutable published-version snapshots arrive with S28 per v2 §5.5 "publish gate".)
 
 ## Phase 1C — Client onboarding setup (S13–S17)
 

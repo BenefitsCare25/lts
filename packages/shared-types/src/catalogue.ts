@@ -32,3 +32,17 @@ export type ProductTypeCode = (typeof PRODUCT_TYPE_CODES)[number];
 export const TPA_FEED_FORMATS = ['CSV_V1', 'CSV_V2', 'JSON_API', 'XLSX'] as const;
 
 export type TpaFeedFormat = (typeof TPA_FEED_FORMATS)[number];
+
+// Per v2 plan §4 — premium calculation strategy codes. Each code
+// maps to a TypeScript module under `apps/web/src/server/premium-
+// strategies/`. Adding a new strategy is a code change (rare),
+// not a catalogue edit.
+export const PREMIUM_STRATEGIES = [
+  'per_individual_salary_multiple',
+  'per_individual_fixed_sum',
+  'per_group_cover_tier',
+  'per_headcount_flat',
+  'per_individual_earnings',
+] as const;
+
+export type PremiumStrategy = (typeof PREMIUM_STRATEGIES)[number];

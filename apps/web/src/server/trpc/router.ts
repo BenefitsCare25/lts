@@ -11,6 +11,7 @@ import { employeeSchemaRouter } from './routers/employee-schema';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
 import { poolsRouter } from './routers/pools';
+import { productTypesRouter } from './routers/product-types';
 import { tpasRouter } from './routers/tpas';
 
 export const appRouter = router({
@@ -19,6 +20,7 @@ export const appRouter = router({
   pools: poolsRouter,
   tpas: tpasRouter,
   employeeSchema: employeeSchemaRouter,
+  productTypes: productTypesRouter,
 });
 
 export type AppRouter = typeof appRouter;
