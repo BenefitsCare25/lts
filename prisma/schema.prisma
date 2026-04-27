@@ -135,7 +135,6 @@ model Insurer {
   name              String
   code              String // "TM_LIFE", "GE_LIFE", "ZURICH"
   productsSupported String[] // ["GTL", "GHS", "GMM", ...]
-  claimFeedProtocol String? // "IHP", "TMLS", "DIRECT_API", null
   active            Boolean  @default(true)
 
   tenant Tenant           @relation(fields: [tenantId], references: [id])

@@ -10,12 +10,7 @@
 'use client';
 
 import { trpc } from '@/lib/trpc/client';
-import {
-  CLAIM_FEED_PROTOCOLS,
-  type ClaimFeedProtocol,
-  PRODUCT_TYPE_CODES,
-  type ProductTypeCode,
-} from '@insurance-saas/shared-types';
+import { PRODUCT_TYPE_CODES, type ProductTypeCode } from '@insurance-saas/shared-types';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -23,7 +18,6 @@ type FormState = {
   name: string;
   code: string;
   productsSupported: ProductTypeCode[];
-  claimFeedProtocol: ClaimFeedProtocol | '';
   active: boolean;
 };
 
@@ -31,7 +25,6 @@ const emptyForm: FormState = {
   name: '',
   code: '',
   productsSupported: [],
-  claimFeedProtocol: '',
   active: true,
 };
 
@@ -60,7 +53,6 @@ export function InsurersScreen() {
       name: form.name.trim(),
       code: form.code.trim(),
       productsSupported: form.productsSupported,
-      claimFeedProtocol: form.claimFeedProtocol === '' ? null : form.claimFeedProtocol,
       active: form.active,
     });
   };
@@ -139,27 +131,6 @@ export function InsurersScreen() {
               </div>
             </fieldset>
 
-            <div className="field">
-              <label className="field-label" htmlFor="ins-claim">
-                Claim feed protocol
-              </label>
-              <select
-                id="ins-claim"
-                className="select"
-                value={form.claimFeedProtocol}
-                onChange={(e) =>
-                  setForm({ ...form, claimFeedProtocol: e.target.value as ClaimFeedProtocol | '' })
-                }
-              >
-                <option value="">— None —</option>
-                {CLAIM_FEED_PROTOCOLS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <label className="toggle">
               <input
                 type="checkbox"
@@ -198,7 +169,6 @@ export function InsurersScreen() {
                   <th>Name</th>
                   <th>Code</th>
                   <th>Products</th>
-                  <th>Claim feed</th>
                   <th>Status</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -211,13 +181,6 @@ export function InsurersScreen() {
                       <code>{insurer.code}</code>
                     </td>
                     <td>{insurer.productsSupported.join(', ') || '—'}</td>
-                    <td>
-                      {insurer.claimFeedProtocol ? (
-                        <span className="pill pill-accent">{insurer.claimFeedProtocol}</span>
-                      ) : (
-                        <span className="pill pill-muted">none</span>
-                      )}
-                    </td>
                     <td>
                       <span className={insurer.active ? 'pill pill-success' : 'pill pill-muted'}>
                         {insurer.active ? 'Active' : 'Inactive'}

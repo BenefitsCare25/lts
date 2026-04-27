@@ -7,12 +7,7 @@
 'use client';
 
 import { trpc } from '@/lib/trpc/client';
-import {
-  CLAIM_FEED_PROTOCOLS,
-  type ClaimFeedProtocol,
-  PRODUCT_TYPE_CODES,
-  type ProductTypeCode,
-} from '@insurance-saas/shared-types';
+import { PRODUCT_TYPE_CODES, type ProductTypeCode } from '@insurance-saas/shared-types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -21,7 +16,6 @@ type FormState = {
   name: string;
   code: string;
   productsSupported: ProductTypeCode[];
-  claimFeedProtocol: ClaimFeedProtocol | '';
   active: boolean;
 };
 
@@ -47,7 +41,6 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
       name: insurer.data.name,
       code: insurer.data.code,
       productsSupported: insurer.data.productsSupported as ProductTypeCode[],
-      claimFeedProtocol: (insurer.data.claimFeedProtocol as ClaimFeedProtocol | null) ?? '',
       active: insurer.data.active,
     });
   }, [insurer.data, form]);
@@ -64,7 +57,6 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
         name: form.name.trim(),
         code: form.code.trim(),
         productsSupported: form.productsSupported,
-        claimFeedProtocol: form.claimFeedProtocol === '' ? null : form.claimFeedProtocol,
         active: form.active,
       },
     });
@@ -139,27 +131,6 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
                 ))}
               </div>
             </fieldset>
-
-            <div className="field">
-              <label className="field-label" htmlFor="ins-claim">
-                Claim feed protocol
-              </label>
-              <select
-                id="ins-claim"
-                className="select"
-                value={form.claimFeedProtocol}
-                onChange={(e) =>
-                  setForm({ ...form, claimFeedProtocol: e.target.value as ClaimFeedProtocol | '' })
-                }
-              >
-                <option value="">— None —</option>
-                {CLAIM_FEED_PROTOCOLS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
 
             <label className="toggle">
               <input

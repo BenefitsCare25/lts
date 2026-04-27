@@ -6,7 +6,7 @@
 // caller's tenant, so handlers never pass tenantId explicitly.
 // =============================================================
 
-import { CLAIM_FEED_PROTOCOLS, PRODUCT_TYPE_CODES } from '@insurance-saas/shared-types';
+import { PRODUCT_TYPE_CODES } from '@insurance-saas/shared-types';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -27,7 +27,6 @@ const insurerInputSchema = z.object({
   productsSupported: z
     .array(z.enum(PRODUCT_TYPE_CODES))
     .min(1, 'Select at least one product type.'),
-  claimFeedProtocol: z.enum(CLAIM_FEED_PROTOCOLS).nullable(),
   active: z.boolean().default(true),
 });
 
