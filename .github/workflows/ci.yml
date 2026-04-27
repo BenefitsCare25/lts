@@ -1,4 +1,4 @@
-name: CI
+name: CI / CD
 
 on:
   push:
@@ -8,6 +8,27 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# Required GitHub repository secrets (Settings → Secrets → Actions):
+#
+#   AZURE_CLIENT_ID          App Registration client ID (OIDC federated cred)
+#   AZURE_TENANT_ID          Azure tenant ID
+#   AZURE_SUBSCRIPTION_ID    Azure subscription ID
+#   POSTGRES_ADMIN_PASSWORD  Passed to Bicep when deployPostgres=true
+#
+# One-time OIDC setup (run once, replace <client-id> and <sub-id>):
+#
+#   az ad sp create-for-rbac --name "lts-github-oidc" --role Contributor \
+#     --scopes /subscriptions/<sub-id>/resourceGroups/insurance-saas-staging-rg
+#
+#   az ad app federated-credential create --id <client-id> --parameters '{
+#     "name": "github-push-main",
+#     "issuer": "https://token.actions.githubusercontent.com",
+#     "subject": "repo:BenefitsCare25/lts:ref:refs/heads/main",
+#     "audiences": ["api://AzureADTokenExchange"]
+#   }'
+# ---------------------------------------------------------------------------
 
 jobs:
   ci:
@@ -66,3 +87,105 @@ jobs:
         # Compile-check the Azure templates on every push. Catches syntax
         # errors and lint warnings before they hit a real deployment.
         run: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
+
+  deploy:
+    name: deploy → staging
+    needs: ci
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      id-token: write  # required for OIDC Azure login
+      contents: read
+
+    env:
+      RESOURCE_GROUP: insurance-saas-staging-rg
+      CONTAINER_APP: insurance-saas-staging-web
+      PARAM_FILE: infra/bicep/staging.parameters.json
+      TEMPLATE_FILE: infra/bicep/main.bicep
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed for accurate infra diff
+
+      - name: Detect infra changes
+        id: infra
+        run: |
+          BEFORE="${{ github.event.before }}"
+          # First push to branch or manual dispatch — run full Bicep to be safe.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            DIFF=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- infra/ 2>/dev/null || true)
+            [ -n "$DIFF" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve ACR
+        id: acr
+        run: |
+          ACR_NAME=$(az acr list --resource-group "$RESOURCE_GROUP" --query '[0].name' -o tsv)
+          ACR_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+          echo "name=$ACR_NAME" >> "$GITHUB_OUTPUT"
+          echo "server=$ACR_SERVER" >> "$GITHUB_OUTPUT"
+
+      - name: Get ACR token
+        id: acr-token
+        run: |
+          TOKEN=$(az acr login --name "${{ steps.acr.outputs.name }}" \
+            --expose-token --query accessToken -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Login to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.acr.outputs.server }}
+          # ACR token-based auth uses the fixed UUID below as the username.
+          username: 00000000-0000-0000-0000-000000000000
+          password: ${{ steps.acr-token.outputs.token }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.acr.outputs.server }}/insurance-saas-web:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy — update image only (fast path)
+        if: steps.infra.outputs.changed == 'false'
+        run: |
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ steps.acr.outputs.server }}/insurance-saas-web:${{ github.sha }}"
+          echo "Fast deploy complete — image updated, Bicep skipped."
+
+      - name: Deploy — full Bicep (infra changed)
+        if: steps.infra.outputs.changed == 'true'
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          az deployment group create \
+            --name "staging-$(date -u +%Y%m%d-%H%M%S)" \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file "$TEMPLATE_FILE" \
+            --parameters "@${PARAM_FILE}" \
+            --parameters "appImage=${{ steps.acr.outputs.server }}/insurance-saas-web:${{ github.sha }}" \
+            --parameters "postgresAdminPassword=${POSTGRES_ADMIN_PASSWORD}" \
+            --output none
+          echo "Full Bicep deploy complete."
