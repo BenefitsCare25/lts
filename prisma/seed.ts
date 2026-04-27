@@ -1,31 +1,38 @@
 // =============================================================
-// prisma/seed.ts — no-op stub for the bootstrap session.
+// prisma/seed.ts
 //
-// The full seed (Global Reference + Operator Library + default
-// EmployeeSchema + one demo Tenant + the 12 ProductType catalogue
-// rows) lands across Stories S6, S7, S11, S16 of
+// S4: creates one demo tenant ("Acme Brokers") so the app has
+// a tenant row to target in integration tests and local dev.
+//
+// Full seeding of Global Reference, Operator Library, default
+// EmployeeSchema, and the 12 ProductType catalogue rows lands
+// across Stories S6, S7, S11, S16 of
 // docs/PHASE_1_BUILD_PLAN_v2.md.
-//
-// Until then this file exists so:
-//   - `pnpm prisma db seed` completes successfully
-//   - `pnpm db:seed` resolves the same way
-//   - dev-setup.sh has a stable hook to call once migrations exist
-//
-// Do not import @prisma/client to write rows here yet — there
-// are no migrations applied, so the generated client targets
-// tables that don't exist in the database.
 // =============================================================
 
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
 async function main(): Promise<void> {
-  // biome-ignore lint/suspicious/noConsoleLog: intentional dev script output
-  console.log(
-    '[seed] no-op stub. Real seeds land in S6 (Global Reference), ' +
-      'S7 (Operator Library), S11 (default Employee Schema), ' +
-      'S16 (Product Catalogue). See docs/PHASE_1_BUILD_PLAN_v2.md §8.',
-  );
+  const tenant = await prisma.tenant.upsert({
+    where: { slug: 'acme-brokers' },
+    update: {},
+    create: {
+      name: 'Acme Brokers',
+      slug: 'acme-brokers',
+    },
+  });
+
+  // biome-ignore lint/suspicious/noConsoleLog: intentional seed output
+  console.log(`[seed] demo tenant: ${tenant.name} (${tenant.id})`);
+  // biome-ignore lint/suspicious/noConsoleLog: intentional seed output
+  console.log('[seed] S6/S7/S11/S16 seeds pending their respective stories.');
 }
 
-main().catch((error: unknown) => {
-  console.error('[seed] failed:', error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error: unknown) => {
+    console.error('[seed] failed:', error);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());

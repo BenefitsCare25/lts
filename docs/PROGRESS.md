@@ -17,9 +17,9 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 
 - [x] **S1** Repo + Bicep + CI/CD — Next.js + Prisma + tRPC monorepo, Azure Bicep templates for Container Apps, GitHub Actions pipeline. (2026-04-27 — deployed live at https://insurance-saas-staging-web.ambitiousisland-ce22282e.southeastasia.azurecontainerapps.io)
 - [x] **S2** Auth via WorkOS — SSO + MFA. (2026-04-27 — code landed; live SSO + MFA gated on WorkOS dev project provisioning. App boots in "auth disabled" mode without keys; `/admin` and `/sign-in` render help notices instead of erroring.)
-- [ ] **S3** Multi-tenancy middleware + RLS — Postgres RLS on every tenant-scoped table; middleware sets `app.current_tenant_id`. Cross-tenant query returns 0 rows; integration test confirms isolation.
-- [ ] **S4** Database baseline + Prisma schema — apply v2 schema. `prisma migrate deploy` clean; seed script creates one demo tenant.
-- [ ] **S5** Background job queue (BullMQ + Redis) — sample `hello-world` job dispatched and processed; Redis health check at `/api/health/redis`.
+- [x] **S3** Multi-tenancy middleware + RLS — Postgres RLS on every tenant-scoped table; middleware sets `app.current_tenant_id`. Cross-tenant query returns 0 rows; integration test confirms isolation. (2026-04-27 — RLS policies applied to staging; `requireTenantContext()` + Prisma `$extends` auto-inject tenantId on all tenant-scoped models)
+- [x] **S4** Database baseline + Prisma schema — apply v2 schema. `prisma migrate deploy` clean; seed script creates one demo tenant. (2026-04-27 — migration `20260427055126_initial_schema` applied to staging Postgres; seed.ts creates "Acme Brokers" demo tenant via upsert)
+- [x] **S5** Background job queue (BullMQ + Redis) — sample `hello-world` job dispatched and processed; Redis health check at `/api/health/redis`. (2026-04-27 — BullMQ worker + ioredis in `apps/web/src/server/jobs/`; started via `instrumentation.ts`; Azure Cache for Redis Basic C0 deployed to staging; `/api/health/redis` pings live Redis)
 
 ## Phase 1B — Registries / Screen 0 (S6–S12)
 
