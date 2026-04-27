@@ -61,3 +61,8 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Bicep compile (infra/)
+        # Compile-check the Azure templates on every push. Catches syntax
+        # errors and lint warnings before they hit a real deployment.
+        run: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null

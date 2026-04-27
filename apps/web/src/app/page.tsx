@@ -1,16 +1,35 @@
+'use client';
+
+import { trpc } from '@/lib/trpc/client';
+
 export default function HomePage() {
+  const ping = trpc.health.ping.useQuery();
+
   return (
     <main>
       <h1>Insurance SaaS Platform</h1>
       <p>
-        Phase 1 bootstrap. The toolchain is wired up but no user-facing surfaces have been built
-        yet. Story S1 (Azure infrastructure) is next, with auth, admin layout, and catalogue
-        management following.
+        Phase 1 build. tRPC and WorkOS auth wiring are in place; multi-tenancy + Postgres RLS (Story
+        S3) follow next.
       </p>
       <p>
-        See <a href="https://github.com/">docs/build_brief.md</a> in the repository for the full
-        plan.
+        <a href="/admin">Open admin →</a>
       </p>
+      <p>
+        See <code>docs/PHASE_1_BUILD_PLAN_v2.md</code> in the repository for the full plan.
+      </p>
+      <section>
+        <h2>tRPC health</h2>
+        {ping.isLoading ? (
+          <p>pinging…</p>
+        ) : ping.error ? (
+          <p>error: {ping.error.message}</p>
+        ) : (
+          <p>
+            {ping.data?.status} @ {ping.data?.timestamp}
+          </p>
+        )}
+      </section>
     </main>
   );
 }

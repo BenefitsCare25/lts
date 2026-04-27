@@ -1,0 +1,35 @@
+# Reduce build context for the Dockerfile.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+playwright-report
+**/playwright-report
+test-results
+**/test-results
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+.git
+.github
+.vscode
+.idea
+
+# Local env + reference assets are not needed in the runtime image.
+.env
+.env.local
+.env.development
+reference
+
+# Tests are not needed in the runtime image.
+**/tests
+
+# Editor and OS clutter.
+.DS_Store
+Thumbs.db

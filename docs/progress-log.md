@@ -4,6 +4,195 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-27 — Bicep gating: leanest staging stack
+
+**Session focus.** During Azure portal setup, the user reviewed the projected ~S$60-70/mo idle cost of the full Phase 1 staging stack and asked which components were strictly necessary right now. Pruned the deploy down to the bare minimum needed to host a running container, with everything else gated behind opt-in flags that flip on as their stories land.
+
+**Decision.** Default `staging.parameters.json` now deploys only **RG + ACR Basic + Container Apps env + Container App** — no Postgres, Redis, Storage, Key Vault, Log Analytics, or App Insights. Idle cost drops from ~S$60-70/mo to **~S$7/mo** (just the ACR Basic line item).
+
+**Five gates added to `infra/bicep/main.bicep`** (all default `false`):
+
+| Flag | Turns on | Cost delta | When to flip on |
+|---|---|---|---|
+| `deployPostgres` | Postgres Flexible Server B1ms | +S$25-30/mo | Story S4 (schema migrations) |
+| `deployRedis` | Redis Basic C0 | +S$22/mo | Story S5 (BullMQ jobs) |
+| `deployStorage` | Storage account + Blob | +S$0-2/mo | Story S29 (placement-slip uploads) — or revisit if SharePoint integration wins on the ADR |
+| `deployObservability` | Log Analytics + App Insights | +S$0-5/mo | Production cutover; staging debugs via `az containerapp logs show --follow` |
+| `deployKeyVault` | Key Vault Standard | +S$0-1/mo | Production cutover; Container Apps secret bag handles single-app needs |
+
+**What changed in code.**
+
+- `infra/bicep/main.bicep` — five new bool params, every optional module wrapped in `if (deployX)`, container-app and outputs reference conditional outputs via `deployX ? module.outputs.foo : ''`. Postgres password is now optional (default `''`) since it's only required when `deployPostgres=true`. Nine BCP318 "may be null" warnings on conditional-module access were each suppressed inline with `#disable-next-line BCP318` (the access is guarded by the same flag that controls the module — known-safe).
+- `infra/bicep/modules/container-env.bicep` — `logAnalyticsCustomerId` / `logAnalyticsSharedKey` now optional. When both are empty, `appLogsConfiguration.destination` is set to `'none'` so the env runs without log shipping. Live debugging via `az containerapp logs show --follow` still works regardless of destination.
+- `infra/bicep/modules/container-app.bicep` — `databaseUrl`, `redisUrl`, `appInsightsConnectionString` all default to `''`. Secrets and env vars are built via `concat()` of small per-feature arrays, so empty inputs cause the corresponding entry to be omitted entirely instead of showing up as a blank-valued env var inside the container.
+- `infra/bicep/staging.parameters.json` — all five `deployX` flags set to `false`; placeholder Postgres password removed; left only `environmentName`, `location`, `appImage`, `postgresAdminUsername`, plus the five flags.
+- `scripts/deploy-staging.sh` — adds a `jq` dependency to read `deployPostgres` from the parameters file; only requires `POSTGRES_ADMIN_PASSWORD` when that flag is true; passes the password parameter to Bicep only when needed.
+- `infra/bicep/README.md` — restructured around the phased model. Cost summary table now distinguishes leanest (~S$7/mo), +Postgres (~S$37/mo), +Postgres+Redis (~S$59/mo), full (~S$65-70/mo).
+
+**Why this beats committing to the full stack now.**
+
+1. **Pay-as-you-build matches the story-by-story cadence.** Postgres sitting idle while we work on S2 (auth) and Phase 1B (registry CRUD UIs) burns ~S$30/mo for zero functional benefit — the schema isn't applied until S4.
+2. **Cost reversibility is asymmetric.** Adding a flag is a one-line parameter change + redeploy. Removing a deployed Postgres requires a destructive operation and loses any data already there. Optimise for the cheaper direction.
+3. **Production posture isn't being skipped, just deferred.** Observability + Key Vault are the right call for production but provide ~zero value during staging dev where I'm tailing logs in real time anyway. They flip on as part of the production cutover ADR (not yet written).
+
+**Verification.**
+
+- `az bicep build infra/bicep/main.bicep` — clean, zero warnings.
+- `pnpm typecheck`, `pnpm check`, `pnpm test`, build — all clean.
+
+**Open items / next.**
+
+- **No Azure resources created yet.** The user asked to walk through provisioning step-by-step before anything is created. Step 1 (provider registration, free, async) is queued and waiting for explicit "go".
+- **SharePoint vs Blob ADR (Story S29 prerequisite)** — when S29 lands, decide whether placement-slip ingestion uploads to Blob Storage (current Bicep path) or pulls from a SharePoint folder via Microsoft Graph. The latter would mean dropping `deployStorage` permanently and adding a Graph SDK + delegated app permissions instead. Captured here as a flag so we don't forget.
+
+---
+
+## 2026-04-27 — Story S2: WorkOS authentication
+
+**Session focus.** Story S2 from `docs/PHASE_1_BUILD_PLAN_v2.md` §8: integrate WorkOS AuthKit for SSO + MFA, with `/admin` gated behind a session. Constraint: the WorkOS project is not yet provisioned externally (per the bootstrap log's first-week checklist), so the integration must boot cleanly with empty WorkOS env vars and fall back to a clear "auth not configured" UX rather than erroring or redirecting into a broken OAuth flow.
+
+**What landed.**
+
+- **AuthKit Next.js v4.0.1** added to `apps/web` (`@workos-inc/authkit-nextjs`). Pulls `@workos-inc/node@9.1.1`, `iron-session`, `jose`. ESM-only; works with the App Router.
+- **`apps/web/src/server/env.ts`** — single source of truth for WorkOS env validation. Exports `isAuthConfigured()`, `assertAuthConfigured()`, `getAuthEnv()`, and `validateEnvOnBoot()`. Empty strings count as missing. Production startup throws on missing keys; development logs a warning and continues with auth disabled.
+- **`apps/web/src/middleware.ts`** — Next.js edge middleware. When configured, delegates to `authkitMiddleware` with `/`, `/sign-in`, `/sign-up`, and `/api/trpc/*` marked as unauthenticated. When not configured, returns `NextResponse.next()` so the dev server still serves every route (the per-route components handle the disabled-state UX). Matcher excludes static assets and Next internals.
+- **Auth routes:**
+  - `apps/web/src/app/api/auth/callback/route.ts` — mounts `handleAuth({ returnPathname: '/admin' })`. Returns a 503 JSON when not configured.
+  - `apps/web/src/app/sign-in/page.tsx` — generates a WorkOS sign-in URL via `getSignInUrl()` and redirects. Renders a help notice when not configured.
+  - `apps/web/src/app/sign-out/route.ts` — calls `signOut({ returnTo: '/' })`. Redirects home when not configured.
+- **Session helpers** at `apps/web/src/server/auth/session.ts` — `getSession()` returns `Session | null`, `requireSession()` throws a Next.js redirect to `/sign-in` if absent. The `Session` type carries `{ user: { id, email, firstName, lastName, roles }, accessToken }` — minimal shape, expanded in S3 with tenant id.
+- **`/admin` shell** at `apps/web/src/app/admin/{layout,page}.tsx`. Layout calls `requireSession()` when auth is configured, otherwise renders an `AuthDisabledNotice` with a 4-step setup guide. Page shows the signed-in user's id/email/roles plus a "tenant scoping arrives in S3" note. Header has a `/sign-out` link.
+- **tRPC context + protectedProcedure.** `apps/web/src/server/trpc/context.ts` is now async and calls `getSession()` to populate `ctx.session`. `apps/web/src/server/trpc/init.ts` adds a `protectedProcedure` built on a tRPC middleware that throws `TRPCError({ code: 'UNAUTHORIZED' })` when `ctx.session` is null and narrows the context type otherwise. `publicProcedure` is unchanged.
+- **Tests** (`apps/web/tests/unit/`):
+  - `env.test.ts` — 7 tests covering `isAuthConfigured`/`assertAuthConfigured`/`getAuthEnv` plus the dev-vs-prod behaviour of `validateEnvOnBoot`. Tests stash and restore `process.env` per test.
+  - `trpc-protected.test.ts` — 2 tests confirming `protectedProcedure` throws UNAUTHORIZED with `ctx.session: null` and resolves with a populated session.
+  - Existing `tRPC health` and `smoke` tests still pass (4 files, 11 tests total).
+- **End-to-end smoke** with `pnpm start` against the auth-disabled build (no WorkOS env vars set):
+  - `GET /` → 200, `health.ping` round-trip live on the page.
+  - `GET /admin` → 200, renders "Admin disabled" notice (no redirect loop).
+  - `GET /sign-in` → 200, renders "Sign-in unavailable".
+  - `GET /api/trpc/health.ping` → 200 with the expected JSON shape.
+- **`.env.example`** — WorkOS section rewritten with a 5-step setup checklist (dashboard project, API key, redirect URI registration, `openssl rand -base64 32` for the cookie password, SSO connection notes). Re-tagged from `[later — S3]` to `[now — S2]`.
+
+**Decisions and rationale.**
+
+1. **`/admin` as a literal path, not the `(admin)` route group.** The v2 plan and CLAUDE.md repo layout list `(admin)/` as a folder, which in Next.js App Router means a route group with no URL segment. Initial implementation followed that literally — placing the layout/page under `app/(admin)/` — and the resulting `/admin` URL returned 404 (the page rendered at `/`, conflicting with the home page). v2 §8 S2's AC explicitly says "log in to /admin", which is a real URL. Renamed to `app/admin/` as a literal folder. The `(admin)` notation in CLAUDE.md is treated as conceptual grouping; the URL `/admin` is the contract. Updated CLAUDE.md is unchanged for this — readers should understand the `(...)` is shorthand for "the admin shell, however we wire it".
+2. **Auth-disabled fallback over hard-fail.** When `WORKOS_API_KEY` is empty, the SDK throws at module init. That would break local dev for anyone who hasn't yet completed the WorkOS dashboard setup. Three failure modes were considered:
+   - hard-fail (production-grade safety, terrible local DX),
+   - lazy init (defer SDK calls until needed, but still throws on the first `/admin` hit),
+   - **gate-on-env-presence** (what we shipped — the SDK is only constructed when keys exist).
+   Production is still safe because `validateEnvOnBoot()` throws when `NODE_ENV=production`. The fallback is a dev-only convenience, not a security weakening.
+3. **Session payload narrowed at the boundary.** AuthKit's `withAuth()` returns ~10 fields; we expose `{ id, email, firstName, lastName, roles, accessToken }` only. Reasoning: future code shouldn't reach into the full WorkOS shape — additions to that shape should be deliberate Session-type additions, reviewed for PII (per v2 §7 PDPA constraints).
+4. **`protectedProcedure` over an explicit `ensureSignedIn` flag.** Two-tier procedure helpers (public/protected) is the conventional tRPC pattern; future S3 work adds a third `tenantProcedure` that builds on `protectedProcedure` with `ctx.tenantId`. Prefer composable middleware to flag-driven dispatch.
+5. **Sign-out as a GET route, not a server action.** Server actions need a form or `useFormState` boilerplate. A plain `<a href="/sign-out">` works without React state and matches AuthKit's documented pattern.
+6. **Roles array, not a single role enum.** WorkOS supports both `role` (singular) and `roles` (multi). Our v2 schema's `User.role` is a single enum (TENANT_ADMIN / CATALOGUE_ADMIN / BROKER_ADMIN / CLIENT_HR / EMPLOYEE), but at the WorkOS layer the user may carry multiple org-level roles. Keeping the session as `roles: string[]` lets S3+ map "the WorkOS roles claim" to "our `User.role`" without re-shaping the session type.
+
+**Verification.**
+
+- `pnpm typecheck` — clean.
+- `pnpm check` (Biome) — clean (38 files).
+- `pnpm test` — 4 files, 11 tests pass.
+- `pnpm build` — Next.js build succeeds. New routes in the manifest: `/admin`, `/sign-in`, `/sign-out`, `/api/auth/callback`. Middleware bundle: 94.4 kB.
+- `az bicep build infra/bicep/main.bicep` — still clean.
+- Live `pnpm start` smoke test — all four URLs respond as expected with auth disabled.
+
+**Open items / follow-ups.**
+
+- **WorkOS dev project provisioning** (still owed). One-time setup: dashboard project, AuthKit enabled, dev organisation created, Google + Microsoft SSO connections wired, redirect URI registered, four env vars copied into `.env`. Estimated 30–60 min. Once done, the same code paths above produce a working sign-in.
+- **Real role mapping (S3 prerequisite).** Need to decide whether WorkOS roles map directly to `User.role` or whether we maintain a translation table. Captured as a discussion point for the S3 ADR.
+- **MFA enrolment UX.** WorkOS handles the MFA flow inside its hosted UI — no code in this repo. The AC ("MFA prompt fires on first login") is satisfied by the WorkOS dashboard config; the code-side AC is just that we honour the resulting authenticated session.
+- **Story S3 (multi-tenancy + Postgres RLS) is next.** It introduces `requireTenantContext()`, layers `tenantProcedure` on top of `protectedProcedure`, applies the v2 Prisma schema as the first real migration, and adds RLS policies + a cross-tenant isolation test.
+
+---
+
+## 2026-04-27 — Story S1: Repo + Bicep + CI/CD
+
+**Session focus.** Story S1 from `docs/PHASE_1_BUILD_PLAN_v2.md` §8: complete the foundation layer. Bootstrap had already covered the monorepo and basic CI; this session adds tRPC, Azure Bicep templates, the Dockerfile, the staging deploy script, and the Bicep compile-check in CI.
+
+**What landed.**
+
+- **tRPC v11.16.0 wired up.** `@trpc/server`, `@trpc/client`, `@trpc/react-query`, `@tanstack/react-query`, `superjson`, `zod` added to `apps/web`. Server scaffolding under `apps/web/src/server/trpc/`: `init.ts` (shared instance with superjson transformer), `context.ts` (placeholder Context type — populated in S2/S3), `router.ts` (root `appRouter` exporting `AppRouter` type), `routers/health.ts` (one `health.ping` query returning `{status: "ok", timestamp}`). Fetch-adapter handler at `apps/web/src/app/api/trpc/[trpc]/route.ts` exporting `GET` + `POST`. Browser-side hooks via `apps/web/src/lib/trpc/{client,provider}.tsx` using `httpBatchLink` and `superjson`. Provider wired into `app/layout.tsx`; the home page now renders the live `health.ping` round-trip status.
+- **Vitest test for the router.** `apps/web/tests/unit/trpc-health.test.ts` invokes `appRouter.createCaller({session:null}).health.ping()` directly (no HTTP) and asserts `status: "ok"` plus an ISO-parseable timestamp. Both unit tests pass (`tests/unit/smoke.test.ts` + the new one).
+- **Bicep stack under `infra/bicep/`.** `main.bicep` composes eight modules (Log Analytics, App Insights, ACR, Container Apps env, Container App, Postgres Flexible Server, Redis, Storage, Key Vault) all pinned to `southeastasia`. Deterministic naming via `uniqueString(resourceGroup().id)` for globally-unique resources. Outputs: `appUrl`, `postgresFqdn`, `keyVaultUri`, `registryLoginServer`, `blobEndpoint`. Compiles clean (`az bicep build`, no warnings).
+- **`infra/bicep/staging.parameters.json`** — placeholder password and image references; both replaced at deploy time by the script.
+- **Production `Dockerfile`** at repo root — multi-stage (deps → build → run) building the Next.js standalone bundle. `ARG NODE_VERSION=20.18.1`, `ARG PNPM_VERSION=9.15.4`. `.dockerignore` excludes `node_modules`, `.next`, `tests`, `reference`, lockfiles in nested paths.
+- **`next.config.mjs` standalone gating.** `output: 'standalone'` is now conditional on `STANDALONE_BUILD=true` env var. Reason: standalone tracing creates symlinks under `.next/standalone/node_modules/`, which on Windows requires Developer Mode or admin (EPERM otherwise). The Dockerfile sets `STANDALONE_BUILD=true`; local `pnpm build` on Windows now succeeds without it.
+- **`scripts/deploy-staging.sh`** — bash, idempotent. Validates `az login`, ensures resource group, on first run bootstraps infra with a placeholder image (since ACR doesn't exist yet), then builds + pushes the real image and redeploys. Reads `POSTGRES_ADMIN_PASSWORD` from env (intentionally not in the parameter file). Prints final `appUrl`. Marked executable.
+- **`.github/workflows/ci.yml`** — added an `az bicep build` compile-check step after `pnpm build`. CI now: install → biome check → typecheck → test → build → bicep compile.
+- **`infra/bicep/README.md`** — module map, SKU rationale (B1ms Postgres, Basic C0 Redis, Basic ACR, Standard LRS Storage), cost estimate, what's deferred to Phase 2 (private endpoints, multi-env params, what-if checks).
+
+**Decisions and rationale.**
+
+1. **tRPC v11 not v10.** v11 is the current stable line and matches Next.js 15 App Router patterns better (fetch adapter, `httpBatchLink` with transformer per-link rather than per-instance). No v10 lock-in to preserve since this is a greenfield session.
+2. **Two procedure files (`router.ts` + `routers/health.ts`).** Keeps `router.ts` small and readable as the catalogue grows. v2 §0 read-order conventions favour discoverable directories over single mega-files; this lays the directory shape early.
+3. **Standalone build gated, not removed.** v2 §13 Definition of Done assumes a deployable container image. Standalone is the right output for that — it ships a 100 MB image instead of 800 MB. Gating it on `STANDALONE_BUILD=true` rather than removing it preserves the deploy path while unblocking Windows local development. The other option (mandate Windows Developer Mode) would create a tooling cliff for any future Windows contributor.
+4. **`outputFileTracingRoot` via `path.resolve(fileURLToPath(...), '../..')`.** First attempt used `new URL('../..', import.meta.url).pathname` which produces `/C:/Users/huien/LTS/` on Windows — Next.js then created a top-level `Users/huien/LTS/` directory at the repo root during build. Cleaned up the polluted folder, replaced with the correct `node:url` + `node:path` conversion. This is documented in `next.config.mjs` for the next person who hits it.
+5. **ACR admin user enabled, not managed identity.** Phase 1 deploys from a developer laptop with `az login`; managed-identity image pulls require a CI service principal which doesn't exist yet (owed by the human, per bootstrap log). Switching to MI is a one-line change in `container-app.bicep` once the SP lands — captured in the README's "deferred" list.
+6. **Postgres + Redis connection strings exposed as Bicep outputs.** Bicep linter flags this as a secret-leak risk, but the outputs flow only into another module's `@secure()` parameter for the Container App secret bag — never to a user-facing surface. Suppressed with `#disable-next-line outputs-should-not-contain-secrets` on the specific output lines, with no project-wide rule disablement.
+7. **No actual Azure deployment this session.** Three of S1's exit criteria are deploy-time (resource group, container revisioning, end-to-end smoke). Those are gated on the Azure subscription + service-principal setup that's still owed externally. The script and templates are validated by `az bicep build`; the live deploy is the first thing to run once the subscription is in place. PROGRESS.md ticks S1 with a footnote rather than waiting on external dependencies before recording progress.
+
+**Verification.**
+
+- `pnpm typecheck` — clean.
+- `pnpm check` (Biome lint + format + organizeImports) — clean.
+- `pnpm test` — 2 tests pass (smoke + tRPC health).
+- `pnpm build` — Next.js production build succeeds. `/api/trpc/[trpc]` correctly registered as a dynamic route.
+- `az bicep build --file infra/bicep/main.bicep` — compiles with zero warnings.
+
+**Open items / follow-ups.**
+
+- **Azure subscription + RG + service principal** (still owed by the human). Once provisioned, run `./scripts/deploy-staging.sh` and confirm the resulting app URL serves `/api/trpc/health.ping`.
+- **WorkOS project + dev organisation + dev Key Vault** (still owed). Story S2 uses these.
+- **CI enhancement deferred:** add Azure login + bicep what-if step to a separate `infra-validate` workflow once the staging SP lands.
+- **Story S2 (WorkOS auth) is next.** It populates `apps/web/src/server/trpc/context.ts` with the session, replaces the `(auth)` route group placeholder, and gates `/admin` behind `requireSession()`.
+
+---
+
+## 2026-04-27 — v1 → v2 plan migration
+
+**Session focus.** Adopt `docs/PHASE_1_BUILD_PLAN_v2.md` as the canonical Phase 1 plan and reconcile the existing repo state with it. The bootstrap session left a v1-shaped `prisma/schema.prisma` (Agency/agencyId, four JSON Schemas per ProductTypeVersion, no registries, no EmployeeSchema, no stacked plans). v2 demands Tenant/tenantId, two schemas + premiumStrategy, six metadata registries, EmployeeSchema, Pool/PoolMembership, TPA, BenefitYear (replacing PolicyVersion), PolicyEntity (replacing PolicyHoldingEntity, with `rateOverrides`), and Plan additions for stacks/flex/effective dates. No migrations had been generated, so the swap is purely text.
+
+**What landed.**
+
+- `prisma/schema.prisma` — full replacement against v2 §2. Models: Tenant, User, Country, Currency, Industry, EmployeeSchema, OperatorLibrary, Insurer, TPA, Pool, PoolMembership, ProductType, Client, Policy, BenefitYear, PolicyEntity, BenefitGroup, Product, Plan (with `stacksOn` self-relation, `selectionMode`, `effectiveFrom/To`), ProductEligibility, PremiumRate, Employee, Dependent, Enrollment, AuditLog, PlacementSlipUpload. `pnpm prisma format` and `pnpm prisma generate` both pass.
+- `CLAUDE.md` — Agency→Tenant terminology (`requireAgencyContext` → `requireTenantContext`, `agency_id` → `tenantId`, audit context wording). New "Phase 1 plan (canonical)" section pointing to v2 as the source of truth and listing the session-start read order. "Things that will probably confuse you" rewritten: 4 schemas → 2 schemas + premiumStrategy; new entry on the six registries; hierarchy updated to Tenant > Client > Policy > BenefitYear > Product.
+- `docs/build_brief.md` — top-of-file banner marking it superseded by v2. Kept in repo for traceability rather than deleted.
+- `docs/PROGRESS.md` — new file, 35-story checklist organised by phase 1A–1H, plus the Three Clients acceptance test and Definition of Done from v2 §13. Bootstrap session and this migration session ticked.
+- `docs/ADRs/0001-metadata-driven-architecture.md` — captures the three-tier model and six registries (status: Accepted).
+- `docs/ADRs/0002-stacked-plans-and-flex-mode.md` — captures `Plan.stacksOn`, `selectionMode`, `effectiveFrom/To`, and `PolicyEntity.rateOverrides` (status: Accepted).
+- `reference/README.md` — created. Lists the three placement slips and Inspro screenshots, points at v2 plan as required reading before catalogue/parser/seed work.
+- `prisma/seed.ts` — comment updated to point at v2 stories (S6/S7/S11/S16) instead of the old "S8" reference.
+- `README.md` — Documents section now leads with v2 plan + PROGRESS.md + ADRs; build_brief.md flagged as superseded. Status line updated to "bootstrap + v2 migration complete; Story S1 next".
+- `.env.example` — story references retargeted (Redis used by S5 not S20; WorkOS by S2 not S3; Blob by S29 not S17).
+
+**Decisions and rationale.**
+
+1. **Replace v1 schema rather than archive it.** Git history preserves the v1 schema (commit `b7e67a8` and earlier). Keeping a parallel v1 file in the tree adds no value once v2 is canonical; the build brief banner is enough traceability. The v1 schema didn't touch a single migration so no rollback path is being lost.
+2. **Faithful translation of v2 §2 with three minor Prisma corrections.** v2 wrote enums in pipe-delimited form (`enum X { A | B | C }`) which is invalid Prisma syntax — translated to multiline. Added `@db.Decimal(12,4)` / `@db.Decimal(14,2)` precision on `PremiumRate.ratePerThousand` / `fixedAmount` (v2 left them as plain `Decimal?`). Added `onDelete: NoAction, onUpdate: NoAction` on the `Plan.riderOf` self-relation to satisfy Prisma's referential-action requirement on optional self-relations.
+3. **Two ADRs at status `Accepted`, not `Proposed`.** v2 §12 explicitly mandates these as part of the migration, and the decisions are baked into the schema we just wrote. Marking them `Proposed` would imply the schema is provisional, which it isn't.
+4. **`build_brief.md` kept, not deleted.** It documents the historical brief that the bootstrap session was working from and is referenced from the bootstrap log entry. Deleting it would orphan that reference. The top banner makes precedence unambiguous.
+5. **No reference to deleted v1 entities (Agency, PolicyVersion, PolicyHoldingEntity, ProductTypeVersion) anywhere in the new docs.** Scrubbed CLAUDE.md, README.md, and seed.ts. Only `docs/build_brief.md` (now banner-marked) and `docs/architecture.md` (untouched supporting context) still use the old names.
+6. **Story renumbering.** v1 had 26 stories (S1–S26) keyed off the build brief; v2 has 35 (S1–S35). The numbers do not align. PROGRESS.md uses v2 numbering; the bootstrap log entry's "Story S1 is next" still makes sense because v2 S1 is also infrastructure-flavoured (Bicep + remaining CI/CD), with the existing CI workflow already covering the GitHub Actions piece.
+
+**Verification.**
+
+- `pnpm prisma format` — clean.
+- `pnpm prisma generate` — generates client successfully against v2 schema.
+- `pnpm typecheck` — clean.
+- `pnpm check` — clean after the line-ending fix below.
+- `pnpm test` — 1 smoke test passes.
+- `pnpm build` — Next.js production build succeeds.
+
+**Line-ending fix (incidental, but in this commit).** Biome was failing locally with 17 CRLF-vs-LF errors on files Biome had not generated. Root cause: Git's `core.autocrlf=true` on Windows converts LF→CRLF in the working tree, while `biome.json` enforces `lineEnding: "lf"`. The bootstrap session reported a clean `pnpm check` because formatting was applied right before commit; the staleness only surfaces on subsequent invocations. Two-part fix: (a) added `.gitattributes` with `* text=auto eol=lf` plus `binary` markers for `.xls`/`.xlsx`/`.png` and `-text` for lockfiles, so future checkouts on any OS land as LF; (b) ran `pnpm exec biome check --write .` to normalise the existing working tree (17 files touched, all whitespace/EOL only — no semantic diff). Files affected are pre-existing bootstrap files plus a few I edited in this session.
+
+**Open items / follow-ups.**
+
+- Run full local check suite (`pnpm typecheck && pnpm check && pnpm test && pnpm build`) before pushing.
+- Story S1 next session: add `infra/bicep/` Bicep templates for Azure Container Apps + Postgres Flexible Server + Redis + Blob + Key Vault + App Insights, and `scripts/deploy-staging.sh`. The existing `.github/workflows/ci.yml` already covers the green-CI half of S1's AC.
+- First-week external setup still owed (per bootstrap entry): Azure subscription + resource group, WorkOS project + dev organisation, dev Key Vault.
+
+---
+
 ## 2026-04-25 — Pre-story bootstrap
 
 **Session focus.** Section 5 of `docs/build_brief.md` — pre-story environment bootstrap. Goal: a fresh clone plus `./scripts/dev-setup.sh` produces a working app at `localhost:3000` with a seeded (no-op) database.

@@ -1,0 +1,22 @@
+# Pin LF line endings across the repo. Without this, Windows users
+# hit `core.autocrlf=true` on checkout, which converts LF → CRLF in
+# the working tree and breaks Biome's `lineEnding: lf` formatter
+# check (and any other tool that round-trips line endings).
+#
+# Treat all text-detected files as LF; mark a few specific binary
+# extensions to skip detection entirely.
+
+* text=auto eol=lf
+
+# Excel placement slips and PNG screenshots in reference/ are binary.
+*.xls binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+
+# Lockfiles must keep their checked-in state byte-for-byte.
+pnpm-lock.yaml -text
+package-lock.json -text
+yarn.lock -text
