@@ -1,50 +1,50 @@
 // =============================================================
-// Session helpers — wraps AuthKit's withAuth for ergonomics.
+// Session helpers — wraps Auth.js's auth() for ergonomics.
 //
 // getSession() returns the user info or null (never throws).
 // requireSession() returns the user info or redirects to /sign-in.
 //
-// Phase 1 status: tenant id is NOT yet attached. Story S3 wires
-// the tenantId resolution and exposes a tenant-scoped Prisma
-// client; until then call sites should not assume tenant scoping.
+// Session.user.id is our internal User.id (cuid). Pre-populated
+// onto the JWT during sign-in so callers don't need a DB round-trip.
 // =============================================================
 
-import { isAuthConfigured } from '@/server/env';
-import { withAuth } from '@workos-inc/authkit-nextjs';
 import { redirect } from 'next/navigation';
+import { auth } from './config';
 
 export type SessionUser = {
   id: string;
   email: string;
+  tenantId: string;
+  role: string;
   firstName: string | null;
   lastName: string | null;
-  // Roles attached at the WorkOS organization level, populated by
-  // AuthKit from the access-token claims. Empty array if absent.
+  // Reserved for future role expansion. Kept here so the type didn't
+  // change shape across the WorkOS swap; consumers that read roles[]
+  // continue to compile.
   roles: string[];
 };
 
 export type Session = {
   user: SessionUser;
-  // WorkOS access token — used downstream when we need to call the
-  // WorkOS API on behalf of the user (organization listing, etc).
-  accessToken: string;
 };
 
 export async function getSession(): Promise<Session | null> {
-  if (!isAuthConfigured()) return null;
+  const result = await auth();
+  if (!result?.user?.id) return null;
 
-  const auth = await withAuth();
-  if (!auth.user) return null;
+  const fullName = result.user.name ?? '';
+  const [firstName = null, ...rest] = fullName.length > 0 ? fullName.split(' ') : [];
 
   return {
     user: {
-      id: auth.user.id,
-      email: auth.user.email,
-      firstName: auth.user.firstName ?? null,
-      lastName: auth.user.lastName ?? null,
-      roles: auth.roles ?? (auth.role ? [auth.role] : []),
+      id: result.user.id,
+      email: result.user.email ?? '',
+      tenantId: result.user.tenantId,
+      role: result.user.role,
+      firstName,
+      lastName: rest.length > 0 ? rest.join(' ') : null,
+      roles: result.user.role ? [result.user.role] : [],
     },
-    accessToken: auth.accessToken,
   };
 }
 

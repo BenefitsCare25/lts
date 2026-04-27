@@ -13,11 +13,12 @@ const sampleSession: Session = {
   user: {
     id: 'user_test_123',
     email: 'sam@example.com',
+    tenantId: 'tenant_test_123',
+    role: 'BROKER_ADMIN',
     firstName: 'Sam',
     lastName: 'Tester',
     roles: ['BROKER_ADMIN'],
   },
-  accessToken: 'access_test',
 };
 
 describe('tRPC protectedProcedure', () => {

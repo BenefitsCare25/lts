@@ -6,12 +6,7 @@ import {
 } from '@/server/env';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-const REQUIRED = [
-  'WORKOS_API_KEY',
-  'WORKOS_CLIENT_ID',
-  'WORKOS_COOKIE_PASSWORD',
-  'WORKOS_REDIRECT_URI',
-] as const;
+const REQUIRED = ['AUTH_SECRET'] as const;
 
 describe('server/env', () => {
   const original: Record<string, string | undefined> = {};
@@ -43,80 +38,38 @@ describe('server/env', () => {
     }
   }
 
-  it('isAuthConfigured returns false when any required key is missing', () => {
-    setEnv({
-      WORKOS_API_KEY: 'sk_test',
-      WORKOS_CLIENT_ID: 'client_test',
-      WORKOS_COOKIE_PASSWORD: 'a'.repeat(40),
-      WORKOS_REDIRECT_URI: undefined,
-    });
+  it('isAuthConfigured returns false when AUTH_SECRET is missing', () => {
+    setEnv({ AUTH_SECRET: undefined });
     expect(isAuthConfigured()).toBe(false);
   });
 
-  it('isAuthConfigured returns true only when all required keys are present', () => {
-    setEnv({
-      WORKOS_API_KEY: 'sk_test',
-      WORKOS_CLIENT_ID: 'client_test',
-      WORKOS_COOKIE_PASSWORD: 'a'.repeat(40),
-      WORKOS_REDIRECT_URI: 'http://localhost:3000/api/auth/callback',
-    });
+  it('isAuthConfigured returns true when AUTH_SECRET is present', () => {
+    setEnv({ AUTH_SECRET: 'a'.repeat(32) });
     expect(isAuthConfigured()).toBe(true);
   });
 
-  it('treats empty strings the same as undefined', () => {
-    setEnv({
-      WORKOS_API_KEY: '',
-      WORKOS_CLIENT_ID: 'client_test',
-      WORKOS_COOKIE_PASSWORD: 'a'.repeat(40),
-      WORKOS_REDIRECT_URI: 'http://localhost:3000/api/auth/callback',
-    });
+  it('treats empty string the same as undefined', () => {
+    setEnv({ AUTH_SECRET: '' });
     expect(isAuthConfigured()).toBe(false);
   });
 
-  it('assertAuthConfigured throws with the missing keys when not configured', () => {
-    setEnv({
-      WORKOS_API_KEY: undefined,
-      WORKOS_CLIENT_ID: 'client_test',
-      WORKOS_COOKIE_PASSWORD: 'a'.repeat(40),
-      WORKOS_REDIRECT_URI: undefined,
-    });
-    expect(() => assertAuthConfigured()).toThrowError(/WORKOS_API_KEY.*WORKOS_REDIRECT_URI/);
+  it('assertAuthConfigured throws with the missing key when not configured', () => {
+    setEnv({ AUTH_SECRET: undefined });
+    expect(() => assertAuthConfigured()).toThrowError(/AUTH_SECRET/);
   });
 
-  it('getAuthEnv returns the values when configured', () => {
-    setEnv({
-      WORKOS_API_KEY: 'sk_test',
-      WORKOS_CLIENT_ID: 'client_test',
-      WORKOS_COOKIE_PASSWORD: 'a'.repeat(40),
-      WORKOS_REDIRECT_URI: 'http://localhost:3000/api/auth/callback',
-    });
-    expect(getAuthEnv()).toEqual({
-      WORKOS_API_KEY: 'sk_test',
-      WORKOS_CLIENT_ID: 'client_test',
-      WORKOS_COOKIE_PASSWORD: 'a'.repeat(40),
-      WORKOS_REDIRECT_URI: 'http://localhost:3000/api/auth/callback',
-    });
+  it('getAuthEnv returns the value when configured', () => {
+    setEnv({ AUTH_SECRET: 'a'.repeat(32) });
+    expect(getAuthEnv()).toEqual({ AUTH_SECRET: 'a'.repeat(32) });
   });
 
   it('validateEnvOnBoot throws in production when keys are missing', () => {
-    setEnv({
-      NODE_ENV: 'production',
-      WORKOS_API_KEY: undefined,
-      WORKOS_CLIENT_ID: undefined,
-      WORKOS_COOKIE_PASSWORD: undefined,
-      WORKOS_REDIRECT_URI: undefined,
-    });
+    setEnv({ NODE_ENV: 'production', AUTH_SECRET: undefined });
     expect(() => validateEnvOnBoot()).toThrowError(/Production startup blocked/);
   });
 
   it('validateEnvOnBoot tolerates missing keys in development', () => {
-    setEnv({
-      NODE_ENV: 'development',
-      WORKOS_API_KEY: undefined,
-      WORKOS_CLIENT_ID: undefined,
-      WORKOS_COOKIE_PASSWORD: undefined,
-      WORKOS_REDIRECT_URI: undefined,
-    });
+    setEnv({ NODE_ENV: 'development', AUTH_SECRET: undefined });
     expect(() => validateEnvOnBoot()).not.toThrow();
   });
 });

@@ -2,39 +2,31 @@
 // /admin landing — authenticated dashboard placeholder.
 //
 // Real content lands as the catalogue / clients / policies surfaces
-// arrive in later stories. For S2 this just confirms the WorkOS
-// session round-trip works end-to-end.
+// arrive in later stories.
 // =============================================================
 
 import { requireSession } from '@/server/auth/session';
 
 export default async function AdminHomePage() {
   const session = await requireSession();
-  const displayName =
-    [session.user.firstName, session.user.lastName].filter(Boolean).join(' ') || session.user.email;
 
   return (
     <section>
-      <h1>Welcome, {displayName}</h1>
-      <p>You are signed in via WorkOS.</p>
+      <h1>Welcome, {session.user.email}</h1>
       <dl>
         <dt>User id</dt>
         <dd>
           <code>{session.user.id}</code>
         </dd>
-        <dt>Email</dt>
+        <dt>Tenant id</dt>
         <dd>
-          <code>{session.user.email}</code>
+          <code>{session.user.tenantId}</code>
         </dd>
-        <dt>Roles</dt>
+        <dt>Role</dt>
         <dd>
-          <code>{session.user.roles.length > 0 ? session.user.roles.join(', ') : '(none)'}</code>
+          <code>{session.user.role}</code>
         </dd>
       </dl>
-      <p>
-        Tenant scoping arrives in Story S3. Until then this view shows the WorkOS user only —
-        without resolving which Tenant they belong to.
-      </p>
     </section>
   );
 }

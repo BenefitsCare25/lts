@@ -1,19 +1,20 @@
 // =============================================================
 // Server-side environment access.
 //
-// One source of truth for which env vars matter and how the app
-// should behave when they're missing. Phase 1 supports a "WorkOS
-// not configured" mode so that local dev works before the WorkOS
-// project has been provisioned — but in production the app must
-// fail fast if any required key is absent.
+// Phase 1 auth path: Auth.js with credentials. Two env vars matter:
+//   AUTH_SECRET     — JWT signing secret (32+ random chars).
+//   AUTH_TRUST_HOST — must be "true" when running behind a reverse
+//                     proxy/ingress (Container Apps, Vercel preview,
+//                     Cloudflare). Auth.js refuses unknown hosts
+//                     otherwise.
+//
+// Production must boot only when AUTH_SECRET is present. Local dev
+// boots without it and Auth.js will generate an ephemeral secret —
+// fine for one-off testing, NEVER for shared dev DBs because the
+// JWT cookies invalidate every restart.
 // =============================================================
 
-const PROD_REQUIRED = [
-  'WORKOS_API_KEY',
-  'WORKOS_CLIENT_ID',
-  'WORKOS_COOKIE_PASSWORD',
-  'WORKOS_REDIRECT_URI',
-] as const;
+const PROD_REQUIRED = ['AUTH_SECRET'] as const;
 
 type RequiredKey = (typeof PROD_REQUIRED)[number];
 
@@ -30,7 +31,7 @@ export function assertAuthConfigured(): void {
   const missing = PROD_REQUIRED.filter((key) => read(key) === undefined);
   if (missing.length > 0) {
     throw new Error(
-      `WorkOS auth is not configured. Missing env vars: ${missing.join(', ')}. See .env.example for setup instructions.`,
+      `Auth not configured. Missing env vars: ${missing.join(', ')}. See .env.example for setup instructions.`,
     );
   }
 }
@@ -38,16 +39,13 @@ export function assertAuthConfigured(): void {
 export function getAuthEnv(): Record<RequiredKey, string> {
   assertAuthConfigured();
   return {
-    WORKOS_API_KEY: read('WORKOS_API_KEY') as string,
-    WORKOS_CLIENT_ID: read('WORKOS_CLIENT_ID') as string,
-    WORKOS_COOKIE_PASSWORD: read('WORKOS_COOKIE_PASSWORD') as string,
-    WORKOS_REDIRECT_URI: read('WORKOS_REDIRECT_URI') as string,
+    AUTH_SECRET: read('AUTH_SECRET') as string,
   };
 }
 
 // Called once at module init to surface misconfiguration early.
 // In production we throw immediately. In development we log a
-// warning so the dev server keeps running with /admin disabled.
+// warning and let Auth.js fall back to its dev-only ephemeral secret.
 export function validateEnvOnBoot(): void {
   const isProd = process.env.NODE_ENV === 'production';
   if (isAuthConfigured()) return;
@@ -57,6 +55,6 @@ export function validateEnvOnBoot(): void {
     throw new Error(`Production startup blocked. Missing env vars: ${missing.join(', ')}.`);
   }
   console.warn(
-    `[env] WorkOS auth not configured — running with /admin disabled. Missing: ${missing.join(', ')}.`,
+    `[env] AUTH_SECRET not set — Auth.js will generate an ephemeral signing secret for this process. Sessions will invalidate on restart. Missing: ${missing.join(', ')}.`,
   );
 }

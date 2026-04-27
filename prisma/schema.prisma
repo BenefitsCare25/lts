@@ -50,6 +50,12 @@ model User {
   tenantId     String
   email        String   @unique
   role         UserRole
+  // Local credentials auth (Phase 1 dev path). Bcrypt hash; nullable so
+  // we can later seed users without a password and have them set one
+  // via an invite flow, or rely on workosUserId when SSO is wired up.
+  passwordHash String?
+  // Reserved for the future WorkOS swap. Kept nullable so the column
+  // doesn't block dev/staging where local credentials are the auth path.
   workosUserId String?  @unique
 
   tenant Tenant @relation(fields: [tenantId], references: [id])

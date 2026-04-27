@@ -1,21 +1,14 @@
 // =============================================================
-// (admin) layout — every nested route requires a WorkOS session.
-//
-// When auth isn't configured (env vars missing), we render a
-// configuration-help screen instead of redirecting into a broken
-// WorkOS flow. The middleware leaves /admin untouched in that
-// case, so this layout is the gate.
+// /admin layout — every nested route requires a signed-in user.
+// The Auth.js middleware (apps/web/src/middleware.ts) bounces
+// unauthenticated requests to /sign-in before they reach this
+// layout; requireSession() is a redundant defence-in-depth check.
 // =============================================================
 
 import { requireSession } from '@/server/auth/session';
-import { isAuthConfigured } from '@/server/env';
 import type { ReactNode } from 'react';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  if (!isAuthConfigured()) {
-    return <AuthDisabledNotice />;
-  }
-
   const session = await requireSession();
 
   return (
@@ -46,35 +39,5 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       </header>
       <main style={{ padding: '1rem' }}>{children}</main>
     </div>
-  );
-}
-
-function AuthDisabledNotice() {
-  return (
-    <main style={{ padding: '2rem', maxWidth: '40rem' }}>
-      <h1>Admin disabled</h1>
-      <p>
-        WorkOS authentication is not configured for this environment, so the broker admin surfaces
-        are unreachable. To enable them:
-      </p>
-      <ol>
-        <li>
-          Create a WorkOS project and copy the API key + Client ID from the dashboard
-          (https://dashboard.workos.com).
-        </li>
-        <li>
-          Generate a 32+ character cookie password (<code>openssl rand -base64 32</code>).
-        </li>
-        <li>
-          Fill <code>WORKOS_API_KEY</code>, <code>WORKOS_CLIENT_ID</code>,{' '}
-          <code>WORKOS_COOKIE_PASSWORD</code>, and <code>WORKOS_REDIRECT_URI</code> in your{' '}
-          <code>.env</code> file.
-        </li>
-        <li>Restart the dev server.</li>
-      </ol>
-      <p>
-        See <code>.env.example</code> in the repo root for the canonical comment block.
-      </p>
-    </main>
   );
 }
