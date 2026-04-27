@@ -53,8 +53,7 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
   }, [insurer.data, form]);
 
   if (insurer.isLoading || form === null) return <p>Loading…</p>;
-  if (insurer.error)
-    return <p style={{ color: '#b91c1c' }}>Failed to load: {insurer.error.message}</p>;
+  if (insurer.error) return <p className="field-error">Failed to load: {insurer.error.message}</p>;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,87 +84,109 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
   };
 
   return (
-    <section>
-      <p>
-        <Link href="/admin/catalogue/insurers">← Back to insurers</Link>
-      </p>
-      <h1>Edit insurer</h1>
+    <>
+      <section className="section">
+        <p className="eyebrow">
+          <Link href="/admin/catalogue/insurers">← Insurers</Link>
+        </p>
+        <h1>Edit insurer</h1>
+      </section>
 
-      <form onSubmit={submit} style={{ display: 'grid', gap: '0.75rem', maxWidth: '32rem' }}>
-        <label>
-          <div>Name</div>
-          <input
-            type="text"
-            required
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            style={{ width: '100%' }}
-          />
-        </label>
-
-        <label>
-          <div>Code</div>
-          <input
-            type="text"
-            required
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-            pattern="^[A-Z][A-Z0-9_]*$"
-            style={{ width: '100%' }}
-          />
-        </label>
-
-        <fieldset style={{ border: '1px solid #ccc', padding: '0.5rem' }}>
-          <legend>Products supported</legend>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {PRODUCT_TYPE_CODES.map((code) => (
-              <label key={code} style={{ display: 'inline-flex', gap: '0.25rem' }}>
-                <input
-                  type="checkbox"
-                  checked={form.productsSupported.includes(code)}
-                  onChange={() => toggleProduct(code)}
-                />
-                {code}
+      <section className="section">
+        <div className="card card-padded">
+          <form onSubmit={submit} className="form-grid">
+            <div className="field">
+              <label className="field-label" htmlFor="ins-name">
+                Name
               </label>
-            ))}
-          </div>
-        </fieldset>
+              <input
+                id="ins-name"
+                className="input"
+                type="text"
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+              />
+            </div>
 
-        <label>
-          <div>Claim feed protocol</div>
-          <select
-            value={form.claimFeedProtocol}
-            onChange={(e) =>
-              setForm({ ...form, claimFeedProtocol: e.target.value as ClaimFeedProtocol | '' })
-            }
-          >
-            <option value="">— None —</option>
-            {CLAIM_FEED_PROTOCOLS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
+            <div className="field">
+              <label className="field-label" htmlFor="ins-code">
+                Code
+              </label>
+              <input
+                id="ins-code"
+                className="input"
+                type="text"
+                required
+                value={form.code}
+                onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                pattern="^[A-Z][A-Z0-9_]*$"
+              />
+            </div>
 
-        <label style={{ display: 'inline-flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input
-            type="checkbox"
-            checked={form.active}
-            onChange={(e) => setForm({ ...form, active: e.target.checked })}
-          />
-          Active
-        </label>
+            <fieldset className="fieldset">
+              <legend>Products supported</legend>
+              <div className="chip-group">
+                {PRODUCT_TYPE_CODES.map((code) => (
+                  <label key={code} className="chip">
+                    <input
+                      type="checkbox"
+                      checked={form.productsSupported.includes(code)}
+                      onChange={() => toggleProduct(code)}
+                    />
+                    {code}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
-        {formError ? <p style={{ color: '#b91c1c' }}>{formError}</p> : null}
+            <div className="field">
+              <label className="field-label" htmlFor="ins-claim">
+                Claim feed protocol
+              </label>
+              <select
+                id="ins-claim"
+                className="select"
+                value={form.claimFeedProtocol}
+                onChange={(e) =>
+                  setForm({ ...form, claimFeedProtocol: e.target.value as ClaimFeedProtocol | '' })
+                }
+              >
+                <option value="">— None —</option>
+                {CLAIM_FEED_PROTOCOLS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button type="submit" disabled={update.isPending || form.productsSupported.length === 0}>
-            {update.isPending ? 'Saving…' : 'Save changes'}
-          </button>
-          <Link href="/admin/catalogue/insurers">Cancel</Link>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => setForm({ ...form, active: e.target.checked })}
+              />
+              Active
+            </label>
+
+            {formError ? <p className="field-error">{formError}</p> : null}
+
+            <div className="row">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={update.isPending || form.productsSupported.length === 0}
+              >
+                {update.isPending ? 'Saving…' : 'Save changes'}
+              </button>
+              <Link href="/admin/catalogue/insurers" className="btn btn-ghost">
+                Cancel
+              </Link>
+            </div>
+          </form>
         </div>
-      </form>
-    </section>
+      </section>
+    </>
   );
 }

@@ -25,9 +25,8 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
       });
     } catch (err) {
       if (err instanceof AuthError) {
-        // Surface a friendly message via the URL — server actions can't
-        // return a value while also redirecting, and Auth.js's redirect
-        // is fired by re-throwing. We catch only auth failures and bounce.
+        // Server actions can't return + redirect at the same time, so we
+        // bounce errors via the URL and re-render the form.
         redirect(`/sign-in?error=${err.type}`);
       }
       throw err;
@@ -35,42 +34,53 @@ export default async function SignInPage({ searchParams }: { searchParams: Searc
   }
 
   return (
-    <main style={{ padding: '2rem', maxWidth: '24rem' }}>
-      <h1>Sign in</h1>
-      <p>Local credentials. Ask the platform admin if you don&apos;t have an account.</p>
+    <div className="signin-shell">
+      <div className="signin-card glass-strong">
+        <p className="eyebrow">Insurance SaaS</p>
+        <h1 style={{ fontSize: 'var(--text-2xl)', marginTop: '0.25rem' }}>Sign in</h1>
+        <p>Local credentials. Ask the platform admin if you don&apos;t have an account.</p>
 
-      {error ? (
-        <p style={{ color: '#b91c1c' }}>
-          {error === 'CredentialsSignin'
-            ? 'Email or password is incorrect.'
-            : `Sign-in failed: ${error}`}
-        </p>
-      ) : null}
+        {error ? (
+          <p className="field-error" role="alert">
+            {error === 'CredentialsSignin'
+              ? 'Email or password is incorrect.'
+              : `Sign-in failed: ${error}`}
+          </p>
+        ) : null}
 
-      <form action={authenticate} style={{ display: 'grid', gap: '0.75rem' }}>
-        <input type="hidden" name="callbackUrl" value={callbackUrl ?? '/admin'} />
-        <label>
-          <div>Email</div>
-          <input
-            type="email"
-            name="email"
-            required
-            autoComplete="email"
-            style={{ width: '100%' }}
-          />
-        </label>
-        <label>
-          <div>Password</div>
-          <input
-            type="password"
-            name="password"
-            required
-            autoComplete="current-password"
-            style={{ width: '100%' }}
-          />
-        </label>
-        <button type="submit">Sign in</button>
-      </form>
-    </main>
+        <form action={authenticate} className="form-grid stack-4" style={{ maxWidth: 'unset' }}>
+          <input type="hidden" name="callbackUrl" value={callbackUrl ?? '/admin'} />
+          <div className="field">
+            <label className="field-label" htmlFor="email">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              name="email"
+              required
+              autoComplete="email"
+              className="input"
+            />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="password">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              name="password"
+              required
+              autoComplete="current-password"
+              className="input"
+            />
+          </div>
+          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+            Sign in
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

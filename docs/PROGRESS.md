@@ -26,7 +26,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 - [x] **S6** Global Reference seeding — Country (249), Currency (9), Industry (SSIC 2020 subclasses). (2026-04-27 — `prisma/seeds/global-reference.ts`; SG has uenPattern `^[0-9]{8,10}[A-Z]$`, MY has SSM pattern; seed runs via `pnpm prisma db seed`)
 - [x] **S7** Operator Library seeding — `OperatorLibrary` per v2 §3.2. 6 data type rows (string, integer, number, boolean, date, enum). (2026-04-27 — `prisma/seeds/operators.ts`)
 - [x] **S8** Insurer Registry CRUD UI — Screen 0b. (2026-04-27 — `/admin/catalogue/insurers` list + inline add form + edit page; `insurers` tRPC router with list/byId/create/update/delete via `tenantProcedure`. Live UI verification gated on WorkOS provisioning, same as S2.)
-- [ ] **S9** TPA Registry CRUD UI — Screen 0c. Catalogue admin can add IHP supporting Tokio Marine Life.
+- [x] **S9** TPA Registry CRUD UI — Screen 0c. (2026-04-27 — `/admin/catalogue/tpas` list + inline add form + edit page; `tpas` tRPC router with cross-reference validation against insurer registry. Apple water glass theme + CSS variable design system landed in the same commit.)
 - [ ] **S10** Pool Registry CRUD UI — Screen 0d. Catalogue admin can add "Generali Pool — Captive" with Great Eastern as member.
 - [ ] **S11** Employee Schema editor — Screen 0a with built-in/standard/custom tiers. Built-ins immutable; standards toggleable; customs added with name validation `^employee\.[a-z_]+$`.
 - [ ] **S12** Product Catalogue editor — Screen 0e. Edit GHS productType: add `maternity_rider` field, save, publish v2.5; downstream form renders the new field.
