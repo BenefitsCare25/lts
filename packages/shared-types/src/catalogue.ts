@@ -26,12 +26,6 @@ export const PRODUCT_TYPE_CODES = [
 
 export type ProductTypeCode = (typeof PRODUCT_TYPE_CODES)[number];
 
-// Per v2 plan §2.6.1 + §3.4 — claim feed protocols supported by insurers.
-// `null` (no feed) is also valid; the UI represents it as "None".
-export const CLAIM_FEED_PROTOCOLS = ['IHP', 'TMLS', 'DIRECT_API'] as const;
-
-export type ClaimFeedProtocol = (typeof CLAIM_FEED_PROTOCOLS)[number];
-
 // Per v2 plan §2.6.1 — formats a TPA delivers claims data in.
 // Extend this list as new TPAs are onboarded; values are not tenant-
 // scoped because they describe wire formats, not business policy.
