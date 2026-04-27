@@ -7,8 +7,11 @@ The architecture is **catalogue-as-data** — every insurer product is defined b
 ## Documents
 
 - [`CLAUDE.md`](CLAUDE.md) — persistent context for Claude Code sessions. Read first.
-- [`docs/build_brief.md`](docs/build_brief.md) — Phase 1 plan and 26 user stories.
-- [`docs/architecture.md`](docs/architecture.md) — dynamic product catalogue design.
+- [`docs/PHASE_1_BUILD_PLAN_v2.md`](docs/PHASE_1_BUILD_PLAN_v2.md) — **canonical Phase 1 plan, 35 stories.** Supersedes the brief.
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) — live story tracker.
+- [`docs/ADRs/`](docs/ADRs/) — architectural decision records.
+- [`docs/architecture.md`](docs/architecture.md) — dynamic product catalogue design (supporting context).
+- [`docs/build_brief.md`](docs/build_brief.md) — historical brief, **superseded by v2**.
 - [`docs/platform_plan.md`](docs/platform_plan.md) — broader platform context.
 - [`docs/progress-log.md`](docs/progress-log.md) — running session log.
 
@@ -30,7 +33,7 @@ Bootstrap a fresh clone:
 ./scripts/dev-setup.sh
 ```
 
-This script enables Corepack + pnpm, installs dependencies, brings up Postgres and Redis via Docker, generates the Prisma client, runs the seed (currently a no-op stub — see Story S8), and prints next steps.
+This script enables Corepack + pnpm, installs dependencies, brings up Postgres and Redis via Docker, generates the Prisma client, runs the seed (currently a no-op stub — populated across Stories S6/S7/S11/S16), and prints next steps.
 
 Then start the app:
 
@@ -56,19 +59,19 @@ pnpm db:seed         # run prisma/seed.ts
 
 ## Repository layout
 
-See [`docs/build_brief.md`](docs/build_brief.md) section 4 for the full structure. Top level:
+See [`docs/PHASE_1_BUILD_PLAN_v2.md`](docs/PHASE_1_BUILD_PLAN_v2.md) for the canonical structure. Top level:
 
 ```
 apps/web/                      Next.js 15 app
-packages/catalogue-schemas/    seed JSON Schemas (populated in S8)
+packages/catalogue-schemas/    seed JSON Schemas (populated in S16)
 packages/shared-types/         shared TypeScript types
 prisma/                        Prisma schema, migrations, seed
 infra/bicep/                   Azure IaC (populated in S1)
 scripts/                       dev-setup, codegen
-docs/                          architecture, brief, ADRs, runbooks
+docs/                          plan, ADRs, runbooks, progress
 reference/                     read-only placement slips and screenshots
 ```
 
 ## Status
 
-Bootstrap session complete — empty toolchain, no migrations applied, no auth. Story S1 is next.
+Bootstrap + v2 migration complete — Prisma schema reflects v2, ADRs 0001/0002 in place, `docs/PROGRESS.md` tracks the 35 stories. No migrations applied yet, no auth. **Story S1 (Bicep + remaining CI/CD pieces) is next.**

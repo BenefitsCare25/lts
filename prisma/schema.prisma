@@ -1,25 +1,18 @@
 // ================================================================
-// Insurance SaaS Platform — Initial Prisma Schema
+// Insurance SaaS Platform — Prisma schema (Phase 1, v2)
 // ================================================================
 //
-// Covers:
-//   - Tenancy (Agency, User)
-//   - Client hierarchy (Client, PolicyHoldingEntity, Insurer)
-//   - Policy lifecycle (Policy, PolicyVersion)
-//   - Product catalogue (ProductType, ProductTypeVersion)
-//   - Product instances (Product, Plan, PremiumRate, BenefitSchedule)
-//   - Employees + Dependents (skeleton for Phase 2)
-//   - Benefit groups with JSONLogic predicates
-//   - Ingestion pipeline (IngestionJob)
-//   - Audit trail (AuditLog)
+// Canonical reference: docs/PHASE_1_BUILD_PLAN_v2.md §2.
 //
-// Every tenant-scoped table includes an `agencyId` column.
-// Application-layer Prisma middleware enforces agency_id filtering.
-// Database-layer RLS policies provide defence-in-depth (added via
-// raw SQL migration after initial schema — see docs/ADRs/001-rls.md).
+// Three-tier model:
+//   1. Relational core — fixed-shape tables (this file).
+//   2. Product catalogue — JSON Schemas in ProductType.{schema, planSchema}.
+//   3. Product instances — JSONB validated against the catalogue on write.
 //
-// Every mutation is captured in AuditLog via server-side logic (not
-// triggers — we want user_id visibility which triggers cannot see).
+// Every tenant-scoped table includes a tenantId column. Postgres
+// row-level security policies (added in Story S3) enforce isolation
+// at the database layer; application middleware sets
+// app.current_tenant_id per request.
 // ================================================================
 
 generator client {
@@ -37,515 +30,421 @@ datasource db {
 // Tenancy
 // ================================================================
 
-model Agency {
-  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workosOrganizationId  String   @unique @map("workos_organization_id")
-  name                  String
-  slug                  String   @unique
-  brandingLogoUrl       String?  @map("branding_logo_url")
-  brandingPrimaryColor  String?  @map("branding_primary_color")
-  status                AgencyStatus @default(active)
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
 
-  users                 User[]
-  clients               Client[]
-  insurers              Insurer[]
-  productTypes          ProductType[]
-  auditLogs             AuditLog[]
-
-  @@map("agencies")
-}
-
-enum AgencyStatus {
-  active
-  suspended
-  archived
+  users           User[]
+  clients         Client[]
+  employeeSchemas EmployeeSchema[]
+  productTypes    ProductType[]
+  insurers        Insurer[]
+  tpas            TPA[]
+  pools           Pool[]
 }
 
 model User {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId      String   @map("agency_id") @db.Uuid
-  workosUserId  String   @unique @map("workos_user_id")
-  email         String   @db.Citext
-  displayName   String   @map("display_name")
-  role          UserRole @default(broker_ops)
-  status        UserStatus @default(active)
-  lastSignInAt  DateTime? @map("last_sign_in_at")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String   @unique
+  role         UserRole
+  workosUserId String?  @unique
 
-  agency        Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  @@unique([agencyId, email])
-  @@index([agencyId])
-  @@map("users")
+  @@index([tenantId])
 }
 
 enum UserRole {
-  agency_admin
-  broker_ops
-  read_only
-}
-
-enum UserStatus {
-  active
-  suspended
+  TENANT_ADMIN
+  CATALOGUE_ADMIN
+  BROKER_ADMIN
+  CLIENT_HR
+  EMPLOYEE
 }
 
 // ================================================================
-// Reference data (Insurers, product catalogue)
+// Global reference data (system-level, NOT tenant-scoped)
 // ================================================================
+
+model Country {
+  code       String  @id // ISO 3166 alpha-2: "SG", "MY", "US"
+  name       String
+  uenPattern String? // regex for business registration validation; null = no pattern
+}
+
+model Currency {
+  code     String @id // ISO 4217: "SGD", "USD"
+  name     String
+  decimals Int // 2 for SGD, 0 for JPY
+}
+
+model Industry {
+  code       String  @id // SSIC code: "62010", "47711"
+  name       String
+  parentCode String?
+}
+
+// ================================================================
+// Tenant-scoped registries (Screen 0 — system config)
+// ================================================================
+
+// EmployeeSchema.fields stores FieldDef[]:
+//   {
+//     name: "employee.work_pass_type",
+//     label: "Work Pass Type",
+//     type: "string"|"integer"|"number"|"boolean"|"date"|"enum"|"fk_lookup",
+//     enumValues?: string[],
+//     min?: number, max?: number,
+//     pattern?: string,
+//     fkTable?: string,
+//     required: boolean,
+//     selectableForPredicates: boolean,
+//     pii: boolean,
+//     tier: "BUILTIN"|"STANDARD"|"CUSTOM",
+//     enabled: boolean
+//   }
+model EmployeeSchema {
+  id        String   @id @default(cuid())
+  tenantId  String   @unique // one schema per tenant; clients inherit
+  version   Int      @default(1)
+  fields    Json
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+}
+
+// OperatorLibrary.operators stores [{ code, label, arity }, ...]
+// keyed by data type. Seeded once per Story S7.
+model OperatorLibrary {
+  dataType  String @id // "string" | "integer" | "number" | "boolean" | "date" | "enum"
+  operators Json
+}
 
 model Insurer {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId    String   @map("agency_id") @db.Uuid
-  name        String
-  shortName   String?  @map("short_name")
-  tpaName     String?  @map("tpa_name")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  code              String // "TM_LIFE", "GE_LIFE", "ZURICH"
+  productsSupported String[] // ["GTL", "GHS", "GMM", ...]
+  claimFeedProtocol String? // "IHP", "TMLS", "DIRECT_API", null
+  active            Boolean  @default(true)
 
-  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  policies    Policy[]
+  tenant Tenant           @relation(fields: [tenantId], references: [id])
+  pools  PoolMembership[]
 
-  @@unique([agencyId, name])
-  @@index([agencyId])
-  @@map("insurers")
+  @@unique([tenantId, code])
+  @@index([tenantId])
 }
 
-// ================================================================
-// Product catalogue — the heart of the platform
-// ================================================================
+model TPA {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  name                String
+  code                String // "IHP", "MHC"
+  supportedInsurerIds String[]
+  feedFormat          String // "CSV_V1", "JSON_API", ...
+  active              Boolean  @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// FIX for: pool/captive arrangements not modelled (STM "Generali Pool — Captive").
+model Pool {
+  id          String  @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id])
+  members  PoolMembership[]
+  products Product[]
+
+  @@index([tenantId])
+}
+
+model PoolMembership {
+  id        String @id @default(cuid())
+  poolId    String
+  insurerId String
+  shareBps  Int? // basis points share, null = unspecified
+
+  pool    Pool    @relation(fields: [poolId], references: [id])
+  insurer Insurer @relation(fields: [insurerId], references: [id])
+
+  @@unique([poolId, insurerId])
+}
 
 model ProductType {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId       String   @map("agency_id") @db.Uuid
-  code           String   // e.g. "GHS", "GTL", "GPA"
-  name           String   // e.g. "Group Hospital and Surgical"
-  category       ProductCategory
-  description    String?
-  status         ProductTypeStatus @default(active)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id              String @id @default(cuid())
+  tenantId        String
+  code            String // "GTL", "GHS", "GMM", ...
+  name            String
+  schema          Json // JSON Schema for the product instance fields
+  planSchema      Json // JSON Schema for plans of this type, includes stacks_on / selection_mode
+  premiumStrategy String // "per_individual_salary_multiple" | "per_individual_fixed_sum" | "per_group_cover_tier" | "per_headcount_flat" | "per_individual_earnings"
+  parsingRules    Json? // for Excel parser — selector rules per insurer template
+  displayTemplate Json? // for employee portal card rendering
+  version         Int    @default(1)
 
-  agency         Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  versions       ProductTypeVersion[]
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  products Product[]
 
-  @@unique([agencyId, code])
-  @@index([agencyId])
-  @@index([agencyId, category])
-  @@map("product_types")
-}
-
-enum ProductCategory {
-  life       // GTL, GCI, GPA, GDI
-  health     // GHS, GMM, FWM, GP, SP, Dental
-  statutory  // WICI/WICA
-  other      // GBT, travel, etc.
-}
-
-enum ProductTypeStatus {
-  active
-  retired
-}
-
-model ProductTypeVersion {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productTypeId        String   @map("product_type_id") @db.Uuid
-  agencyId             String   @map("agency_id") @db.Uuid  // denormalised for tenant-scoping
-  version              Int
-  effectiveFrom        DateTime @map("effective_from")
-  schemaProduct        Json     @map("schema_product")     // JSON Schema
-  schemaPlan           Json     @map("schema_plan")        // JSON Schema
-  schemaSchedule       Json     @map("schema_schedule")    // JSON Schema
-  schemaRate           Json     @map("schema_rate")        // JSON Schema
-  ingestionTemplate    Json     @map("ingestion_template") // Parser rules
-  displayTemplate      Json     @map("display_template")   // Renderer rules
-  calcStrategy         String   @map("calc_strategy")      // e.g. "per_group_coverage_lookup"
-  status               VersionStatus @default(draft)
-  publishedAt          DateTime? @map("published_at")
-  publishedByUserId    String?  @map("published_by_user_id") @db.Uuid
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
-
-  productType          ProductType @relation(fields: [productTypeId], references: [id], onDelete: Cascade)
-  products             Product[]
-
-  @@unique([productTypeId, version])
-  @@index([agencyId])
-  @@index([productTypeId, status])
-  @@map("product_type_versions")
-}
-
-enum VersionStatus {
-  draft
-  published
-  superseded
+  @@unique([tenantId, code])
+  @@index([tenantId])
 }
 
 // ================================================================
-// Client hierarchy
+// Client onboarding (Screens 1–6)
 // ================================================================
 
 model Client {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId          String   @map("agency_id") @db.Uuid
-  name              String
-  uen               String?  // Singapore Unique Entity Number
-  businessType      String?  @map("business_type")
-  address           String?
-  contactEmail      String?  @map("contact_email")
-  contactPhone      String?  @map("contact_phone")
-  status            ClientStatus @default(active)
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                     String       @id @default(cuid())
+  tenantId               String
+  legalName              String
+  tradingName            String?
+  uen                    String // ACRA UEN or foreign equivalent
+  countryOfIncorporation String // FK to Country.code (loose ref; FK enforced at app layer)
+  address                String
+  industry               String? // SSIC code
+  primaryContactName     String?
+  primaryContactEmail    String?
+  status                 ClientStatus @default(ACTIVE)
 
-  agency            Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
-  holdingEntities   PolicyHoldingEntity[]
-  benefitGroups     BenefitGroup[]
-  employees         Employee[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  policies  Policy[]
+  employees Employee[]
 
-  @@unique([agencyId, name])
-  @@index([agencyId])
-  @@map("clients")
+  @@index([tenantId])
 }
 
 enum ClientStatus {
-  active
-  inactive
-  archived
+  ACTIVE
+  DRAFT
+  ARCHIVED
 }
-
-model PolicyHoldingEntity {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId      String   @map("agency_id") @db.Uuid
-  clientId      String   @map("client_id") @db.Uuid
-  name          String
-  uen           String?
-  address       String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  policies      Policy[]
-
-  @@index([agencyId])
-  @@index([clientId])
-  @@map("policy_holding_entities")
-}
-
-// ================================================================
-// Policies and versions
-// ================================================================
 
 model Policy {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId            String   @map("agency_id") @db.Uuid
-  holdingEntityId     String   @map("holding_entity_id") @db.Uuid
-  insurerId           String   @map("insurer_id") @db.Uuid
-  policyNumber        String   @map("policy_number")
-  pool                String?
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id        String @id @default(cuid())
+  clientId  String
+  name      String
+  versionId Int    @default(1) // optimistic locking
 
-  holdingEntity       PolicyHoldingEntity @relation(fields: [holdingEntityId], references: [id], onDelete: Cascade)
-  insurer             Insurer  @relation(fields: [insurerId], references: [id], onDelete: Restrict)
-  versions            PolicyVersion[]
+  client        Client         @relation(fields: [clientId], references: [id])
+  benefitYears  BenefitYear[]
+  entities      PolicyEntity[]
+  benefitGroups BenefitGroup[]
 
-  @@unique([agencyId, policyNumber])
-  @@index([agencyId])
-  @@index([holdingEntityId])
-  @@map("policies")
+  @@index([clientId])
 }
 
-model PolicyVersion {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId            String   @map("agency_id") @db.Uuid
-  policyId            String   @map("policy_id") @db.Uuid
-  benefitYearStart    DateTime @map("benefit_year_start") @db.Date
-  benefitYearEnd      DateTime @map("benefit_year_end") @db.Date
-  status              VersionStatus @default(draft)
-  publishedAt         DateTime? @map("published_at")
-  publishedByUserId   String?  @map("published_by_user_id") @db.Uuid
-  supersededAt        DateTime? @map("superseded_at")
-  notes               String?
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+model BenefitYear {
+  id          String           @id @default(cuid())
+  policyId    String
+  startDate   DateTime
+  endDate     DateTime
+  state       BenefitYearState @default(DRAFT)
+  publishedAt DateTime?
+  publishedBy String?
 
-  policy              Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
-  products            Product[]
-  ingestionJobs       IngestionJob[]
+  policy   Policy    @relation(fields: [policyId], references: [id])
+  products Product[]
 
-  // One policy can have at most one published version at a time
-  // Enforced via partial unique index (see migration)
-  @@index([agencyId])
-  @@index([policyId, status])
-  @@map("policy_versions")
+  @@unique([policyId, startDate])
+  @@index([policyId])
 }
 
-// ================================================================
-// Product instances — JSONB validated against catalogue schemas
-// ================================================================
+enum BenefitYearState {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// FIX for: per-entity rate overrides not supported.
+model PolicyEntity {
+  id                String  @id @default(cuid())
+  policyId          String
+  legalName         String
+  policyNumber      String // insurer-issued, may differ per entity
+  address           String?
+  headcountEstimate Int?
+  isMaster          Boolean @default(false)
+  rateOverrides     Json? // null = inherit from product/plan; otherwise per-product overrides
+
+  policy Policy @relation(fields: [policyId], references: [id])
+
+  @@unique([policyId, policyNumber])
+  @@index([policyId])
+}
+
+// FIX for: predicate depth — JSONLogic supports arbitrary nesting; UI exposes raw mode.
+model BenefitGroup {
+  id          String  @id @default(cuid())
+  policyId    String
+  name        String
+  predicate   Json // JSONLogic expression; can be arbitrarily nested
+  description String?
+
+  policy Policy @relation(fields: [policyId], references: [id])
+
+  @@index([policyId])
+}
 
 model Product {
-  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId                 String   @map("agency_id") @db.Uuid
-  policyVersionId          String   @map("policy_version_id") @db.Uuid
-  productTypeVersionId     String   @map("product_type_version_id") @db.Uuid
-  productTypeCode          String   @map("product_type_code")   // denormalised for queries
-  data                     Json     // product-level data, validated against schemaProduct
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
+  id            String  @id @default(cuid())
+  benefitYearId String
+  productTypeId String
+  insurerId     String
+  poolId        String?
+  tpaId         String?
+  data          Json // validated against ProductType.schema
+  versionId     Int     @default(1) // optimistic locking
 
-  policyVersion            PolicyVersion      @relation(fields: [policyVersionId], references: [id], onDelete: Cascade)
-  productTypeVersion       ProductTypeVersion @relation(fields: [productTypeVersionId], references: [id], onDelete: Restrict)
-  plans                    Plan[]
-  premiumRates             PremiumRate[]
-  benefitSchedule          BenefitSchedule?
-  benefitGroupEligibility  BenefitGroupEligibility[]
+  benefitYear  BenefitYear          @relation(fields: [benefitYearId], references: [id])
+  productType  ProductType          @relation(fields: [productTypeId], references: [id])
+  pool         Pool?                @relation(fields: [poolId], references: [id])
+  plans        Plan[]
+  eligibility  ProductEligibility[]
+  premiumRates PremiumRate[]
 
-  @@unique([policyVersionId, productTypeCode])  // one instance per type per version
-  @@index([agencyId])
-  @@index([policyVersionId])
-  @@map("products")
+  @@index([benefitYearId])
+  @@index([productTypeId])
 }
 
+// FIX for: stacked rider plans (STM Plan C / D).
+// FIX for: flex benefits picker (STM Flex S/M/MC/MC2).
 model Plan {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId      String   @map("agency_id") @db.Uuid
-  productId     String   @map("product_id") @db.Uuid
-  planKey       String   @map("plan_key")  // e.g. "plan_1", "plan_4" — referenced by schedule/rate
+  id            String    @id @default(cuid())
+  productId     String
+  code          String // "P1", "P4", "PA", ...
   name          String
-  data          Json     // plan-level data, validated against schemaPlan
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  coverBasis    String // "per_cover_tier" | "salary_multiple" | "fixed_amount" | "per_region"
+  stacksOn      String? // Plan ID this plan stacks on top of (null = base plan)
+  selectionMode String    @default("broker_default") // "broker_default" | "employee_flex"
+  schedule      Json // benefit schedule fields, validated against ProductType.planSchema
+  effectiveFrom DateTime? // effective-dated benefit schedules
+  effectiveTo   DateTime?
 
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  premiumRates  PremiumRate[]
+  product Product @relation(fields: [productId], references: [id])
+  riderOf Plan?   @relation("PlanRider", fields: [stacksOn], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  riders  Plan[]  @relation("PlanRider")
 
-  @@unique([productId, planKey])
-  @@index([agencyId])
-  @@map("plans")
+  @@unique([productId, code])
+  @@index([productId])
 }
 
-model BenefitSchedule {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId      String   @map("agency_id") @db.Uuid
-  productId     String   @unique @map("product_id") @db.Uuid  // 1:1 with Product
-  data          Json     // full schedule of benefits, validated against schemaSchedule
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+model ProductEligibility {
+  id             String @id @default(cuid())
+  productId      String
+  benefitGroupId String
+  defaultPlanId  String
 
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
 
-  @@index([agencyId])
-  @@map("benefit_schedules")
+  @@unique([productId, benefitGroupId])
 }
 
 model PremiumRate {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId          String   @map("agency_id") @db.Uuid
-  productId         String   @map("product_id") @db.Uuid
-  planId            String?  @map("plan_id") @db.Uuid  // null for group-level rates
-  benefitGroupId    String?  @map("benefit_group_id") @db.Uuid  // null for universal rates
-  coverageOption    CoverageOption?  @map("coverage_option")
-  data              Json     // rate-level data, validated against schemaRate
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  productId       String
+  planId          String
+  groupId         String? // null = applies to all groups
+  coverTier       String? // "EO" | "ES" | "EC" | "EF" — for per_cover_tier basis
+  ratePerThousand Decimal? @db.Decimal(12, 4)
+  fixedAmount     Decimal? @db.Decimal(14, 2)
 
-  product           Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  plan              Plan?         @relation(fields: [planId], references: [id], onDelete: Cascade)
-  benefitGroup      BenefitGroup? @relation(fields: [benefitGroupId], references: [id], onDelete: SetNull)
+  product Product @relation(fields: [productId], references: [id])
 
-  @@index([agencyId])
   @@index([productId])
-  @@map("premium_rates")
-}
-
-enum CoverageOption {
-  EO  // Employee only
-  ES  // Employee + Spouse
-  EC  // Employee + Children
-  EF  // Employee + Family
 }
 
 // ================================================================
-// Benefit groups — eligibility predicates (JSONLogic)
-// ================================================================
-
-model BenefitGroup {
-  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId                 String   @map("agency_id") @db.Uuid
-  clientId                 String   @map("client_id") @db.Uuid
-  name                     String
-  predicate                Json     // JSONLogic expression over employee attributes
-  priority                 Int      @default(100)  // lower number = higher priority when multiple match
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
-
-  client                   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  premiumRates             PremiumRate[]
-  benefitGroupEligibility  BenefitGroupEligibility[]
-
-  @@unique([clientId, name])
-  @@index([agencyId])
-  @@map("benefit_groups")
-}
-
-model BenefitGroupEligibility {
-  // Which plans are available to which benefit groups, and which is default
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId        String   @map("agency_id") @db.Uuid
-  productId       String   @map("product_id") @db.Uuid
-  benefitGroupId  String   @map("benefit_group_id") @db.Uuid
-  eligiblePlans   String[] @map("eligible_plans")  // plan_keys
-  defaultPlan     String?  @map("default_plan")    // plan_key
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  product         Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  benefitGroup    BenefitGroup @relation(fields: [benefitGroupId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, benefitGroupId])
-  @@index([agencyId])
-  @@map("benefit_group_eligibility")
-}
-
-// ================================================================
-// Employees and dependents — skeleton for Phase 2
+// Employees (Screen 7+, post-onboarding)
 // ================================================================
 
 model Employee {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId            String   @map("agency_id") @db.Uuid
-  clientId            String   @map("client_id") @db.Uuid
-  externalId          String?  @map("external_id")  // HR system ID
-  nationalId          String?  @map("national_id")  // NRIC/FIN (encrypted at rest — handled app-side)
-  firstName           String   @map("first_name")
-  lastName            String   @map("last_name")
-  email               String?  @db.Citext
-  dateOfBirth         DateTime? @map("date_of_birth") @db.Date
-  gender              String?
-  nationality         String?  // e.g. "SG", "PR", "MY"
-  workPassType        String?  @map("work_pass_type")  // e.g. "work_permit", "s_pass", null for citizens
-  employmentType      String?  @map("employment_type")  // "permanent", "contract", "intern"
-  hireDate            DateTime? @map("hire_date") @db.Date
-  terminationDate     DateTime? @map("termination_date") @db.Date
-  jobGrade            String?  @map("job_grade")  // e.g. "HJG18" for Hay Job Grade 18
-  salary              Decimal? @db.Decimal(12, 2)
-  salaryBasis         String?  @map("salary_basis")  // "monthly", "annual"
-  attributes          Json?    // extensible attribute bag for predicate evaluation
-  status              EmployeeStatus @default(active)
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id              String         @id @default(cuid())
+  clientId        String
+  data            Json // validated against tenant's EmployeeSchema
+  status          EmployeeStatus @default(ACTIVE)
+  hireDate        DateTime
+  terminationDate DateTime?
 
-  client              Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dependents          Dependent[]
+  client      Client       @relation(fields: [clientId], references: [id])
+  dependents  Dependent[]
+  enrollments Enrollment[]
 
-  @@unique([clientId, externalId])
-  @@index([agencyId])
   @@index([clientId])
-  @@map("employees")
 }
 
 enum EmployeeStatus {
-  active
-  terminated
-  on_leave
+  ACTIVE
+  SUSPENDED
+  TERMINATED
 }
 
 model Dependent {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId            String   @map("agency_id") @db.Uuid
-  employeeId          String   @map("employee_id") @db.Uuid
-  relationship        DependentRelationship
-  firstName           String   @map("first_name")
-  lastName            String   @map("last_name")
-  dateOfBirth         DateTime? @map("date_of_birth") @db.Date
-  gender              String?
-  nationalId          String?  @map("national_id")
-  status              DependentStatus @default(active)
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id         String @id @default(cuid())
+  employeeId String
+  data       Json
+  relation   String // "spouse" | "child" | "parent"
 
-  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id])
 
-  @@index([agencyId])
   @@index([employeeId])
-  @@map("dependents")
 }
 
-enum DependentRelationship {
-  spouse
-  child
-}
+model Enrollment {
+  id             String    @id @default(cuid())
+  employeeId     String
+  productId      String
+  planId         String
+  benefitGroupId String
+  coverTier      String? // "EO" | "ES" | "EC" | "EF"
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
 
-enum DependentStatus {
-  active
-  aged_out
-  removed
-}
+  employee Employee @relation(fields: [employeeId], references: [id])
 
-// ================================================================
-// Ingestion pipeline
-// ================================================================
-
-model IngestionJob {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId            String   @map("agency_id") @db.Uuid
-  uploadedByUserId    String   @map("uploaded_by_user_id") @db.Uuid
-  clientId            String?  @map("client_id") @db.Uuid  // optional — may be inferred from parse
-  targetPolicyVersionId String? @map("target_policy_version_id") @db.Uuid
-  filename            String
-  fileSize            Int      @map("file_size")
-  blobUrl             String   @map("blob_url")
-  status              IngestionStatus @default(pending)
-  errorMessage        String?  @map("error_message")
-  parsedData          Json?    @map("parsed_data")  // the extraction result
-  reviewedData        Json?    @map("reviewed_data") // post-human-review
-  committedAt         DateTime? @map("committed_at")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
-
-  policyVersion       PolicyVersion? @relation(fields: [targetPolicyVersionId], references: [id], onDelete: SetNull)
-
-  @@index([agencyId])
-  @@index([status])
-  @@map("ingestion_jobs")
-}
-
-enum IngestionStatus {
-  pending
-  parsing
-  parsed
-  review_needed
-  reviewed
-  committed
-  failed
+  @@index([employeeId])
 }
 
 // ================================================================
-// Audit trail — append-only
+// Audit + integrations
 // ================================================================
 
 model AuditLog {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  agencyId      String   @map("agency_id") @db.Uuid
-  userId        String?  @map("user_id") @db.Uuid
-  action        String   // "create", "update", "publish", "unpublish", "delete", "view_sensitive"
-  entityType    String   @map("entity_type")  // "Policy", "Product", "ProductTypeVersion", ...
-  entityId      String   @map("entity_id") @db.Uuid
-  before        Json?    // state before (null for creates)
-  after         Json?    // state after (null for deletes)
-  metadata      Json?    // request id, IP, user agent, etc.
-  createdAt     DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String?
+  action     String // "client.created", "policy.published", ...
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
 
-  agency        Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  @@index([tenantId, createdAt])
+  @@index([entityType, entityId])
+}
 
-  @@index([agencyId])
-  @@index([agencyId, entityType, entityId])
-  @@index([agencyId, userId])
-  @@index([agencyId, createdAt])
-  @@map("audit_logs")
+model PlacementSlipUpload {
+  id              String   @id @default(cuid())
+  clientId        String
+  uploadedBy      String
+  filename        String
+  storageKey      String // Azure Blob key
+  insurerTemplate String? // detected template; null if unknown
+  parseStatus     String // "PENDING" | "PARSED" | "FAILED" | "REVIEWED" | "APPLIED"
+  parseResult     Json?
+  issues          Json? // resolved/unresolved issues
+  createdAt       DateTime @default(now())
+
+  @@index([clientId])
 }

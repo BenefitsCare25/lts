@@ -1,5 +1,7 @@
 # Claude Code Build Brief — Insurance SaaS Platform
 
+> **⚠ Superseded.** This brief is kept for historical reference only. The canonical Phase 1 plan is **[`docs/PHASE_1_BUILD_PLAN_v2.md`](PHASE_1_BUILD_PLAN_v2.md)**. Where this brief and v2 disagree (Agency vs Tenant, four schemas vs two-plus-strategy, 26 stories vs 35, the absence of registries / EmployeeSchema / Pool / TPA / stacked plans), **v2 wins**. Do not start a new story from this document.
+
 Phase 1 build plan for a solo developer working with Claude Code as pair. Reads alongside the two prior docs: `insurance_saas_platform_plan.md` (breadth) and `dynamic_product_architecture.md` (depth on the catalogue). This brief says what to build, in what order, on what stack, and with what acceptance criteria.
 
 ---

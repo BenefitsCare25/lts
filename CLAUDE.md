@@ -8,11 +8,20 @@ A multi-agency white-label SaaS platform for insurance brokerage agencies. Broke
 
 The single most important design idea: **the product catalogue is data, not code.** Every insurer product (GTL, GHS, GPA, and so on) is defined by a JSON Schema stored in the database. Product instances are JSONB validated against that schema on every write. Adding a new product never requires a code deploy. If you catch yourself writing product-specific `if` branches in application code, stop — extend the catalogue instead.
 
-Full architectural reasoning lives in `docs/architecture.md` (derived from `dynamic_product_architecture.md`). The Phase 1 build plan lives in `docs/build_brief.md`. Both are authoritative; this file is the day-to-day companion.
+## Phase 1 plan (canonical)
+
+The current Phase 1 plan is **`docs/PHASE_1_BUILD_PLAN_v2.md`**. It supersedes `docs/build_brief.md` — if anything in the brief or `docs/architecture.md` conflicts with the v2 plan, the v2 plan wins. The brief is kept as historical reference only; do not start a story from it.
+
+Read order at the start of every session:
+
+1. This file (`CLAUDE.md`).
+2. `docs/PHASE_1_BUILD_PLAN_v2.md` — the plan (sections 1–3 for orientation, then your story's section).
+3. `docs/PROGRESS.md` — what's done, what's next.
+4. Any `proposed`-status ADR under `docs/ADRs/` — pending decisions you may need to honour.
 
 ## Stack
 
-Node.js 20 LTS, TypeScript strict. Next.js 15 with App Router as a single full-stack app. PostgreSQL 16 via Prisma 5. WorkOS AuthKit for authentication, with WorkOS Organizations mapped one-to-one onto our `Agency` entity (multi-tenancy). Ajv for JSON Schema validation, Zod for API input validation, `@rjsf/core` for auto-generating admin forms from catalogue schemas, `json-logic-js` for benefit group eligibility predicates, `exceljs` for placement slip parsing, BullMQ with Azure Redis for background jobs. Biome for linting and formatting. Vitest for unit and integration tests, Playwright for end-to-end. pnpm for package management.
+Node.js 22 LTS, TypeScript strict. Next.js 15 with App Router as a single full-stack app. PostgreSQL 16 via Prisma 5. WorkOS AuthKit for authentication, with WorkOS Organizations mapped one-to-one onto our `Tenant` entity (multi-tenancy). Ajv for JSON Schema validation, Zod for API input validation, `@rjsf/core` for auto-generating admin forms from catalogue schemas, `json-logic-js` for benefit group eligibility predicates, `exceljs` for placement slip parsing, BullMQ with Azure Redis for background jobs. Biome for linting and formatting. Vitest for unit and integration tests, Playwright for end-to-end. pnpm for package management.
 
 Hosting: GitHub for source and CI, Azure Container Apps for runtime, Azure Database for PostgreSQL Flexible Server, Azure Cache for Redis, Azure Blob Storage for uploaded files, Azure Key Vault for secrets, Application Insights for observability. All resources in `southeastasia` region for Singapore PDPA data residency.
 
@@ -73,20 +82,20 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Data access.** Prisma for all database access. Never write raw SQL except in rare performance-driven cases, which must come with a comment explaining why and an ADR under `docs/ADRs/`.
 
-**Tenant scoping.** Every tenant-scoped Prisma query goes through `requireAgencyContext()` which returns an agency-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack an `agency_id` filter — bypass is not possible. If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use.
+**Tenant scoping.** Every tenant-scoped Prisma query goes through `requireTenantContext()` which returns a tenant-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack a `tenantId` filter — bypass is not possible. Postgres row-level security policies enforce the same boundary at the database layer (defence-in-depth). If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use.
 
 **API routes.** Every server action and route handler:
-  1. Resolves the agency context from the session (via `requireAgencyContext()`).
+  1. Resolves the tenant context from the session (via `requireTenantContext()`).
   2. Validates input with Zod (define the schema alongside the handler).
   3. Returns typed results; errors as discriminated unions, not thrown exceptions, unless the caller has to crash (validation errors don't; programming errors do).
 
 **Validation layers.** Two distinct validators, do not conflate:
   - Zod validates API input (the shape of what a user submitted).
-  - Ajv validates catalogue JSONB against product type JSON Schemas (the insurance-domain rules).
+  - Ajv validates catalogue JSONB against `ProductType.schema` and `ProductType.planSchema` (the insurance-domain rules).
 
 **Forms.** Admin forms are generated from catalogue JSON Schemas via `@rjsf/core`. Do not hand-write forms for product-specific data. Hand-written forms are only for metadata (a Client's name and UEN, a User's profile, an Insurer's label).
 
-**Error handling.** Server-side errors log with structured context (agency id, user id, request id, action). Client-side error boundaries present a friendly message and a reference id. Never expose raw error messages to end users.
+**Error handling.** Server-side errors log with structured context (tenant id, user id, request id, action). Client-side error boundaries present a friendly message and a reference id. Never expose raw error messages to end users.
 
 **Tests.** Every server module has unit tests. Every server action has at least one integration test hitting a real Postgres (via testcontainers or a dedicated test DB). Every critical admin workflow has at least one Playwright test. Tests live next to their source (`foo.ts` next to `foo.test.ts`) for unit, under `tests/integration` and `tests/e2e` for the others.
 
@@ -96,23 +105,23 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 ## Architecture principles
 
-**The catalogue is data.** If you need to special-case a product in application code, the special case belongs in the catalogue — extend the JSON Schema, update the ingestion template, update the display template. Application code stays product-agnostic.
+**The catalogue is data.** If you need to special-case a product in application code, the special case belongs in the catalogue — extend the JSON Schema, update the ingestion template, update the display template, or pick a different `premiumStrategy`. Application code stays product-agnostic.
 
-**Tenant isolation is absolute.** Every query filters by `agency_id`. Every JSONB field is agency-scoped. No exceptions without an ADR.
+**Tenant isolation is absolute.** Every query filters by `tenantId`. Every JSONB field is tenant-scoped. Postgres RLS is the second line of defence. No exceptions without an ADR.
 
-**Versions are immutable.** A published `ProductTypeVersion` or `PolicyVersion` cannot be mutated. Changes produce new versions. Old instances continue to validate against their original version until explicitly migrated.
+**Versions are immutable.** A published `ProductType` version or a `PUBLISHED` `BenefitYear` cannot be mutated. Changes produce new versions. Old instances continue to validate against their original version until explicitly migrated.
 
 **Validate on write, trust on read.** Every write of JSONB data validates against its catalogue schema. Reads skip validation — the data is trusted because every write gate enforced it. This is what makes the system fast at scale.
 
 **Ingestion never silently drops data.** If the parser can't match a row to a catalogue field, it flags the row for manual review. Silent drops are bugs.
 
-**Publish is a state transition, not a copy.** Publishing doesn't duplicate data — it transitions a `PolicyVersion` from `draft` to `published`, and if another version exists in `published`, that one atomically becomes `superseded`. The data is the same rows; their status changes.
+**Publish is a state transition, not a copy.** Publishing doesn't duplicate data — it transitions a `BenefitYear` from `DRAFT` to `PUBLISHED`, locks `Policy.versionId` for optimistic concurrency, and writes an `AuditLog` row. The data is the same rows; their status changes.
 
 ## Things to never do
 
 - Hardcode product-specific logic (`if (product === "GHS") ...`).
-- Mutate a published `ProductTypeVersion` or `PolicyVersion`.
-- Bypass `requireAgencyContext()` for "convenience" on tenant-scoped reads.
+- Mutate a published `ProductType` version or a `PUBLISHED` `BenefitYear`.
+- Bypass `requireTenantContext()` for "convenience" on tenant-scoped reads.
 - Skip Ajv validation on JSONB writes for "speed" — always validate.
 - Store secrets in code, env files committed to git, or Prisma seed scripts. Everything sensitive goes in Key Vault.
 - Catch-and-ignore errors. Either handle them meaningfully or let them propagate with context.
@@ -141,21 +150,23 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 ## When stuck
 
-Check the two reference docs first — `docs/architecture.md` and `docs/build_brief.md`. If the question is architectural and the docs don't answer it, write an ADR proposing an answer, tag it `status: proposed`, and ask the human. If it's tactical (a library quirk, a type error), search the codebase for similar patterns, then search the web, then ask.
+Check `docs/PHASE_1_BUILD_PLAN_v2.md` first — it's the canonical plan. `docs/architecture.md` is supporting context (treat it as superseded where it disagrees with v2). If the question is architectural and the v2 plan doesn't answer it, write an ADR under `docs/ADRs/NNNN-short-title.md` proposing an answer, tag it `status: proposed`, and ask the human. If it's tactical (a library quirk, a type error), search the codebase for similar patterns, then search the web, then ask.
 
 Never silently invent behaviour. If a requirement is ambiguous, ask. If you made an assumption to keep moving, leave a `// TODO(assumption):` comment and flag it in the commit body and the next progress-log entry.
 
 ## Things that will probably confuse you
 
-**WorkOS Organizations.** A WorkOS Organization is our `Agency`. A WorkOS User is our `User`, linked to exactly one Agency. Do not assume a User can belong to multiple Agencies — Phase 1 says one per user. The Agency model stores a `workos_organization_id` column for the mapping.
+**WorkOS Organizations.** A WorkOS Organization is our `Tenant`. A WorkOS User is our `User`, linked to exactly one Tenant. Do not assume a User can belong to multiple Tenants — Phase 1 says one per user. The Tenant model stores no WorkOS column directly — the mapping is by `slug` to organization metadata, and `User.workosUserId` carries the WorkOS user identifier.
 
-**Four JSON Schemas per product type.** `schema_product`, `schema_plan`, `schema_schedule`, `schema_rate`. They describe different slices of a product and are validated separately. A single product instance has all four populated in separate JSONB columns.
+**Two JSON Schemas per product type, plus a strategy code.** `ProductType.schema` covers the product-instance fields; `ProductType.planSchema` covers plan rows (including `stacksOn` and `selectionMode`). `ProductType.premiumStrategy` is a string code (e.g. `per_group_cover_tier`) that picks one of the strategy modules under `apps/web/src/server/premium-strategies/` — premium math is code, not catalogue data.
 
-**Ingestion template versus display template.** Ingestion is how to parse Excel *into* the shape. Display is how to render the shape *to* users (Phase 2 surface-area; minimal templates in Phase 1). Both live in the ProductTypeVersion alongside the schemas.
+**Ingestion template versus display template.** Ingestion (`ProductType.parsingRules`) is how to parse Excel *into* the catalogue shape. Display (`ProductType.displayTemplate`) is how to render the shape *to* users (minimal in Phase 1; primary surface for Phase 2). Both live on the `ProductType` row alongside the schemas.
 
-**Benefit groups use JSONLogic, not a custom DSL.** Predicates are JSONLogic JSON. Evaluator is `json-logic-js`. Do not invent a DSL — keep in step with a standard format that has implementations in every language we might need downstream.
+**Benefit groups use JSONLogic, not a custom DSL.** `BenefitGroup.predicate` is a JSONLogic JSON expression. Evaluator is `json-logic-js`. Do not invent a DSL — keep in step with a standard format that has implementations in every language we might need downstream.
 
-**Policy, PolicyVersion, Product — three different things.** A `Policy` is the abstract policy (one per insurer per holding entity per line of business). A `PolicyVersion` is a specific draft or published configuration for a benefit year. A `Product` is an instance of a catalogue ProductType under that PolicyVersion. The hierarchy is Agency > Client > PolicyHoldingEntity > Policy > PolicyVersion > Product > {Plans, PremiumRates, BenefitSchedule, BenefitGroupEligibility}.
+**Six metadata registries drive every dropdown.** Global Reference (Country/Currency/Industry), Insurer Registry, TPA Registry, Pool Registry, Product Catalogue, Operator Library, and the per-tenant Employee Schema. None of these dropdowns are hardcoded in UI code. See v2 plan §1.2 and §3 for sources of truth.
+
+**Policy, BenefitYear, Product, Plan — four different things.** A `Policy` is the abstract policy. A `BenefitYear` is a specific draft or published configuration for a benefit year (`DRAFT` / `PUBLISHED` / `ARCHIVED`). A `Product` is an instance of a `ProductType` under that `BenefitYear`. A `Plan` is one option within a Product (and may stack on another via `stacksOn`). The hierarchy is Tenant > Client > Policy > BenefitYear > Product > {Plans, PremiumRates, ProductEligibility}, with `PolicyEntity` rows sitting under Policy for multi-entity master policies (e.g. STM's three legal entities).
 
 ---
 
