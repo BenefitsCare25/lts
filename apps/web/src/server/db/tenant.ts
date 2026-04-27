@@ -2,9 +2,10 @@
 // Tenant context — the single entry point for all tenant-scoped
 // database access in Phase 1.
 //
-// requireTenantContext(workosUserId)
-//   Resolves the tenant from the WorkOS user ID, sets the Postgres
-//   RLS session variable, and returns a tenant-scoped Prisma client.
+// requireTenantContext(userId)
+//   Resolves the tenant from the internal User.id (Auth.js session
+//   carries this). Sets the Postgres RLS session variable and
+//   returns a tenant-scoped Prisma client.
 //
 // createTenantClient(tenantId)
 //   Wraps the base Prisma client with a $extends query extension
@@ -87,9 +88,9 @@ export type TenantContext = {
 // Resolves a fully-scoped TenantContext for a signed-in user.
 // Sets the Postgres RLS variable app.current_tenant_id so DB-layer
 // policies enforce isolation as a second line of defence.
-export async function requireTenantContext(workosUserId: string): Promise<TenantContext> {
+export async function requireTenantContext(userId: string): Promise<TenantContext> {
   const user = await prisma.user.findUnique({
-    where: { workosUserId },
+    where: { id: userId },
     select: { id: true, tenantId: true },
   });
 
