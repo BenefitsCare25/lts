@@ -30,6 +30,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@insurance-saas/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@prisma/client':
         specifier: ^5.22.0
         version: 5.22.0(prisma@5.22.0)

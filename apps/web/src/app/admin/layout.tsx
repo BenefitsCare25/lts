@@ -20,8 +20,25 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   return (
     <div data-admin-shell>
-      <header style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 1rem' }}>
-        <strong>Insurance SaaS · admin</strong>
+      <header
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0.75rem 1rem',
+          borderBottom: '1px solid #e5e7eb',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <strong>
+            <a href="/admin" style={{ color: 'inherit', textDecoration: 'none' }}>
+              Insurance SaaS · admin
+            </a>
+          </strong>
+          <nav style={{ display: 'flex', gap: '1rem' }}>
+            <a href="/admin/catalogue/insurers">Insurers</a>
+          </nav>
+        </div>
         <nav>
           <span style={{ marginRight: '0.75rem' }}>{session.user.email}</span>
           <a href="/sign-out">Sign out</a>

@@ -2,11 +2,12 @@
   "name": "@insurance-saas/shared-types",
   "version": "0.0.0",
   "private": true,
-  "description": "Phase 1 placeholder. Cross-app TypeScript types land alongside Story S6+.",
+  "description": "Cross-app TypeScript types and catalogue enumerations.",
   "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts"
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
     }
   }
 }
