@@ -12,6 +12,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { seedEmployeeSchemaForTenant } from './seeds/employee-schema';
 import { seedCountries, seedCurrencies, seedIndustries } from './seeds/global-reference';
 import { seedOperatorLibrary } from './seeds/operators';
 
@@ -56,6 +57,9 @@ async function main(): Promise<void> {
 
   // S7 — Operator Library
   await seedOperatorLibrary(prisma);
+
+  // S11 — Employee Schema for the demo tenant
+  await seedEmployeeSchemaForTenant(prisma, tenant.id);
 
   // biome-ignore lint/suspicious/noConsoleLog: intentional seed output
   console.log('[seed] done.');
