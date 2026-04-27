@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "staging"
+    },
+    "location": {
+      "value": "southeastasia"
+    },
+    "appImage": {
+      "value": "REPLACE_AT_DEPLOY_TIME_WITH_TAGGED_ACR_IMAGE"
+    },
+    "deployObservability": {
+      "value": false
+    },
+    "deployPostgres": {
+      "value": true
+    },
+    "deployRedis": {
+      "value": false
+    },
+    "deployStorage": {
+      "value": false
+    },
+    "deployKeyVault": {
+      "value": false
+    },
+    "postgresAdminUsername": {
+      "value": "saas_admin"
+    }
+  }
+}
