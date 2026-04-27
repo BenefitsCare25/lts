@@ -171,6 +171,37 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Setup Node (for prisma migrate + seed)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Prisma deps
+        # Production runs migrations + seed via the same Prisma version as the
+        # app image. We need only @prisma/client + prisma + tsx to seed; the
+        # rest of the workspace install would just slow this step down.
+        run: pnpm install --frozen-lockfile --ignore-scripts && pnpm exec prisma generate
+
+      - name: Migrate + seed staging Postgres
+        env:
+          # Pull the live DATABASE_URL from the Container App's secret bag —
+          # avoids storing yet another GitHub secret in sync with Postgres.
+          # Runner reaches Postgres via the AllowAzureServices firewall rule.
+          AZURE_CONTAINERAPP: ${{ env.CONTAINER_APP }}
+        run: |
+          DB_URL=$(az containerapp secret show \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --secret-name database-url \
+            --query value -o tsv)
+          echo "::add-mask::$DB_URL"
+          export DATABASE_URL="$DB_URL"
+          pnpm prisma migrate deploy
+          pnpm prisma db seed
+
       - name: Deploy — update image only (fast path)
         if: steps.infra.outputs.changed == 'false'
         run: |
