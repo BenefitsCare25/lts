@@ -40,6 +40,13 @@ param redisUrl string = ''
 @description('Application Insights connection string. Empty string omits APPLICATIONINSIGHTS_CONNECTION_STRING.')
 param appInsightsConnectionString string = ''
 
+@description('NextAuth signing secret. Generated once; rotating invalidates all sessions. Empty string omits AUTH_SECRET — login will fail in production.')
+@secure()
+param authSecret string = ''
+
+@description('AUTH_TRUST_HOST = true tells NextAuth to trust the X-Forwarded-Host header from Container Apps ingress. Required in any reverse-proxied production deploy.')
+param authTrustHost bool = true
+
 // SharePoint storage credentials (Phase 1G — placement-slip uploads).
 // Five values together; presence of `sharepointTenantId` is the gate
 // because all five are required for the ROPC delegated-auth flow.
@@ -71,6 +78,7 @@ var hasDatabase = !empty(databaseUrl)
 var hasRedis = !empty(redisUrl)
 var hasAppInsights = !empty(appInsightsConnectionString)
 var hasSharepoint = !empty(sharepointTenantId)
+var hasAuthSecret = !empty(authSecret)
 
 var baseSecrets = [
   {
@@ -115,6 +123,14 @@ var sharepointSecrets = hasSharepoint
       {
         name: 'sharepoint-service-account-password'
         value: sharepointServiceAccountPassword
+      }
+    ]
+  : []
+var authSecretSecret = hasAuthSecret
+  ? [
+      {
+        name: 'auth-secret'
+        value: authSecret
       }
     ]
   : []
@@ -173,6 +189,24 @@ var sharepointEnv = hasSharepoint
       }
     ]
   : []
+var authEnv = concat(
+  hasAuthSecret
+    ? [
+        {
+          name: 'AUTH_SECRET'
+          secretRef: 'auth-secret'
+        }
+      ]
+    : [],
+  authTrustHost
+    ? [
+        {
+          name: 'AUTH_TRUST_HOST'
+          value: 'true'
+        }
+      ]
+    : []
+)
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -196,7 +230,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           passwordSecretRef: 'registry-password'
         }
       ]
-      secrets: concat(baseSecrets, dbSecret, redisSecret, sharepointSecrets)
+      secrets: concat(baseSecrets, dbSecret, redisSecret, sharepointSecrets, authSecretSecret)
     }
     template: {
       containers: [
@@ -207,7 +241,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: concat(baseEnv, dbEnv, redisEnv, aiEnv, sharepointEnv)
+          env: concat(baseEnv, dbEnv, redisEnv, aiEnv, sharepointEnv, authEnv)
         }
       ]
       scale: {

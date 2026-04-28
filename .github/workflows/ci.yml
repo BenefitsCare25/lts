@@ -21,6 +21,8 @@ env:
 #   AZURE_TENANT_ID                          Azure tenant ID (for OIDC login)
 #   AZURE_SUBSCRIPTION_ID                    Azure subscription ID
 #   POSTGRES_ADMIN_PASSWORD                  Passed to Bicep when deployPostgres=true
+#   AUTH_SECRET                              NextAuth signing secret. Without it, login
+#                                            fails with "server configuration problem".
 #   SHAREPOINT_TENANT_ID                     Distinct from AZURE_TENANT_ID — the tenant
 #                                            hosting the SharePoint app registration
 #   SHAREPOINT_CLIENT_ID                     SharePoint app registration client ID
@@ -259,6 +261,7 @@ jobs:
           SHAREPOINT_CLIENT_SECRET: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
           SHAREPOINT_SERVICE_ACCOUNT_USERNAME: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_USERNAME }}
           SHAREPOINT_SERVICE_ACCOUNT_PASSWORD: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_PASSWORD }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
         run: |
           az deployment group create \
             --name "staging-$(date -u +%Y%m%d-%H%M%S)" \
@@ -272,5 +275,6 @@ jobs:
             --parameters "sharepointClientSecret=${SHAREPOINT_CLIENT_SECRET}" \
             --parameters "sharepointServiceAccountUsername=${SHAREPOINT_SERVICE_ACCOUNT_USERNAME}" \
             --parameters "sharepointServiceAccountPassword=${SHAREPOINT_SERVICE_ACCOUNT_PASSWORD}" \
+            --parameters "authSecret=${AUTH_SECRET}" \
             --output none
           echo "Full Bicep deploy complete."
