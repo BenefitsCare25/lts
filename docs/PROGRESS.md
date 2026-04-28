@@ -133,9 +133,9 @@ This is now **Phase 2A**, in-flight. Tracked items:
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 1 | RLS policies on Policy / BenefitYear / Plan / Employee / Product / etc. | pending | Currently app-layer only via `client: { tenantId }` joins; defence-in-depth gap on 12 tables. |
+| 1 | RLS policies on Policy / BenefitYear / Plan / Employee / Product / etc. | ✅ done | Migration `20260428100000_extend_rls` adds idempotent RLS to all 21 tenant-scoped tables (8 direct + 13 indirect). Helper functions `app_tenant_of_<parent>(id)` keep policy clauses one-line. `scripts/setup-rls.sql` is now superseded; the migration is the canonical source. **Follow-up:** dev/CI Postgres still runs as the `postgres` superuser which bypasses RLS — RLS-enforcement-under-app-role testing is a separate item (introduce non-superuser `app_user` role + grants). |
 | 2 | Per-action role gates beyond publish | pending | Phase 1 is admin-only so surface is intentional; before non-admin users land in Phase 2, every mutation needs a role check. |
-| 3 | Cross-tenant isolation regression test | ✅ done | `apps/web/tests/integration/cross-tenant.test.ts` covers insurers / clients / policies / benefitYears / employees / claimsFeed / placementSlips. CI runs against an ephemeral Postgres service container; locally the suite skips without `INTEGRATION_DATABASE_URL` so dev DBs aren't truncated. |
+| 3 | Cross-tenant isolation regression test | ✅ done | `apps/web/tests/integration/cross-tenant.test.ts` covers insurers / clients / policies / benefitYears / employees / claimsFeed / placementSlips. CI runs against an ephemeral Postgres service container; locally the suite skips without `INTEGRATION_DATABASE_URL` so dev DBs aren't truncated. Seed wraps in `$transaction` + `set_config('app.current_tenant_id', …)` so the harness keeps working once RLS is enforced under a non-superuser role. |
 | 4 | Bicep param drift for SharePoint env | pending | Five `AZURE_*` Container App secrets aren't represented in `infra/bicep/modules/container-app.bicep` — a full Bicep deploy would strip them. Add params + GitHub repo secrets, OR move secrets into Bicep with `existing` lookup. |
 | 5 | Audit log writes (`AuditLog` schema model exists, no router) | pending | Capture every mutation: who/what/when. Phase 1 has the table, Phase 2 wires the writes. |
 

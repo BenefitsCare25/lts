@@ -1,19 +1,18 @@
 -- =============================================================
--- Postgres Row-Level Security setup for Phase 1.
+-- ⚠️ SUPERSEDED by migration 20260428100000_extend_rls — do not run.
 --
--- Run AFTER prisma migrate deploy, against the target database:
---   psql "$DATABASE_URL" -f scripts/setup-rls.sql
+-- Phase 1 (S3) shipped this script as an out-of-band step. Phase 2A
+-- folds RLS into the migration history, so `prisma migrate deploy`
+-- now applies (and re-applies idempotently) all RLS policies plus
+-- the new policies on the 13 indirect tables.
 --
--- Applied to the 8 directly tenant-scoped tables. Models accessed
--- only via relations (Policy, Employee, etc.) are isolated at the
--- application layer by navigating through their tenant-scoped parent.
+-- This file is retained for forensic reference only — it shows the
+-- Phase 1 baseline (8 directly-scoped tables). The migration is the
+-- canonical source for current policy definitions.
 --
--- The application sets app.current_tenant_id per request via:
---   SELECT set_config('app.current_tenant_id', '<id>', false)
---
--- Note: saas_admin has azure_pg_admin which bypasses RLS — this is
--- intentional so migrations and seeds run without interference.
--- Phase 2 introduces a separate app_user role without BYPASSRLS.
+-- Recovery procedure (if a target DB lacks RLS for any reason):
+--   pnpm prisma migrate resolve --applied 20260428100000_extend_rls
+--   pnpm prisma migrate deploy
 -- =============================================================
 
 -- ---- Enable RLS on tenant-scoped tables ----------------------
