@@ -41,11 +41,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      # Postgres for integration tests (cross-tenant isolation suite).
+      # The DB is ephemeral per job — no persistence, no shared state.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: insurance_saas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      # Phase 1 bootstrap: no migrations applied, so this URL is only used
-      # by tooling that needs *some* value. Real DB-backed tests in S6+
-      # will spin up a Postgres service in this workflow.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas?schema=public
+      # DATABASE_URL: tooling default; integration tests use INTEGRATION_DATABASE_URL.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas_test?schema=public
+      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas_test?schema=public
       REDIS_URL: redis://localhost:6379
       NEXT_PUBLIC_APP_URL: http://localhost:3000
 
@@ -81,6 +97,12 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Apply migrations to test DB
+        # Migrations are required for the integration test suite. The
+        # test setup truncates tables before seeding, so the DB must
+        # have its schema in place first.
+        run: pnpm prisma migrate deploy
 
       - name: Unit + integration tests
         run: pnpm test
