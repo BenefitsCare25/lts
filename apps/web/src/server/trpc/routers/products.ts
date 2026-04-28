@@ -15,25 +15,12 @@
 // { client: { tenantId } } }`. Same pattern as benefitYears.
 // =============================================================
 
+import { formatAjvError, safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
-import Ajv, { type ErrorObject } from 'ajv';
-import addFormats from 'ajv-formats';
 import { z } from 'zod';
 import { router, tenantProcedure } from '../init';
-
-// Single Ajv instance — compiles + caches schemas across requests.
-// `strict: false` keeps catalogue-authored schemas tolerant of
-// non-standard keywords (e.g. our own description fields).
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
-
-// Format an Ajv error path + message for inline UI display.
-function formatAjvError(err: ErrorObject): string {
-  const path = err.instancePath || '/';
-  return `${path} ${err.message ?? 'is invalid'}`;
-}
 
 const productInputSchema = z.object({
   productTypeId: z.string().min(1),
@@ -331,10 +318,15 @@ export const productsRouter = router({
         });
       }
 
-      // biome-ignore lint/suspicious/noExplicitAny: ProductType.schema is JSONB
-      const validate = ajv.compile(existing.productType.schema as any);
-      if (!validate(input.data)) {
-        const errors = (validate.errors ?? []).map(formatAjvError);
+      const compiled = safeCompile(existing.productType.schema);
+      if (!compiled.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Catalogue schema for ${existing.productType.code} failed to compile.`,
+        });
+      }
+      if (!compiled.validate(input.data)) {
+        const errors = (compiled.validate.errors ?? []).map(formatAjvError);
         throw new TRPCError({
           code: 'BAD_REQUEST',
           message: `Validation failed: ${errors.join('; ')}`,

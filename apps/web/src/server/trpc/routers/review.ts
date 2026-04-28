@@ -12,15 +12,26 @@
 //     year, unusual premium variance).
 // =============================================================
 
+import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
+import { UserRole } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import { z } from 'zod';
 import { router, tenantProcedure } from '../init';
 
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
+// Same role gate as benefit-years.setState — only admin roles publish.
+const PUBLISH_ROLES = new Set<UserRole>([UserRole.TENANT_ADMIN, UserRole.BROKER_ADMIN]);
+
+async function loadCallerRole(userId: string): Promise<UserRole> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  if (!user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User not provisioned.' });
+  }
+  return user.role;
+}
 
 export type ReviewIssue = {
   severity: 'blocker' | 'warning';
@@ -171,10 +182,16 @@ export const reviewRouter = router({
 
         // Ajv-validate Product.data against ProductType.schema.
         try {
-          // biome-ignore lint/suspicious/noExplicitAny: schema is JSONB
-          const validate = ajv.compile(product.productType.schema as any);
-          if (!validate(product.data)) {
-            for (const err of validate.errors ?? []) {
+          const compiled = safeCompile(product.productType.schema);
+          if (!compiled.ok) {
+            issues.push({
+              severity: 'warning',
+              code: 'PRODUCT_SCHEMA_UNCOMPILABLE',
+              message: `${ctx}: schema didn't compile (${compiled.error}).`,
+              surface: `product:${product.id}:details`,
+            });
+          } else if (!compiled.validate(product.data)) {
+            for (const err of compiled.validate.errors ?? []) {
               issues.push({
                 severity: 'blocker',
                 code: 'PRODUCT_DATA_INVALID',
@@ -214,8 +231,8 @@ export const reviewRouter = router({
             }
             // Validate plan data against planSchema.
             try {
-              // biome-ignore lint/suspicious/noExplicitAny: schema is JSONB
-              const validate = ajv.compile(product.productType.planSchema as any);
+              const compiled = safeCompile(product.productType.planSchema);
+              if (!compiled.ok) continue; // already reported above
               const candidate = {
                 code: plan.code,
                 name: plan.name,
@@ -226,8 +243,8 @@ export const reviewRouter = router({
                 effectiveFrom: plan.effectiveFrom?.toISOString().slice(0, 10) ?? null,
                 effectiveTo: plan.effectiveTo?.toISOString().slice(0, 10) ?? null,
               };
-              if (!validate(candidate)) {
-                for (const err of validate.errors ?? []) {
+              if (!compiled.validate(candidate)) {
+                for (const err of compiled.validate.errors ?? []) {
                   issues.push({
                     severity: 'blocker',
                     code: 'PLAN_INVALID',
@@ -277,6 +294,17 @@ export const reviewRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Role gate — same shape as benefitYears.setState. We re-check
+      // here even though the UI hides Publish for non-admins because
+      // the API surface is callable directly.
+      const role = await loadCallerRole(ctx.userId);
+      if (!PUBLISH_ROLES.has(role)) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Only tenant or broker admins can publish a benefit year.',
+        });
+      }
+
       const by = await loadBenefitYearForReview(ctx.tenantId, input.benefitYearId);
       if (by.state !== 'DRAFT') {
         throw new TRPCError({

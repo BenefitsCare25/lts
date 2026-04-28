@@ -24,6 +24,35 @@ import jsonLogic from 'json-logic-js';
 import { z } from 'zod';
 import { router, tenantProcedure } from '../init';
 
+// JSONLogic predicates are evaluated server-side (preview + overlap +
+// employee auto-match) on every employee, so an unbounded predicate
+// is a CPU DoS vector. We cap on three dimensions before storage:
+//   - serialised byte size (16 KB)
+//   - structural depth (16 levels of nesting)
+//   - operator count (256 nodes total)
+// Then run a smoke `jsonLogic.apply({})` to verify the shape compiles.
+const PREDICATE_MAX_BYTES = 16 * 1024;
+const PREDICATE_MAX_DEPTH = 16;
+const PREDICATE_MAX_NODES = 256;
+
+function measurePredicate(v: unknown, depth: number): { depth: number; nodes: number } | null {
+  if (depth > PREDICATE_MAX_DEPTH) return null;
+  if (v === null || typeof v !== 'object') {
+    return { depth, nodes: 1 };
+  }
+  let maxDepth = depth;
+  let nodes = 1;
+  const entries: unknown[] = Array.isArray(v) ? v : Object.values(v);
+  for (const entry of entries) {
+    const sub = measurePredicate(entry, depth + 1);
+    if (!sub) return null;
+    if (sub.depth > maxDepth) maxDepth = sub.depth;
+    nodes += sub.nodes;
+    if (nodes > PREDICATE_MAX_NODES) return null;
+  }
+  return { depth: maxDepth, nodes };
+}
+
 // JSONLogic accepts any plain object/array structure that compiles.
 // Reject scalars and arrays (an isolated value isn't a predicate).
 // Empty object also rejected so we don't store no-op groups.
@@ -39,6 +68,33 @@ const predicateSchema = z.unknown().superRefine((val, ctx) => {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Predicate cannot be empty — add at least one condition.',
+    });
+    return;
+  }
+  // Size cap.
+  let size = 0;
+  try {
+    size = JSON.stringify(val).length;
+  } catch {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Predicate is not JSON-serialisable.',
+    });
+    return;
+  }
+  if (size > PREDICATE_MAX_BYTES) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Predicate too large (${size} bytes; cap is ${PREDICATE_MAX_BYTES}).`,
+    });
+    return;
+  }
+  // Depth + node count cap.
+  const measured = measurePredicate(val, 0);
+  if (!measured) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Predicate exceeds structural limits (max depth ${PREDICATE_MAX_DEPTH}, max nodes ${PREDICATE_MAX_NODES}).`,
     });
     return;
   }

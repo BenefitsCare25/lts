@@ -18,21 +18,12 @@
 // BenefitYear is PUBLISHED/ARCHIVED are rejected.
 // =============================================================
 
+import { formatAjvError, safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
-import Ajv, { type ErrorObject } from 'ajv';
-import addFormats from 'ajv-formats';
 import { z } from 'zod';
 import { router, tenantProcedure } from '../init';
-
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
-
-function formatAjvError(err: ErrorObject): string {
-  const path = err.instancePath || '/';
-  return `${path} ${err.message ?? 'is invalid'}`;
-}
 
 const planInputSchema = z.object({
   code: z
@@ -98,8 +89,13 @@ async function loadPlanWithProduct(tenantId: string, planId: string) {
 // Validates the (possibly-new) plan's full row against productType.planSchema.
 // Throws BAD_REQUEST with all paths + reasons on failure.
 function validateAgainstPlanSchema(input: PlanInput, planSchema: unknown): void {
-  // biome-ignore lint/suspicious/noExplicitAny: planSchema is JSONB
-  const validate = ajv.compile(planSchema as any);
+  const compiled = safeCompile(planSchema);
+  if (!compiled.ok) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Plan schema in catalogue failed to compile.',
+    });
+  }
   // Construct the JSON shape the schema expects (matches the seeded
   // planSchema in S16: { code, name, coverBasis, stacksOn, selectionMode, schedule, ... }).
   const candidate = {
@@ -112,8 +108,8 @@ function validateAgainstPlanSchema(input: PlanInput, planSchema: unknown): void 
     effectiveFrom: input.effectiveFrom?.toISOString().slice(0, 10) ?? null,
     effectiveTo: input.effectiveTo?.toISOString().slice(0, 10) ?? null,
   };
-  if (!validate(candidate)) {
-    const errors = (validate.errors ?? []).map(formatAjvError);
+  if (!compiled.validate(candidate)) {
+    const errors = (compiled.validate.errors ?? []).map(formatAjvError);
     throw new TRPCError({
       code: 'BAD_REQUEST',
       message: `Plan validation failed: ${errors.join('; ')}`,
@@ -123,6 +119,11 @@ function validateAgainstPlanSchema(input: PlanInput, planSchema: unknown): void 
 
 // Validates the stacksOn target: must exist, must belong to the same
 // product, must not create a cycle (including a direct self-loop).
+// Every Plan lookup scopes through `productId` to keep the cycle
+// walker from traversing into a different tenant's plans (defence
+// in depth — `validateStacksOn`'s first hop already requires same
+// product, but the chain walker would otherwise follow stacksOn
+// blindly).
 async function validateStacksOn(
   productId: string,
   stacksOn: string | null,
@@ -132,17 +133,16 @@ async function validateStacksOn(
   if (stacksOn === selfPlanId) {
     throw new TRPCError({ code: 'BAD_REQUEST', message: 'A plan cannot stack on itself.' });
   }
-  const target = await prisma.plan.findUnique({
-    where: { id: stacksOn },
+  const target = await prisma.plan.findFirst({
+    where: { id: stacksOn, productId },
     select: { id: true, productId: true, stacksOn: true },
   });
-  if (!target || target.productId !== productId) {
+  if (!target) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
       message: 'stacksOn must reference another plan on the same product.',
     });
   }
-  // Walk the chain — if we hit selfPlanId or revisit a node, it's a cycle.
   const visited = new Set<string>([stacksOn]);
   let cursor: string | null = target.stacksOn;
   while (cursor) {
@@ -152,10 +152,10 @@ async function validateStacksOn(
         message: 'stacksOn would create a circular dependency.',
       });
     }
-    if (visited.has(cursor)) break; // pre-existing loop in DB; not our problem to solve here
+    if (visited.has(cursor)) break;
     visited.add(cursor);
-    const next = await prisma.plan.findUnique({
-      where: { id: cursor },
+    const next: { stacksOn: string | null } | null = await prisma.plan.findFirst({
+      where: { id: cursor, productId },
       select: { stacksOn: true },
     });
     cursor = next?.stacksOn ?? null;
