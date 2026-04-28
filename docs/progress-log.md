@@ -4,6 +4,43 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S22 Plans sub-tab (stacksOn + selectionMode)
+
+**Session focus.** Build Screen 5b — the plans table with `stacksOn` rider support and `selectionMode`. STM GTL Plan C/D stacks on Plan B; this is the schema's first real use of the rider relation.
+
+**What landed.**
+
+- **`plans` tRPC router.** listByProduct / byId / create / update / delete via `tenantProcedure`. Tenant-scoped through Plan → Product → BenefitYear → Policy → Client. DRAFT-only mutation gate enforced on grandparent BenefitYear.state.
+- **Ajv validation per plan.** Full plan row (code + name + coverBasis + stacksOn + selectionMode + schedule + effective dates as ISO date strings) validated against `ProductType.planSchema` on every create/update. Catches schema-level constraints like the planSchema's required fields and per-product `coverBasis` enum narrowing.
+- **stacksOn validator.** `validateStacksOn(productId, stacksOn, selfPlanId?)` runs three checks: (1) reject self-loops where `stacksOn === selfPlanId`, (2) reject cross-product references (`target.productId !== productId`), (3) walk the rider chain forward and reject if any cursor matches `selfPlanId` (would create a cycle). Visited set caps the walk so a pre-existing DB-level loop doesn't infinite-loop us.
+- **stacksOn delete protection.** Deleting a plan that's referenced as a base by other plans returns CONFLICT with a "detach the rider first" message. Plans with eligibility/premium-rate FKs surface as P2003.
+- **Plans tab on product edit page.** Surfaces a table of existing plans — code, name, coverBasis, stacksOn (rendered as the base plan's code, looked up via `Map<id, code>` over the same list), selectionMode label, effective dates. "+ Add plan" deep-links to `/plans/new`, each row to `/plans/[planId]/edit`.
+- **PlanForm component shared between new + edit pages.** Two-section layout: hand-rolled metadata (code with regex `^P[A-Z0-9]+$`, name, coverBasis dropdown from `extractCoverBasisEnum(planSchema)`, stacksOn dropdown of siblings excluding self when editing, selectionMode select with explanatory copy for broker_default vs employee_flex, effective dates) plus an `@rjsf/core` form for the `schedule` sub-object. Submit serialises dates to native `Date` objects so Zod's `.coerce.date()` round-trips them back to JS `Date` on the server.
+
+**Decisions and rationale.**
+
+1. **Hand-roll metadata, @rjsf for schedule only.** A full @rjsf form against planSchema would render the metadata fields too — but stacksOn needs a sibling-plan dropdown (custom widget territory), and coverBasis is a simple enum we already extract. Splitting the form: the @rjsf payoff (auto-rendered, dynamic, schema-driven) lives in `schedule`, which differs sharply per ProductType. Metadata stays in our own tabular CSS so the rest of the admin doesn't visually drift.
+2. **`stacksOn` is `Plan.id`, not `Plan.code`.** The schema stores the FK by id and Prisma's self-relation `riderOf` keys off it. Storing by code would mean updating every rider when a base plan's code changes — not worth the convenience. The UI shows code in the dropdown for usability, but persists the id.
+3. **Cycle detection walks the chain, not a graph algorithm.** Plans form a forest by intent (each plan stacks on at most one base). A linear walk + visited set is enough; full graph cycle detection would be overengineered.
+4. **No optimistic locking on Plan.** Unlike Policy, Plans don't have concurrent-edit hazards in the broker workflow — one human edits one plan at a time. Add later if needed.
+5. **Schedule update propagates through @rjsf's `onChange`, not on submit.** The whole point of @rjsf is real-time validation. Buffering the form data until submit loses that — the @rjsf component manages its own sub-state and we read it on every change. Submit just bundles the latest schedule with the metadata fields and ships the lot.
+6. **Effective dates serialise as ISO date strings inside the validation payload.** Plan dates round-trip to/from `Date` objects in TypeScript, but Ajv evaluates JSON — feeding it a JS Date would compare `new Date()` against an ISO-string format clause in the schema. Convert at the validation boundary.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` all clean.
+- 11/11 unit tests still pass.
+- Routes added: `/admin/.../products/[productId]/plans/new` and `/admin/.../plans/[planId]/edit`.
+
+**Open items / next.**
+
+- **S23 Eligibility matrix.** Groups × plans grid; per cell, a default plan id (or "ineligible") for that (group, product) pair. Saving creates ProductEligibility rows.
+- **S24 Premium calc.** Strategy code from `ProductType.premiumStrategy` selects which calc module renders the input form and computes the preview. CUBER GHS → 1×$1260 (Senior EF) + 4×$172 (Corp EO) = $1,948 ±$1.
+- **S25 Effective-dated schedules.** Plans already accept `effectiveFrom`/`effectiveTo` (added in this story); S25 wires the eligibility engine + premium calc to honour the boundary.
+- **S22 deferral.** Plan AC mentions "eligibility engine applies both Plan B and Plan C cover to a matching employee in dry-run" — the dry-run runtime is a S24 premium-calc concern. Data shape + validation shipped here; runtime evaluation lands with the calc engine.
+
+---
+
 ## 2026-04-28 — S21 Product details sub-tab (Phase 1E opens)
 
 **Session focus.** Open Phase 1E with the per-product Details tab. Auto-generate the form from `ProductType.schema` via `@rjsf/core`, validate server-side via Ajv before persisting `Product.data`.
