@@ -9,8 +9,10 @@
 import { router } from './init';
 import { benefitGroupsRouter } from './routers/benefit-groups';
 import { benefitYearsRouter } from './routers/benefit-years';
+import { claimsFeedRouter } from './routers/claims-feed';
 import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
+import { employeesRouter } from './routers/employees';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
 import { placementSlipsRouter } from './routers/placement-slips';
@@ -41,6 +43,8 @@ export const appRouter = router({
   productEligibility: productEligibilityRouter,
   premiumRates: premiumRatesRouter,
   placementSlips: placementSlipsRouter,
+  employees: employeesRouter,
+  claimsFeed: claimsFeedRouter,
   review: reviewRouter,
   referenceData: referenceDataRouter,
 });

@@ -135,6 +135,10 @@ model Insurer {
   name              String
   code              String // "TM_LIFE", "GE_LIFE", "ZURICH"
   productsSupported String[] // ["GTL", "GHS", "GMM", ...]
+  // Per ADR 0004 — re-introduced at S35 for the TPA claims feed pipeline.
+  // Wire format the insurer's TPA delivers claims in. Examples:
+  // "IHP" (Tokio Marine), "TMLS" (Great Eastern), "DIRECT_API" (Zurich), null.
+  claimFeedProtocol String?
   active            Boolean  @default(true)
 
   tenant Tenant           @relation(fields: [tenantId], references: [id])

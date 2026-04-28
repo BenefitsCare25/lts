@@ -17,7 +17,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | **1E** Per-product config | S21–S25 | ✅ complete | All five sub-tabs (Details, Plans, Eligibility, Premium, Effective dates) |
 | **1F** Review + publish | S26–S28 | ✅ complete | Single Review screen wraps S26 + S27 + S28 |
 | **1G** Excel ingestion | S29–S32 | ⚠️ structural | Pipeline + parser dispatch + review UI ship; per-template parsing-rule fidelity deferred until reference placement slips arrive |
-| **1H** Employees + claims | S33–S35 | ⏳ not started | S35 also re-adds `Insurer.claimFeedProtocol` per ADR 0004 |
+| **1H** Employees + claims | S33–S35 | ✅ complete | `Insurer.claimFeedProtocol` re-introduced per ADR 0004 (migration `20260428000000_readd_insurer_claim_feed_protocol`); IHP claims handler ships, TMLS/DIRECT_API land when their formats are spec'd |
 
 ## Documented deviations from v2 plan
 
@@ -92,9 +92,9 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 
 ## Phase 1H — Employees + claims (S33–S35)
 
-- [ ] **S33** Employee admin CRUD against tenant EmployeeSchema — adding an STM employee with `hay_job_grade=8`, `work_pass_type=WORK_PERMIT` auto-matches "Foreign Workers WP/SP HJG 08-10" group.
-- [ ] **S34** CSV import of employees — CSV columns map to EmployeeSchema fields by header; rows failing validation surface for fix; successful rows create Employee records.
-- [ ] **S35** TPA claims feed (IHP) — sample IHP claim feed CSV ingested; Enrollment lookups match claims to employees + plans; unmatched claims flagged. **Also re-introduces `Insurer.claimFeedProtocol`** per ADR 0004.
+- [x] **S33** Employee admin CRUD against tenant EmployeeSchema — adding an STM employee with `hay_job_grade=8`, `work_pass_type=WORK_PERMIT` auto-matches "Foreign Workers WP/SP HJG 08-10" group. (2026-04-28 — `employees` tRPC router translates the per-tenant EmployeeSchema into a JSON Schema, validates `Employee.data` via Ajv on every write, and runs every BenefitGroup predicate via `jsonLogic.apply` against the new employee. `byId` and `create` return the matched groups inline. UI at `/admin/clients/[id]/employees` uses @rjsf to render the form auto-generated from the tenant schema.)
+- [x] **S34** CSV import of employees — CSV columns map to EmployeeSchema fields by header; rows failing validation surface for fix; successful rows create Employee records. (2026-04-28 — `employees.importCsv` mutation accepts pre-parsed rows + a `hireDateField` parameter and validates each row against the tenant schema. Failures returned per-row with reason; successes create Employee records. UI parses the CSV client-side (header → field by exact match, comma-split — production needs RFC 4180 quoting) and surfaces the success/failure breakdown.)
+- [x] **S35** TPA claims feed (IHP) — sample IHP claim feed CSV ingested; Enrollment lookups match claims to employees + plans; unmatched claims flagged. **Also re-introduces `Insurer.claimFeedProtocol`** per ADR 0004. (2026-04-28 — migration `20260428000000_readd_insurer_claim_feed_protocol` adds the column back; `claimsFeed` tRPC router dispatches by `Insurer.claimFeedProtocol` to per-protocol handlers (IHP CSV ships; TMLS / DIRECT_API land when their formats are spec'd). `protocolsSupported` query exposes the registered handler list. Match logic resolves `memberId → Employee → Enrollment → Product` per row; unmatched rows return with `reason`. UI at `/admin/clients/[id]/claims` uploads the CSV and renders matched/unmatched counts plus the first 100 unmatched rows. Insurers admin form (both create + edit) gained the `claimFeedProtocol` text field.)
 
 ---
 

@@ -1,0 +1,163 @@
+// =============================================================
+// ClaimsScreen — TPA claims feed ingestion + match results (S35).
+// =============================================================
+
+'use client';
+
+import { trpc } from '@/lib/trpc/client';
+import Link from 'next/link';
+import { useState } from 'react';
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const r = reader.result;
+      if (typeof r !== 'string') {
+        reject(new Error('Unexpected file read result.'));
+        return;
+      }
+      const idx = r.indexOf(',');
+      resolve(idx === -1 ? r : r.slice(idx + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('File read failed.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function ClaimsScreen({ clientId }: { clientId: string }) {
+  const insurers = trpc.insurers.list.useQuery();
+  const protocols = trpc.claimsFeed.protocolsSupported.useQuery();
+  const ingest = trpc.claimsFeed.ingest.useMutation({
+    onSuccess: (res) => {
+      setResult(res);
+      setError(null);
+    },
+    onError: (err) => setError(err.message),
+  });
+
+  const [insurerId, setInsurerId] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<Awaited<ReturnType<typeof ingest.mutateAsync>> | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setResult(null);
+    if (!file || !insurerId) return;
+    try {
+      const contentBase64 = await readFileAsBase64(file);
+      ingest.mutate({ insurerId, clientId, contentBase64 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Read failed.');
+    }
+  };
+
+  const supportedInsurers =
+    insurers.data?.filter(
+      (ins) =>
+        ins.active && ins.claimFeedProtocol && protocols.data?.includes(ins.claimFeedProtocol),
+    ) ?? [];
+
+  return (
+    <>
+      <section className="section">
+        <p className="eyebrow">
+          <Link href={`/admin/clients/${clientId}/edit`}>← Client</Link>
+        </p>
+        <h1>Claims feed</h1>
+        <p style={{ maxWidth: '60ch' }}>
+          Upload a TPA claims feed CSV. The router dispatches to the right parser based on the
+          insurer's <code>claimFeedProtocol</code>; matched claims are paired to existing employee
+          enrollments, and unmatched ones are flagged for review.
+        </p>
+      </section>
+
+      <section className="section">
+        <div className="card card-padded">
+          <h3 style={{ marginBottom: '0.5rem' }}>Upload feed</h3>
+          <form onSubmit={submit} className="form-grid">
+            <div className="field">
+              <label className="field-label" htmlFor="claim-insurer">
+                Insurer
+              </label>
+              <select
+                id="claim-insurer"
+                className="input"
+                required
+                value={insurerId}
+                onChange={(e) => setInsurerId(e.target.value)}
+              >
+                <option value="">— Select insurer —</option>
+                {supportedInsurers.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name} ({i.code}) · {i.claimFeedProtocol}
+                  </option>
+                ))}
+              </select>
+              {supportedInsurers.length === 0 ? (
+                <span className="field-help">
+                  No insurers have a supported <code>claimFeedProtocol</code> set. Configure one in
+                  the insurer registry. Supported protocols: {protocols.data?.join(', ') ?? '—'}.
+                </span>
+              ) : null}
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="claim-file">
+                CSV file
+              </label>
+              <input
+                id="claim-file"
+                className="input"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            {error ? <p className="field-error">{error}</p> : null}
+            <div className="row">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!file || !insurerId || ingest.isPending}
+              >
+                {ingest.isPending ? 'Ingesting…' : 'Ingest feed'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {result ? (
+        <section className="section">
+          <div className="card card-padded">
+            <h3 style={{ marginBottom: '0.5rem' }}>Result</h3>
+            <p>
+              Protocol <code>{result.protocol}</code> · {result.totalRows} rows ·{' '}
+              <strong style={{ color: 'var(--color-good, #16a34a)' }}>
+                {result.matched} matched
+              </strong>{' '}
+              ·{' '}
+              <strong style={{ color: 'var(--color-error, #b91c1c)' }}>
+                {result.unmatched} unmatched
+              </strong>
+            </p>
+            {result.unmatchedClaims.length > 0 ? (
+              <details style={{ marginTop: '0.75rem' }}>
+                <summary>Unmatched claims (first 100)</summary>
+                <ul>
+                  {result.unmatchedClaims.map((c, idx) => (
+                    <li key={`${c.memberId}-${idx}`}>
+                      <code>{c.memberId}</code> · {c.productCode} · {c.claimDate} — {c.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+    </>
+  );
+}

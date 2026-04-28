@@ -18,6 +18,7 @@ type FormState = {
   name: string;
   code: string;
   productsSupported: ProductTypeCode[];
+  claimFeedProtocol: string;
   active: boolean;
 };
 
@@ -25,6 +26,7 @@ const emptyForm: FormState = {
   name: '',
   code: '',
   productsSupported: [],
+  claimFeedProtocol: '',
   active: true,
 };
 
@@ -53,6 +55,7 @@ export function InsurersScreen() {
       name: form.name.trim(),
       code: form.code.trim(),
       productsSupported: form.productsSupported,
+      claimFeedProtocol: form.claimFeedProtocol.trim() || null,
       active: form.active,
     });
   };
@@ -130,6 +133,25 @@ export function InsurersScreen() {
                 ))}
               </div>
             </fieldset>
+
+            <div className="field">
+              <label className="field-label" htmlFor="ins-claim-feed">
+                Claim feed protocol <span className="field-help-inline">(optional)</span>
+              </label>
+              <input
+                id="ins-claim-feed"
+                className="input"
+                type="text"
+                maxLength={40}
+                value={form.claimFeedProtocol}
+                onChange={(e) => setForm({ ...form, claimFeedProtocol: e.target.value })}
+                placeholder="IHP"
+              />
+              <span className="field-help">
+                Wire format the insurer's TPA delivers claims in (e.g. IHP, TMLS, DIRECT_API). The
+                claims-feed router uses this to dispatch the right parser.
+              </span>
+            </div>
 
             <label className="toggle">
               <input

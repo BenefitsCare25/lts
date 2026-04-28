@@ -27,6 +27,15 @@ const insurerInputSchema = z.object({
   productsSupported: z
     .array(z.enum(PRODUCT_TYPE_CODES))
     .min(1, 'Select at least one product type.'),
+  // S35: re-introduced per ADR 0004 for the TPA claims feed pipeline.
+  // Free-text identifier (e.g. "IHP", "TMLS", "DIRECT_API") used by
+  // the claims router to dispatch the right CSV/JSON parser.
+  claimFeedProtocol: z
+    .string()
+    .trim()
+    .max(40)
+    .nullable()
+    .transform((v) => (v && v.length > 0 ? v : null)),
   active: z.boolean().default(true),
 });
 
