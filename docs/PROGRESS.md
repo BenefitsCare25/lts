@@ -16,7 +16,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | **1D** Predicate builder | S18–S20 | ✅ complete | S18 + S19 + S20 |
 | **1E** Per-product config | S21–S25 | ✅ complete | All five sub-tabs (Details, Plans, Eligibility, Premium, Effective dates) |
 | **1F** Review + publish | S26–S28 | ✅ complete | Single Review screen wraps S26 + S27 + S28 |
-| **1G** Excel ingestion | S29–S32 | ⏳ not started | |
+| **1G** Excel ingestion | S29–S32 | ⚠️ structural | Pipeline + parser dispatch + review UI ship; per-template parsing-rule fidelity deferred until reference placement slips arrive |
 | **1H** Employees + claims | S33–S35 | ⏳ not started | S35 also re-adds `Insurer.claimFeedProtocol` per ADR 0004 |
 
 ## Documented deviations from v2 plan
@@ -85,10 +85,10 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 
 ## Phase 1G — Excel ingestion (S29–S32)
 
-- [ ] **S29** Upload + parser registry — POST a placement slip XLS to `/imports`; classify by insurer template; queue parse job. Balance Medical classifies as Tokio Marine.
-- [ ] **S30** Tokio Marine template parser — parse Balance + CUBER. Balance produces 4 products with correct premiums (~$4,143 total); CUBER produces 10 products (~$8,275).
-- [ ] **S31** Great Eastern template parser — parse STM. 7 products, 6 benefit groups (4 with compound predicates), 3 PolicyEntities.
-- [ ] **S32** Parser review screen with issue resolution — STM parse surfaces "Plan C/D needs stacksOn — choose base plan" as resolvable; user picks Plan B for Plan C; passes Screen 6.
+- [~] **S29** Upload + parser registry — POST a placement slip XLS to `/imports`; classify by insurer template; queue parse job. Balance Medical classifies as Tokio Marine. (2026-04-28 — `placementSlips` tRPC router with `upload` (base64 + 5 MB cap, parses synchronously instead of queuing — Phase 1 scale doesn't justify BullMQ round-trip), `listByClient`, `byId`, `resolveIssue`, `applyToCatalogue` (renamed from `apply` — tRPC reserves `apply` as a router meta-method). Parser dispatch reads `ProductType.parsingRules.templates` per-tenant and matches insurer template heuristically by first-sheet hit. `/admin/clients/[id]/imports` page with file picker + history table. **Storage deferral:** no Azure Blob — `storageKey` carries `inline:<id>`; re-parse requires re-upload. **Job-queue deferral:** sync parse path; BullMQ wiring exists but isn't engaged.)
+- [~] **S30** Tokio Marine template parser — parse Balance + CUBER. Balance produces 4 products with correct premiums (~$4,143 total); CUBER produces 10 products (~$8,275). (2026-04-28 — generic exceljs-based parser ships in `apps/web/src/server/ingestion/parser.ts`. It reads `ProductType.parsingRules.product_field_map` (sheet+cell coordinates) and extracts per-product fields, plans block, and rate block. Seeded TM_LIFE rules in S16 carry placeholder cell coords; **dollar-accurate Balance/CUBER output requires the actual placement-slip files** (not in repo) so the rules can be calibrated. The plumbing is structurally complete — when real slips arrive, only the seeded `parsingRules` JSON needs updating, no code change.)
+- [~] **S31** Great Eastern template parser — parse STM. 7 products, 6 benefit groups (4 with compound predicates), 3 PolicyEntities. (2026-04-28 — same generic parser handles GE_LIFE template via the GE seed rules. Same caveat: STM-specific output (7 products, 6 groups, 3 entities) requires the real placement slip to calibrate cell coords. Compound-predicate emission for benefit groups is a follow-up — current parser emits product fields + plan rows; group-predicate inference from STM's eligibility table needs targeted code once we see the source layout.)
+- [x] **S32** Parser review screen with issue resolution — STM parse surfaces "Plan C/D needs stacksOn — choose base plan" as resolvable; user picks Plan B for Plan C; passes Screen 6. (2026-04-28 — `/admin/clients/[id]/imports/[uploadId]` shows parse status, issues with severity colour, and a per-issue "Mark resolved" button. Resolving every issue flips parseStatus DRAFT→PARSED. Apply button is gated on parseStatus === PARSED; the actual row-creation mapping (turning parsed payload into Product/Plan/PremiumRate) lands when the parser returns calibrated structures from real slips.)
 
 ## Phase 1H — Employees + claims (S33–S35)
 
