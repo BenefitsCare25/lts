@@ -90,8 +90,7 @@ export function ClientsScreen() {
   };
 
   // Country lookup map for the list table.
-  const countryName = (code: string) =>
-    countries.data?.find((c) => c.code === code)?.name ?? code;
+  const countryName = (code: string) => countries.data?.find((c) => c.code === code)?.name ?? code;
 
   return (
     <>
@@ -99,8 +98,8 @@ export function ClientsScreen() {
         <p className="eyebrow">Onboarding · Screen 1</p>
         <h1>Clients</h1>
         <p style={{ maxWidth: '60ch' }}>
-          Each client is a legal entity (a company, society, or other registered organisation)
-          for whom this brokerage administers benefits. Adding a client unlocks the policy and
+          Each client is a legal entity (a company, society, or other registered organisation) for
+          whom this brokerage administers benefits. Adding a client unlocks the policy and
           benefit-year flow that follows.
         </p>
       </section>
@@ -149,9 +148,7 @@ export function ClientsScreen() {
                 className="input"
                 required
                 value={form.countryOfIncorporation}
-                onChange={(e) =>
-                  setForm({ ...form, countryOfIncorporation: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, countryOfIncorporation: e.target.value })}
                 disabled={countries.isLoading}
               >
                 {countries.data?.map((c) => (
@@ -174,7 +171,9 @@ export function ClientsScreen() {
                 maxLength={40}
                 value={form.uen}
                 onChange={(e) => setForm({ ...form, uen: e.target.value.toUpperCase() })}
-                placeholder={selectedCountry?.uenPattern ? '202012345A' : 'Business registration number'}
+                placeholder={
+                  selectedCountry?.uenPattern ? '202012345A' : 'Business registration number'
+                }
                 pattern={selectedCountry?.uenPattern ?? undefined}
               />
               <span className="field-help">
@@ -327,9 +326,7 @@ export function ClientsScreen() {
                           className="btn btn-danger btn-sm"
                           onClick={() => {
                             if (
-                              window.confirm(
-                                `Delete ${client.legalName}? This cannot be undone.`,
-                              )
+                              window.confirm(`Delete ${client.legalName}? This cannot be undone.`)
                             ) {
                               remove.mutate({ id: client.id });
                             }

@@ -25,10 +25,7 @@ const clientInputSchema = z.object({
     .nullable()
     .transform((v) => (v && v.length > 0 ? v : null)),
   uen: z.string().trim().min(1).max(40),
-  countryOfIncorporation: z
-    .string()
-    .trim()
-    .length(2, 'Country code must be a 2-letter ISO code.'),
+  countryOfIncorporation: z.string().trim().length(2, 'Country code must be a 2-letter ISO code.'),
   address: z.string().trim().min(1).max(500),
   industry: z
     .string()
@@ -108,13 +105,11 @@ export const clientsRouter = router({
     }),
   ),
 
-  byId: tenantProcedure
-    .input(z.object({ id: z.string().min(1) }))
-    .query(async ({ ctx, input }) => {
-      const client = await ctx.db.client.findFirst({ where: { id: input.id } });
-      if (!client) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found.' });
-      return client;
-    }),
+  byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
+    const client = await ctx.db.client.findFirst({ where: { id: input.id } });
+    if (!client) throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found.' });
+    return client;
+  }),
 
   create: tenantProcedure.input(clientInputSchema).mutation(async ({ ctx, input }) => {
     await assertCountryAndIndustry(input);
