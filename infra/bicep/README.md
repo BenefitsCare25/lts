@@ -68,6 +68,36 @@ The script wraps `az deployment group create` against `main.bicep` with `staging
 
 `POSTGRES_ADMIN_PASSWORD` is only required when `deployPostgres=true` in the parameters file.
 
+### SharePoint storage credentials (Phase 1G)
+
+Five credentials power the placement-slip upload path (`apps/web/src/server/storage/sharepoint.ts`). They're owned by the deploy invocation, not by `staging.parameters.json`:
+
+| Bicep param | Runtime env var | GitHub repo secret |
+|---|---|---|
+| `sharepointTenantId` | `AZURE_TENANT_ID` | `SHAREPOINT_TENANT_ID` |
+| `sharepointClientId` | `AZURE_CLIENT_ID` | `SHAREPOINT_CLIENT_ID` |
+| `sharepointClientSecret` | `AZURE_CLIENT_SECRET` | `SHAREPOINT_CLIENT_SECRET` |
+| `sharepointServiceAccountUsername` | `AZURE_SERVICE_ACCOUNT_USERNAME` | `SHAREPOINT_SERVICE_ACCOUNT_USERNAME` |
+| `sharepointServiceAccountPassword` | `AZURE_SERVICE_ACCOUNT_PASSWORD` | `SHAREPOINT_SERVICE_ACCOUNT_PASSWORD` |
+
+The `SHAREPOINT_*` repo-secret naming keeps these distinct from the `AZURE_*` repo secrets used for OIDC `azure/login@v2`. Bicep marks them `@secure()` so the values stay masked in deploy logs.
+
+#### One-time setup before the next infra deploy
+
+The Phase 1G commit on 2026-04-28 wired the env vars onto the staging Container App via `az containerapp secret set` + `az containerapp update --set-env-vars`. Those values now need to live as GitHub repo secrets so the Bicep deploy can re-assert them — otherwise the next full-Bicep deploy would replace the manually-set secrets with empty values, dropping the `AZURE_*` env vars and forcing the SharePoint upload path to fall back to inline-marker storage.
+
+Run once (replace each `<value>` with the production value):
+
+```bash
+gh secret set SHAREPOINT_TENANT_ID                  --body '<value>'
+gh secret set SHAREPOINT_CLIENT_ID                  --body '<value>'
+gh secret set SHAREPOINT_CLIENT_SECRET              --body '<value>'
+gh secret set SHAREPOINT_SERVICE_ACCOUNT_USERNAME   --body '<value>'
+gh secret set SHAREPOINT_SERVICE_ACCOUNT_PASSWORD   --body '<value>'
+```
+
+Empty / missing secrets don't fail the deploy — Bicep's `!empty(sharepointTenantId)` gate omits the secrets and env vars entirely, and the app silently falls back. To go back to working uploads, set the values and trigger any infra-touching deploy.
+
 ## Validation
 
 Compile the templates without deploying:

@@ -17,10 +17,23 @@ env:
 # ---------------------------------------------------------------------------
 # Required GitHub repository secrets (Settings → Secrets → Actions):
 #
-#   AZURE_CLIENT_ID          App Registration client ID (OIDC federated cred)
-#   AZURE_TENANT_ID          Azure tenant ID
-#   AZURE_SUBSCRIPTION_ID    Azure subscription ID
-#   POSTGRES_ADMIN_PASSWORD  Passed to Bicep when deployPostgres=true
+#   AZURE_CLIENT_ID                          App Registration client ID (OIDC federated cred)
+#   AZURE_TENANT_ID                          Azure tenant ID (for OIDC login)
+#   AZURE_SUBSCRIPTION_ID                    Azure subscription ID
+#   POSTGRES_ADMIN_PASSWORD                  Passed to Bicep when deployPostgres=true
+#   SHAREPOINT_TENANT_ID                     Distinct from AZURE_TENANT_ID — the tenant
+#                                            hosting the SharePoint app registration
+#   SHAREPOINT_CLIENT_ID                     SharePoint app registration client ID
+#   SHAREPOINT_CLIENT_SECRET                 SharePoint app registration client secret
+#   SHAREPOINT_SERVICE_ACCOUNT_USERNAME      Service account UPN (e.g. BenefitsCare@…)
+#   SHAREPOINT_SERVICE_ACCOUNT_PASSWORD      Service account password
+#
+# The SHAREPOINT_* secrets are passed to Bicep, which writes them to the
+# Container App secret bag and exposes them as AZURE_TENANT_ID / AZURE_CLIENT_ID
+# / AZURE_CLIENT_SECRET / AZURE_SERVICE_ACCOUNT_USERNAME / AZURE_SERVICE_ACCOUNT_PASSWORD
+# inside the running container — the names the SharePoint module already reads.
+# Repo secret names are SHAREPOINT_* to keep them distinct from the OIDC
+# AZURE_* secrets used for `azure/login@v2`.
 #
 # One-time OIDC setup (run once, replace <client-id> and <sub-id>):
 #
@@ -237,6 +250,15 @@ jobs:
         if: steps.infra.outputs.changed == 'true'
         env:
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          # SharePoint credentials. Empty values (e.g. on a fresh repo
+          # without the secrets configured) leave the corresponding
+          # Container App secrets/env vars unset, and the app falls
+          # back to inline-marker storage — no deploy failure.
+          SHAREPOINT_TENANT_ID: ${{ secrets.SHAREPOINT_TENANT_ID }}
+          SHAREPOINT_CLIENT_ID: ${{ secrets.SHAREPOINT_CLIENT_ID }}
+          SHAREPOINT_CLIENT_SECRET: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
+          SHAREPOINT_SERVICE_ACCOUNT_USERNAME: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_USERNAME }}
+          SHAREPOINT_SERVICE_ACCOUNT_PASSWORD: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_PASSWORD }}
         run: |
           az deployment group create \
             --name "staging-$(date -u +%Y%m%d-%H%M%S)" \
@@ -245,5 +267,10 @@ jobs:
             --parameters "@${PARAM_FILE}" \
             --parameters "appImage=${{ steps.acr.outputs.server }}/insurance-saas-web:${{ github.sha }}" \
             --parameters "postgresAdminPassword=${POSTGRES_ADMIN_PASSWORD}" \
+            --parameters "sharepointTenantId=${SHAREPOINT_TENANT_ID}" \
+            --parameters "sharepointClientId=${SHAREPOINT_CLIENT_ID}" \
+            --parameters "sharepointClientSecret=${SHAREPOINT_CLIENT_SECRET}" \
+            --parameters "sharepointServiceAccountUsername=${SHAREPOINT_SERVICE_ACCOUNT_USERNAME}" \
+            --parameters "sharepointServiceAccountPassword=${SHAREPOINT_SERVICE_ACCOUNT_PASSWORD}" \
             --output none
           echo "Full Bicep deploy complete."
