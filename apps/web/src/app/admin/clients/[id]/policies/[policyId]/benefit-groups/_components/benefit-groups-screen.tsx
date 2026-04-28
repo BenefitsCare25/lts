@@ -123,6 +123,13 @@ export function BenefitGroupsScreen({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // S20 — overlap-warning state. Set by checkOverlap during submit
+  // when another group's predicate intersects ours; cleared once the
+  // user acknowledges or fixes the predicate.
+  const [overlapWarning, setOverlapWarning] = useState<{
+    overlaps: { id: string; name: string; intersection: number }[];
+    noEmployeesYet: boolean;
+  } | null>(null);
 
   // Predicatable fields: STANDARD requires enabled=true; BUILTIN/CUSTOM
   // are always live as long as selectableForPredicates is true.
@@ -250,47 +257,34 @@ export function BenefitGroupsScreen({
     });
   };
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-
-    // Validate every row before building JSONLogic.
+  // Build the JSONLogic payload from the current form, returning an
+  // error string for inline display. Used by both submit and the
+  // pre-submit overlap check.
+  const buildPredicate = (): { predicate: unknown } | { error: string } => {
     const rows: PredicateRow[] = [];
     for (const r of form.rows) {
-      if (!r.field) {
-        setFormError('Pick a field for every condition.');
-        return;
-      }
-      if (!r.operator) {
-        setFormError('Pick an operator for every condition.');
-        return;
-      }
+      if (!r.field) return { error: 'Pick a field for every condition.' };
+      if (!r.operator) return { error: 'Pick an operator for every condition.' };
       const field = fieldByName.get(r.field);
       if (!field) {
-        setFormError(`Field "${r.field}" no longer exists in the employee schema.`);
-        return;
+        return { error: `Field "${r.field}" no longer exists in the employee schema.` };
       }
       const op = operatorsByType[field.type]?.find((o) => o.code === r.operator);
       if (!op) {
-        setFormError(`Operator "${r.operator}" doesn't apply to ${field.type} fields.`);
-        return;
+        return { error: `Operator "${r.operator}" doesn't apply to ${field.type} fields.` };
       }
       const built = buildRow(r, field, op);
-      if (typeof built === 'string') {
-        setFormError(built);
-        return;
-      }
+      if (typeof built === 'string') return { error: built };
       rows.push(built);
     }
-
-    let predicate: unknown;
     try {
-      predicate = uiPredicateToJsonLogic({ connector: form.connector, rows });
+      return { predicate: uiPredicateToJsonLogic({ connector: form.connector, rows }) };
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Failed to build predicate.');
-      return;
+      return { error: err instanceof Error ? err.message : 'Failed to build predicate.' };
     }
+  };
 
+  const persist = (predicate: unknown) => {
     const payload = {
       data: {
         name: form.name.trim(),
@@ -298,12 +292,62 @@ export function BenefitGroupsScreen({
         predicate,
       },
     };
-
     if (editingId) {
       update.mutate({ id: editingId, ...payload });
     } else {
       create.mutate({ policyId, ...payload });
     }
+  };
+
+  const [checkingOverlap, setCheckingOverlap] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setOverlapWarning(null);
+
+    const built = buildPredicate();
+    if ('error' in built) {
+      setFormError(built.error);
+      return;
+    }
+
+    // S20 — check for overlaps with other groups on the same policy.
+    setCheckingOverlap(true);
+    try {
+      const result = await utils.benefitGroups.checkOverlap.fetch({
+        policyId,
+        predicate: built.predicate as Record<string, unknown>,
+        ...(editingId ? { excludeId: editingId } : {}),
+      });
+      if (result.overlaps.length > 0) {
+        setOverlapWarning({
+          overlaps: result.overlaps,
+          noEmployeesYet: result.noEmployeesYet,
+        });
+        return;
+      }
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to check overlaps.');
+      return;
+    } finally {
+      setCheckingOverlap(false);
+    }
+
+    persist(built.predicate);
+  };
+
+  // "Save anyway" — user has read the overlap warning and chooses to
+  // commit. Skips the check and goes straight to the persist mutation.
+  const acknowledgeAndSave = () => {
+    setOverlapWarning(null);
+    setFormError(null);
+    const built = buildPredicate();
+    if ('error' in built) {
+      setFormError(built.error);
+      return;
+    }
+    persist(built.predicate);
   };
 
   const fieldsLoading = schema.isLoading || operators.isLoading;
@@ -417,18 +461,49 @@ export function BenefitGroupsScreen({
                 />
               </div>
 
+              {overlapWarning ? (
+                <div className="card card-padded" style={{ background: 'var(--bg-soft, #fef3c7)' }}>
+                  <strong>⚠️ Predicate overlaps with existing groups</strong>
+                  <ul style={{ marginTop: '0.5rem', paddingLeft: '1.25rem' }}>
+                    {overlapWarning.overlaps.map((o) => (
+                      <li key={o.id}>
+                        <strong>{o.name}</strong> — {o.intersection} shared employee
+                        {o.intersection === 1 ? '' : 's'}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="field-help" style={{ marginTop: '0.5rem' }}>
+                    {overlapWarning.noEmployeesYet
+                      ? 'No employees yet — overlap counts will only be accurate after seeding.'
+                      : "Employees in two groups will inherit eligibility from both. If that's intentional, save anyway."}
+                  </p>
+                </div>
+              ) : null}
+
               <div className="row">
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={create.isPending || update.isPending}
+                  disabled={create.isPending || update.isPending || checkingOverlap}
                 >
-                  {create.isPending || update.isPending
-                    ? 'Saving…'
-                    : editingId
-                      ? 'Save changes'
-                      : 'Add group'}
+                  {checkingOverlap
+                    ? 'Checking…'
+                    : create.isPending || update.isPending
+                      ? 'Saving…'
+                      : editingId
+                        ? 'Save changes'
+                        : 'Add group'}
                 </button>
+                {overlapWarning ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={acknowledgeAndSave}
+                    disabled={create.isPending || update.isPending}
+                  >
+                    Save anyway
+                  </button>
+                ) : null}
                 {editingId ? (
                   <button type="button" className="btn btn-ghost" onClick={startNew}>
                     Cancel
