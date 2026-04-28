@@ -316,6 +316,12 @@ export function ClientsScreen() {
                     <td>
                       <div className="row-end">
                         <Link
+                          href={`/admin/clients/${client.id}/policies`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Policies
+                        </Link>
+                        <Link
                           href={`/admin/clients/${client.id}/edit`}
                           className="btn btn-ghost btn-sm"
                         >
