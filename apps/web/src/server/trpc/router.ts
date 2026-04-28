@@ -11,6 +11,7 @@ import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
+import { policiesRouter } from './routers/policies';
 import { poolsRouter } from './routers/pools';
 import { productTypesRouter } from './routers/product-types';
 import { referenceDataRouter } from './routers/reference-data';
@@ -24,6 +25,7 @@ export const appRouter = router({
   employeeSchema: employeeSchemaRouter,
   productTypes: productTypesRouter,
   clients: clientsRouter,
+  policies: policiesRouter,
   referenceData: referenceDataRouter,
 });
 

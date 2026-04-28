@@ -4,6 +4,43 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S14 Policy + entities
+
+**Session focus.** Land Screen 2 — Policy editor with PolicyEntity rows + rate-overrides JSONB. First story to deal with optimistic locking (Policy.versionId), and the first model that isn't directly tenant-scoped.
+
+**What landed.**
+
+- **`policies` tRPC router** under `apps/web/src/server/trpc/routers/policies.ts`. listByClient / byId / create / update / delete via `tenantProcedure`. Policy isn't in `TENANT_MODELS`, so the Prisma extension no-ops on it — every operation calls `assertClient(ctx.db, clientId)` first (a tenant-scoped findFirst that returns null cross-tenant), then runs the actual policy query against the raw `prisma` client. `byId` and `update` go further by joining through `client: { tenantId: ctx.tenantId }` for defence in depth.
+- **Optimistic locking.** `update` accepts `expectedVersionId`; the server fetches the existing row's `versionId`, throws CONFLICT on mismatch, otherwise increments by 1 inside the same transaction that recreates the entity rows. The UI carries `policy.data.versionId` from the byId response into the mutation input.
+- **PolicyEntity rows via delete-and-recreate** inside a Prisma `$transaction`, same pattern as PoolMembership in S10. Cross-row invariants enforced server-side: at most one `isMaster` entity per policy, no duplicate `policyNumber` within a policy. P2002 from the DB unique constraint surfaces as a friendly CONFLICT.
+- **`/admin/clients/[id]/policies`** — list of policies under one client + inline create form (just policy name; entities live on the edit page where the JSONB editor needs the room).
+- **`/admin/clients/[id]/policies/[policyId]/edit`** — repeating entity rows: legalName, policyNumber, address (optional), headcountEstimate (optional integer), isMaster (radio — exactly one across the form), `rateOverrides` JSON textarea. Master selector is a radio group so picking one auto-clears the others. JSON parse runs on change via `useMemo`; per-row error surface inline; submit button blocks until all rows parse. Empty text → null on save.
+- **JSON encoding for Prisma.** Wrote a tiny `rateOverridesToJson(v)` helper: `null` → `Prisma.JsonNull` (literal SQL NULL), object → `Prisma.InputJsonValue`. Same gotcha as S12.
+- **Client list deep-link.** Added a "Policies" button to each row of `/admin/clients` table, ahead of Edit / Delete.
+
+**Decisions and rationale.**
+
+1. **Don't put Policy under RLS.** Phase 1's RLS policy applies to the 8 `tenantId`-bearing tables. Policy reaches its tenant through Client. Adding RLS would either need a `tenantId` column on Policy (denormalised, drifts) or a function-based policy joining Client (more SQL surface for migrations). Application-layer assertions through `ctx.db.client` cover the case, and `findFirst` with `client: { tenantId }` is a second line of defence. Revisit if a cross-tenant Policy leak ever shows up — none can today.
+2. **Create takes only the policy name; entities go on the edit page.** Two reasons. First, entities carry rateOverrides JSON and JSON-on-create is bad UX in a single-line form. Second, mirrors how brokers actually onboard — they know the policy name when they pick up the placement slip; they figure out entity counts and rate overrides only as they read it.
+3. **Master selector is a radio, not a checkbox per row.** "Master policyholder" is at most one entity by definition; a radio group makes that constraint obvious in the UI. The server still validates because nothing prevents an admin from sending two `isMaster: true` rows via the API directly.
+4. **Optimistic lock check goes before the entity-validation transaction.** Means a stale save returns CONFLICT without burning a transaction. The version increment happens inside the transaction so a concurrent save can't slip past.
+5. **Pre-push gate is now `pnpm typecheck && pnpm check && pnpm test && pnpm build`.** Last session's S13 push tripped CI because I ran `pnpm lint` (lint only) instead of `pnpm check` (lint + format). Going forward: `check`, not `lint`.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` all clean before push.
+- New routes in build manifest: `/admin/clients/[id]/policies` (1.6 kB), `/admin/clients/[id]/policies/[policyId]/edit` (2.51 kB).
+- 11/11 unit tests still pass.
+
+**Open items / next.**
+
+- **S15 Product selection (Screen 3).** First story that exercises `Insurer.productsSupported` as a filter on the product-row dropdown. CUBER = 10 products spanning Tokio Marine + Zurich + Allied World.
+- **S16 Catalogue seed scripts.** Seed the 12 default ProductTypes per v2 §3.5; will populate the now-empty `/admin/catalogue/product-types` table on staging.
+- **S17 Benefit year + draft state.** Auto-create the first BenefitYear in DRAFT when a Policy is created. Likely surface as a sub-tab on the policy edit page.
+- **S14 deferrals.** Plan §6.2 mentions Policy-level "Period start/end" and "Currency" fields — those belong on BenefitYear (start/end) and aren't yet on Policy at all. Currency is missing from the schema; will revisit at S17 alongside BenefitYear UI. Per-entity rateOverrides "drill-down" from §6.2 ships as a JSON textarea here — a structured per-product override editor lands at S21 (per-product config) where the catalogue schemas are already in scope.
+
+---
+
 ## 2026-04-28 — Phase 1C kick-off (S13)
 
 **Session focus.** Open Phase 1C — Client onboarding. Land S13 (Client CRUD, Screen 1) so we have a real list of broker clients to hang policies off in S14+.
