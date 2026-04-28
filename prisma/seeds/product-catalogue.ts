@@ -193,6 +193,7 @@ const ge = (
   sheet: string,
   plansBlock: { startRow: number; endRow: number; codeColumn: string },
   ratesBlock: { startRow: number; endRow: number },
+  rateColumnMap?: object,
 ) => ({
   insurer_code: 'GE_LIFE',
   template_version: 'GE_STM_2026_v1',
@@ -213,6 +214,7 @@ const ge = (
   plans_block: { sheet, ...plansBlock },
   rates_block: { sheet, ...ratesBlock },
   policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
+  ...(rateColumnMap ? { rate_column_map: rateColumnMap } : {}),
 });
 
 const GE_GTL_RULES = ge(
@@ -221,6 +223,8 @@ const GE_GTL_RULES = ge(
   // the basis text "additional above Plan B/A" (post-parse heuristic).
   { startRow: 21, endRow: 24, codeColumn: 'D' },
   { startRow: 29, endRow: 32 },
+  // Rate row: D=plan, E=Sum Insured, F=Rate per S$1,000, G=Annual Premium.
+  { planMatch: 'D', ratePerThousand: 'F' },
 );
 
 const GE_GHS_RULES = ge(
@@ -228,6 +232,17 @@ const GE_GHS_RULES = ge(
   // Plans 1-6 in column I; 4/5/6 are FW variants.
   { startRow: 22, endRow: 27, codeColumn: 'I' },
   { startRow: 32, endRow: 37 },
+  // Rate row: D=plan, then pairs of (rate, premium) per cover tier.
+  // E=EO_rate, F=EO_premium, G=ES_rate, H=ES_premium, I=EC_rate, J=EC_premium, K=EF_rate.
+  {
+    planMatch: 'D',
+    tiers: [
+      { tier: 'EO', rateColumn: 'E' },
+      { tier: 'ES', rateColumn: 'G' },
+      { tier: 'EC', rateColumn: 'I' },
+      { tier: 'EF', rateColumn: 'K' },
+    ],
+  },
 );
 
 const GE_GMM_RULES = ge(
@@ -238,6 +253,16 @@ const GE_GMM_RULES = ge(
   // the live STM slip).
   { startRow: 22, endRow: 24, codeColumn: 'D' },
   { startRow: 30, endRow: 32 },
+  // Same per-tier shape as GHS.
+  {
+    planMatch: 'D',
+    tiers: [
+      { tier: 'EO', rateColumn: 'E' },
+      { tier: 'ES', rateColumn: 'G' },
+      { tier: 'EC', rateColumn: 'I' },
+      { tier: 'EF', rateColumn: 'K' },
+    ],
+  },
 );
 
 const GE_SP_RULES = ge(
@@ -245,6 +270,15 @@ const GE_SP_RULES = ge(
   // Same as GMM — category text in column D is the plan identifier.
   { startRow: 21, endRow: 23, codeColumn: 'D' },
   { startRow: 29, endRow: 31 },
+  {
+    planMatch: 'D',
+    tiers: [
+      { tier: 'EO', rateColumn: 'E' },
+      { tier: 'ES', rateColumn: 'G' },
+      { tier: 'EC', rateColumn: 'I' },
+      { tier: 'EF', rateColumn: 'K' },
+    ],
+  },
 );
 
 // Zurich — STM-calibrated. Same header layout as GE; plan/rate blocks
@@ -268,6 +302,8 @@ const ZURICH_GPA_RULES = {
   plans_block: { sheet: 'Zurich-GPA', startRow: 20, endRow: 23, codeColumn: 'D' },
   rates_block: { sheet: 'Zurich-GPA', startRow: 28, endRow: 31 },
   policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
+  // Rate row: D=plan, E=Sum Insured, F=Rate per S$1,000, G=Annual Premium.
+  rate_column_map: { planMatch: 'D', ratePerThousand: 'F' },
 };
 
 // Chubb — STM-calibrated. Note the leading space in the sheet name —
@@ -291,6 +327,8 @@ const CHUBB_GBT_RULES = {
   plans_block: { sheet: ' Chubb -GBT', startRow: 21, endRow: 21, codeColumn: 'D' },
   rates_block: { sheet: ' Chubb -GBT', startRow: 25, endRow: 25 },
   policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
+  // GBT is per_headcount_flat — col F is the rate, col G the premium.
+  rate_column_map: { planMatch: 'D', fixedAmount: 'F' },
 };
 
 // Allianz — STM-calibrated. Header sits one column right (col D not C)
@@ -326,6 +364,10 @@ const ALLIANZ_WICI_RULES = {
     ],
   },
   policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
+  // WICI is per_individual_earnings: D=category, E=Estimated Annual
+  // Earnings, F=Rate, G=Annual Premium. PremiumRates emerge per
+  // (plan, block) — applyToCatalogue dedupes by plan code.
+  rate_column_map: { planMatch: 'D', ratePerThousand: 'F' },
 };
 
 // Compose insurer-specific parsing rules into a per-product map. Each
