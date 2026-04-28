@@ -154,6 +154,8 @@ export const placementSlipsRouter = router({
           status: 'FAILED',
           detectedTemplate: null,
           products: [],
+          policyEntities: [],
+          benefitGroups: [],
           issues: [
             {
               severity: 'error',
