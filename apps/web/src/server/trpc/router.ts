@@ -13,6 +13,7 @@ import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
+import { plansRouter } from './routers/plans';
 import { policiesRouter } from './routers/policies';
 import { poolsRouter } from './routers/pools';
 import { productTypesRouter } from './routers/product-types';
@@ -32,6 +33,7 @@ export const appRouter = router({
   benefitYears: benefitYearsRouter,
   benefitGroups: benefitGroupsRouter,
   products: productsRouter,
+  plans: plansRouter,
   referenceData: referenceDataRouter,
 });
 

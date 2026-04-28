@@ -14,12 +14,13 @@ import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
 import { ProductDetailsTab } from './product-details-tab';
+import { ProductPlansTab } from './product-plans-tab';
 
 type Tab = 'details' | 'plans' | 'eligibility' | 'premium';
 
 const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'details', label: 'Details', available: true },
-  { id: 'plans', label: 'Plans', available: false },
+  { id: 'plans', label: 'Plans', available: true },
   { id: 'eligibility', label: 'Eligibility', available: false },
   { id: 'premium', label: 'Premium', available: false },
 ];
@@ -82,6 +83,14 @@ export function ProductEditScreen({
 
       {tab === 'details' ? (
         <ProductDetailsTab productId={productId} editable={editable} />
+      ) : tab === 'plans' ? (
+        <ProductPlansTab
+          clientId={clientId}
+          policyId={policyId}
+          benefitYearId={benefitYearId}
+          productId={productId}
+          editable={editable}
+        />
       ) : (
         <section className="section">
           <p className="field-help">This sub-tab lands in a later story.</p>
