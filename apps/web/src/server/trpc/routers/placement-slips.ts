@@ -553,13 +553,131 @@ export const placementSlipsRouter = router({
         }
       }
 
-      // Note PremiumRate / BenefitGroup deferral to the broker.
-      skipped.push({
-        reason: 'PREMIUM_RATES_DEFERRED',
-        detail:
-          'Rate row → PremiumRate mapping needs per-insurer column calibration; ' +
-          'broker enters rates via the Premium tab on each Product.',
-      });
+      // ── PremiumRate creation ─────────────────────────────────
+      // Walk each parsed product's rate rows per its rate_column_map
+      // and emit PremiumRate rows. Idempotent via deleteMany on the
+      // product before recreating — re-applying the same payload
+      // produces the same set, no dupes.
+      let premiumRatesCreated = 0;
+      for (const parsed of parseResult.products) {
+        const insurerId = insurerCache.get(parsed.templateInsurerCode);
+        const productType = productTypeCache.get(parsed.productTypeCode);
+        if (!insurerId || !productType) continue;
+        const product = await prisma.product.findFirst({
+          where: { benefitYearId: input.benefitYearId, productTypeId: productType.id },
+          select: { id: true },
+        });
+        if (!product) continue;
+
+        // Find the rate_column_map for this product's matching rule.
+        // Pull from the catalogue rather than the parsed payload — the
+        // parser's `rates` rows don't carry the column map themselves.
+        const productTypeRow = await prisma.productType.findUnique({
+          where: { id: productType.id },
+          select: { parsingRules: true },
+        });
+        const templates =
+          (productTypeRow?.parsingRules as { templates?: Record<string, ParsingRules> } | null)
+            ?.templates ?? {};
+        const rules = templates[parsed.templateInsurerCode];
+        const map = rules?.rate_column_map;
+        if (!map) {
+          skipped.push({
+            reason: 'NO_RATE_COLUMN_MAP',
+            detail: `${parsed.productTypeCode} via ${parsed.templateInsurerCode}: parsingRules has no rate_column_map; rates can be entered via the Premium tab.`,
+          });
+          continue;
+        }
+
+        // Look up plans by the same code-derivation logic the apply
+        // step used so we can resolve a rate's plan label → planId.
+        const allPlans = await prisma.plan.findMany({
+          where: { productId: product.id },
+          select: { id: true, code: true, name: true },
+        });
+        const planByLabel = new Map<string, string>();
+        for (const p of allPlans) {
+          // Match by name (full label) and by code; let either
+          // resolve a rate row's plan reference.
+          planByLabel.set(p.name.toLowerCase(), p.id);
+          planByLabel.set(p.code.toLowerCase(), p.id);
+        }
+
+        const colIndex = (letter: string) => letter.toUpperCase().charCodeAt(0) - 64;
+        const planMatchKey = `col${colIndex(map.planMatch)}`;
+
+        // Wipe + rebuild so re-apply is deterministic.
+        await prisma.premiumRate.deleteMany({ where: { productId: product.id } });
+
+        const ratesToCreate: {
+          productId: string;
+          planId: string;
+          coverTier: string | null;
+          ratePerThousand: number | null;
+          fixedAmount: number | null;
+        }[] = [];
+
+        for (const rateRow of parsed.rates) {
+          const rawLabel = rateRow[planMatchKey];
+          if (!rawLabel) continue;
+          const labelStr = String(rawLabel).trim().toLowerCase();
+          // Match "Plan A: …" → "plan a:" or just "1" → "1".
+          let planId: string | undefined;
+          for (const [k, v] of planByLabel) {
+            if (k.startsWith(labelStr) || labelStr.startsWith(k)) {
+              planId = v;
+              break;
+            }
+          }
+          if (!planId) continue;
+
+          if (map.tiers && map.tiers.length > 0) {
+            // per_cover_tier: one PremiumRate per (plan, tier).
+            for (const t of map.tiers) {
+              const cell = rateRow[`col${colIndex(t.rateColumn)}`];
+              const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
+              if (!Number.isFinite(num) || num <= 0) continue;
+              ratesToCreate.push({
+                productId: product.id,
+                planId,
+                coverTier: t.tier,
+                ratePerThousand: null,
+                fixedAmount: num,
+              });
+            }
+          } else if (map.ratePerThousand) {
+            const cell = rateRow[`col${colIndex(map.ratePerThousand)}`];
+            const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
+            if (Number.isFinite(num) && num > 0) {
+              ratesToCreate.push({
+                productId: product.id,
+                planId,
+                coverTier: null,
+                ratePerThousand: num,
+                fixedAmount: null,
+              });
+            }
+          } else if (map.fixedAmount) {
+            const cell = rateRow[`col${colIndex(map.fixedAmount)}`];
+            const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
+            if (Number.isFinite(num) && num > 0) {
+              ratesToCreate.push({
+                productId: product.id,
+                planId,
+                coverTier: null,
+                ratePerThousand: null,
+                fixedAmount: num,
+              });
+            }
+          }
+        }
+
+        if (ratesToCreate.length > 0) {
+          await prisma.premiumRate.createMany({ data: ratesToCreate });
+          premiumRatesCreated += ratesToCreate.length;
+        }
+      }
+
       if ((parseResult.benefitGroups?.length ?? 0) > 0) {
         skipped.push({
           reason: 'BENEFIT_GROUPS_DEFERRED',
@@ -579,6 +697,7 @@ export const placementSlipsRouter = router({
           productsUpserted,
           plansCreated,
           stacksOnResolved,
+          premiumRatesCreated,
           skipped,
         },
       };

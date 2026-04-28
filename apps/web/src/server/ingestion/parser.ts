@@ -122,21 +122,42 @@ export type ParsingRules = {
     legalNameColumn: string;
     masterRow?: number; // 1-indexed row that's flagged as master; defaults to startRow.
   };
+  // Maps rate-block columns to PremiumRate fields. applyToCatalogue
+  // walks parsed.rates per this map and emits one PremiumRate row
+  // per (plan, [coverTier]) combination. Shape varies by premium
+  // strategy:
+  //
+  //   salary_multiple / fixed_amount → set `ratePerThousand` (1 col)
+  //   per_cover_tier                 → set `tiers` array (one col per tier)
+  //   headcount_flat                 → set `fixedAmount` (1 col)
+  //   earnings                       → set `ratePerThousand` (1 col), per-block
+  //
+  // `planMatch` is the column carrying the plan label/number that
+  // links rate rows to the plans extracted from plans_block.
+  rate_column_map?: {
+    planMatch: string;
+    ratePerThousand?: string;
+    fixedAmount?: string;
+    tiers?: { tier: 'EO' | 'ES' | 'EC' | 'EF'; rateColumn: string }[];
+  };
 };
 
-// Reads a cell value as a primitive. exceljs returns rich objects
-// for formulas; we unwrap to .result when present.
-function readCell(workbook: ExcelJS.Workbook, sheet: string, address: string): unknown {
-  const ws = workbook.getWorksheet(sheet);
-  if (!ws) return null;
-  const cell = ws.getCell(address);
-  const v = cell.value;
-  if (v && typeof v === 'object' && 'result' in v) return v.result;
+// Unwraps an exceljs cell value to a primitive. exceljs returns rich
+// objects for formulas (`.result`) and rich-text (`.richText`); we
+// flatten them so downstream code sees plain strings/numbers.
+function unwrapCellValue(v: unknown): unknown {
+  if (v && typeof v === 'object' && 'result' in v) return (v as { result: unknown }).result;
   if (v && typeof v === 'object' && 'richText' in v) {
     const parts = (v as { richText: { text: string }[] }).richText;
     return parts.map((p) => p.text).join('');
   }
   return v ?? null;
+}
+
+function readCell(workbook: ExcelJS.Workbook, sheet: string, address: string): unknown {
+  const ws = workbook.getWorksheet(sheet);
+  if (!ws) return null;
+  return unwrapCellValue(ws.getCell(address).value);
 }
 
 // Parses a single Product instance using its parsingRules.
@@ -170,11 +191,11 @@ function parseProduct(
     if (ws) {
       for (let r = rules.plans_block.startRow; r <= rules.plans_block.endRow; r++) {
         const codeCell = ws.getCell(`${rules.plans_block.codeColumn}${r}`);
-        const code = codeCell.value;
+        const code = unwrapCellValue(codeCell.value);
         if (!code) break; // first empty row terminates the block
         const row: Record<string, unknown> = {};
         ws.getRow(r).eachCell((cell, col) => {
-          row[`col${col}`] = cell.value;
+          row[`col${col}`] = unwrapCellValue(cell.value);
         });
         const codeStr = String(code);
         // Detect "additional above Plan X" — the rider-stack hint that
@@ -215,7 +236,7 @@ function parseProduct(
           const obj: Record<string, unknown> = { _blockIndex: blockIndex };
           if (block.label) obj._blockLabel = block.label;
           row.eachCell((cell, col) => {
-            obj[`col${col}`] = cell.value;
+            obj[`col${col}`] = unwrapCellValue(cell.value);
           });
           if (Object.keys(obj).length > 1) rates.push(obj);
         }
@@ -229,7 +250,7 @@ function parseProduct(
         if (!row.hasValues) continue;
         const obj: Record<string, unknown> = {};
         row.eachCell((cell, col) => {
-          obj[`col${col}`] = cell.value;
+          obj[`col${col}`] = unwrapCellValue(cell.value);
         });
         if (Object.keys(obj).length > 0) rates.push(obj);
       }
