@@ -98,71 +98,82 @@ export async function seedTwoTenants(): Promise<TwoTenants> {
 }
 
 async function seedOneTenant(slug: string): Promise<SeededTenant> {
+  // Tenant has no tenantId column and isn't RLS-scoped — create first
+  // outside the transaction so we have its id to set as the RLS scope.
   const tenant = await testPrisma.tenant.create({
     data: { name: `Tenant ${slug}`, slug: `${slug}-${Date.now()}-${Math.random()}` },
   });
 
-  const user = await testPrisma.user.create({
-    data: {
+  // Wrap the rest in a transaction so `set_config('app.current_tenant_id', …)`
+  // stays bound to a single connection across every insert. Without
+  // the transaction, Prisma's connection pool may hand out a fresh
+  // connection without the GUC set, and once RLS is enforced under a
+  // non-superuser role the WITH CHECK clauses would reject the writes.
+  return testPrisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenant.id}, false)`;
+
+    const user = await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        email: `${slug}-${Date.now()}@test.local`,
+        role: 'BROKER_ADMIN',
+      },
+    });
+
+    const insurer = await tx.insurer.create({
+      data: {
+        tenantId: tenant.id,
+        name: `${slug} Insurer`,
+        code: 'TM_LIFE',
+        productsSupported: ['GTL', 'GHS'],
+        claimFeedProtocol: 'IHP',
+        active: true,
+      },
+    });
+
+    const client = await tx.client.create({
+      data: {
+        tenantId: tenant.id,
+        legalName: `${slug} Client Pte Ltd`,
+        uen: '123456789K',
+        countryOfIncorporation: 'SG',
+        address: '1 Marina Bay',
+        status: 'ACTIVE',
+      },
+    });
+
+    const policy = await tx.policy.create({
+      data: { clientId: client.id, name: `${slug} Group Policy` },
+    });
+
+    const benefitYear = await tx.benefitYear.create({
+      data: {
+        policyId: policy.id,
+        startDate: new Date('2026-01-01'),
+        endDate: new Date('2026-12-31'),
+        state: 'DRAFT',
+      },
+    });
+
+    const employee = await tx.employee.create({
+      data: {
+        clientId: client.id,
+        data: { 'employee.email': `${slug}-emp@test.local` },
+        hireDate: new Date('2026-01-01'),
+        status: 'ACTIVE',
+      },
+    });
+
+    return {
       tenantId: tenant.id,
-      email: `${slug}-${Date.now()}@test.local`,
-      role: 'BROKER_ADMIN',
-    },
-  });
-
-  const insurer = await testPrisma.insurer.create({
-    data: {
-      tenantId: tenant.id,
-      name: `${slug} Insurer`,
-      code: 'TM_LIFE',
-      productsSupported: ['GTL', 'GHS'],
-      claimFeedProtocol: 'IHP',
-      active: true,
-    },
-  });
-
-  const client = await testPrisma.client.create({
-    data: {
-      tenantId: tenant.id,
-      legalName: `${slug} Client Pte Ltd`,
-      uen: '123456789K',
-      countryOfIncorporation: 'SG',
-      address: '1 Marina Bay',
-      status: 'ACTIVE',
-    },
-  });
-
-  const policy = await testPrisma.policy.create({
-    data: { clientId: client.id, name: `${slug} Group Policy` },
-  });
-
-  const benefitYear = await testPrisma.benefitYear.create({
-    data: {
-      policyId: policy.id,
-      startDate: new Date('2026-01-01'),
-      endDate: new Date('2026-12-31'),
-      state: 'DRAFT',
-    },
-  });
-
-  const employee = await testPrisma.employee.create({
-    data: {
+      userId: user.id,
+      insurerId: insurer.id,
       clientId: client.id,
-      data: { 'employee.email': `${slug}-emp@test.local` },
-      hireDate: new Date('2026-01-01'),
-      status: 'ACTIVE',
-    },
+      policyId: policy.id,
+      benefitYearId: benefitYear.id,
+      employeeId: employee.id,
+    };
   });
-
-  return {
-    tenantId: tenant.id,
-    userId: user.id,
-    insurerId: insurer.id,
-    clientId: client.id,
-    policyId: policy.id,
-    benefitYearId: benefitYear.id,
-    employeeId: employee.id,
-  };
 }
 
 // Build a tRPC caller for a given userId. The session.user.tenantId
