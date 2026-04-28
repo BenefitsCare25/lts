@@ -22,6 +22,7 @@
     "prisma": "prisma",
     "postinstall": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
+    "seed:catalogue": "tsx prisma/seed-catalogue.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },
