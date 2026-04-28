@@ -20,7 +20,7 @@ import {
 } from '@insurance-saas/shared-types';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // Zod schema lives here (not shared-types) to avoid a dual-package
 // zod brand collision that would erase tRPC's input type inference.
@@ -153,7 +153,7 @@ export const employeeSchemaRouter = router({
     return loadFields(ctx.db, ctx.tenantId);
   }),
 
-  setStandardEnabled: tenantProcedure
+  setStandardEnabled: adminProcedure
     .input(z.object({ name: z.string().min(1), enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       const { id, fields } = await loadFields(ctx.db, ctx.tenantId);
@@ -165,7 +165,7 @@ export const employeeSchemaRouter = router({
       return persistFields(ctx.db, id, next);
     }),
 
-  addCustom: tenantProcedure.input(customFieldSchema).mutation(async ({ ctx, input }) => {
+  addCustom: adminProcedure.input(customFieldSchema).mutation(async ({ ctx, input }) => {
     const { id, fields } = await loadFields(ctx.db, ctx.tenantId);
     if (findField(fields, input.name)) {
       throw new TRPCError({
@@ -176,7 +176,7 @@ export const employeeSchemaRouter = router({
     return persistFields(ctx.db, id, [...fields, buildCustomField(input)]);
   }),
 
-  updateCustom: tenantProcedure
+  updateCustom: adminProcedure
     .input(z.object({ name: z.string().min(1), data: customFieldSchema }))
     .mutation(async ({ ctx, input }) => {
       const { id, fields } = await loadFields(ctx.db, ctx.tenantId);
@@ -192,7 +192,7 @@ export const employeeSchemaRouter = router({
       return persistFields(ctx.db, id, next);
     }),
 
-  removeCustom: tenantProcedure
+  removeCustom: adminProcedure
     .input(z.object({ name: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { id, fields } = await loadFields(ctx.db, ctx.tenantId);

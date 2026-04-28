@@ -15,7 +15,7 @@
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 const memberSchema = z.object({
   insurerId: z.string().min(1),
@@ -64,7 +64,7 @@ export const poolsRouter = router({
     return pool;
   }),
 
-  create: tenantProcedure.input(poolInputSchema).mutation(async ({ ctx, input }) => {
+  create: adminProcedure.input(poolInputSchema).mutation(async ({ ctx, input }) => {
     await assertInsurersBelongToTenant(
       ctx.db,
       input.members.map((m) => m.insurerId),
@@ -85,7 +85,7 @@ export const poolsRouter = router({
     });
   }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1), data: poolInputSchema }))
     .mutation(async ({ ctx, input }) => {
       await assertInsurersBelongToTenant(
@@ -118,7 +118,7 @@ export const poolsRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {

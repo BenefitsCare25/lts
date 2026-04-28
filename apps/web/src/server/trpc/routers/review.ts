@@ -18,7 +18,7 @@ import { prisma } from '@/server/db/client';
 import { UserRole } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // Same role gate as benefit-years.setState — only admin roles publish.
 const PUBLISH_ROLES = new Set<UserRole>([UserRole.TENANT_ADMIN, UserRole.BROKER_ADMIN]);
@@ -283,7 +283,7 @@ export const reviewRouter = router({
   // S28 — publish a DRAFT BenefitYear. Re-runs validate; if any
   // blockers exist or the optimistic lock disagrees, rejects. Stamps
   // publishedAt + publishedBy and bumps the policy versionId.
-  publish: tenantProcedure
+  publish: adminProcedure
     .input(
       z.object({
         benefitYearId: z.string().min(1),

@@ -13,7 +13,7 @@ import type { StrategyPlan, StrategyRate } from '@/server/premium-strategies/typ
 import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 async function loadProductForPremium(tenantId: string, productId: string) {
   const product = await prisma.product.findFirst({
@@ -122,7 +122,7 @@ export const premiumRatesRouter = router({
       };
     }),
 
-  setForProduct: tenantProcedure
+  setForProduct: adminProcedure
     .input(
       z.object({
         productId: z.string().min(1),

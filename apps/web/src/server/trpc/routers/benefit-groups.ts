@@ -22,7 +22,7 @@ import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import jsonLogic from 'json-logic-js';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // JSONLogic predicates are evaluated server-side (preview + overlap +
 // employee auto-match) on every employee, so an unbounded predicate
@@ -165,7 +165,7 @@ export const benefitGroupsRouter = router({
     return bg;
   }),
 
-  create: tenantProcedure
+  create: adminProcedure
     .input(z.object({ policyId: z.string().min(1), data: benefitGroupInputSchema }))
     .mutation(async ({ ctx, input }) => {
       await assertPolicy(ctx.tenantId, input.policyId);
@@ -179,7 +179,7 @@ export const benefitGroupsRouter = router({
       });
     }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1), data: benefitGroupInputSchema }))
     .mutation(async ({ ctx, input }) => {
       await loadBenefitGroup(ctx.tenantId, input.id);
@@ -193,7 +193,7 @@ export const benefitGroupsRouter = router({
       });
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       await loadBenefitGroup(ctx.tenantId, input.id);

@@ -23,7 +23,7 @@ import { prisma } from '@/server/db/client';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 const planInputSchema = z.object({
   code: z
@@ -212,7 +212,7 @@ export const plansRouter = router({
     return plan;
   }),
 
-  create: tenantProcedure
+  create: adminProcedure
     .input(z.object({ productId: z.string().min(1) }).and(planInputSchema))
     .mutation(async ({ ctx, input }) => {
       const product = await loadProductWithBenefitYear(ctx.tenantId, input.productId);
@@ -249,7 +249,7 @@ export const plansRouter = router({
       }
     }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1) }).and(planInputSchema))
     .mutation(async ({ ctx, input }) => {
       const existing = await loadPlanWithProduct(ctx.tenantId, input.id);
@@ -291,7 +291,7 @@ export const plansRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const existing = await loadPlanWithProduct(ctx.tenantId, input.id);

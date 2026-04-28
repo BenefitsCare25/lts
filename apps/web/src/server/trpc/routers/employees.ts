@@ -15,7 +15,7 @@ import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import jsonLogic from 'json-logic-js';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // Build a JSON Schema from the tenant's EmployeeSchema fields.
 // Used to validate Employee.data on every write.
@@ -153,7 +153,7 @@ export const employeesRouter = router({
     return fieldsToJsonSchema(fields);
   }),
 
-  create: tenantProcedure
+  create: adminProcedure
     .input(z.object({ clientId: z.string().min(1) }).and(employeeInputSchema))
     .mutation(async ({ ctx, input }) => {
       await assertClient(ctx.tenantId, input.clientId);
@@ -187,7 +187,7 @@ export const employeesRouter = router({
       return { ...created, matchedGroups: matches };
     }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1) }).and(employeeInputSchema))
     .mutation(async ({ ctx, input }) => {
       const existing = await prisma.employee.findUnique({ where: { id: input.id } });
@@ -223,7 +223,7 @@ export const employeesRouter = router({
       });
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const existing = await prisma.employee.findUnique({ where: { id: input.id } });
@@ -238,7 +238,7 @@ export const employeesRouter = router({
   // S34 — CSV bulk import. Caller passes parsed rows + header→field
   // map; server validates each row, creates Employee records,
   // returns successes + per-row failures so the UI can surface them.
-  importCsv: tenantProcedure
+  importCsv: adminProcedure
     .input(
       z.object({
         clientId: z.string().min(1),

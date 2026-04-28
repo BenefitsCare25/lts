@@ -14,7 +14,7 @@ import { prisma } from '@/server/db/client';
 import { ClientStatus, Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 const clientInputSchema = z.object({
   legalName: z.string().trim().min(1).max(200),
@@ -111,12 +111,12 @@ export const clientsRouter = router({
     return client;
   }),
 
-  create: tenantProcedure.input(clientInputSchema).mutation(async ({ ctx, input }) => {
+  create: adminProcedure.input(clientInputSchema).mutation(async ({ ctx, input }) => {
     await assertCountryAndIndustry(input);
     return ctx.db.client.create({ data: { ...input, tenantId: ctx.tenantId } });
   }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1), data: clientInputSchema }))
     .mutation(async ({ ctx, input }) => {
       await assertCountryAndIndustry(input.data);
@@ -130,7 +130,7 @@ export const clientsRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {
