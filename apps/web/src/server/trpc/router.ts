@@ -7,11 +7,13 @@
 // =============================================================
 
 import { router } from './init';
+import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
 import { poolsRouter } from './routers/pools';
 import { productTypesRouter } from './routers/product-types';
+import { referenceDataRouter } from './routers/reference-data';
 import { tpasRouter } from './routers/tpas';
 
 export const appRouter = router({
@@ -21,6 +23,8 @@ export const appRouter = router({
   tpas: tpasRouter,
   employeeSchema: employeeSchemaRouter,
   productTypes: productTypesRouter,
+  clients: clientsRouter,
+  referenceData: referenceDataRouter,
 });
 
 export type AppRouter = typeof appRouter;

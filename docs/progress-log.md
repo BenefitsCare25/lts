@@ -4,6 +4,42 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — Phase 1C kick-off (S13)
+
+**Session focus.** Open Phase 1C — Client onboarding. Land S13 (Client CRUD, Screen 1) so we have a real list of broker clients to hang policies off in S14+.
+
+**What landed.**
+
+- **`referenceData` tRPC router** under `apps/web/src/server/trpc/routers/reference-data.ts`. Three queries — `countries`, `currencies`, `industries` — backed by the system-level `Country`/`Currency`/`Industry` tables seeded in S6. These tables are *not* tenant-scoped, so the router uses `protectedProcedure` (signed in is enough) rather than `tenantProcedure`. The Prisma extension that auto-injects `tenantId` would no-op on these models anyway since they aren't in the `TENANT_MODELS` set, but using a non-tenant procedure makes the intent explicit.
+- **`clients` tRPC router** with full list / byId / create / update / delete via `tenantProcedure`. Zod input schema mirrors v2 §6.1 fields. Optional fields (`tradingName`, `industry`, `primaryContactName`, `primaryContactEmail`) are normalised to `null` at the schema layer so empty strings can't sneak through. Email field uses Zod's `.email()`. Status accepts `ClientStatus` via `z.nativeEnum`. Delete handles P2003 (foreign-key) as a friendly "linked policies/employees, remove those first" conflict — relevant once S14 adds Policy rows.
+- **Server-side UEN validation** via `assertCountryAndIndustry`: loads the Country, runs `RegExp(country.uenPattern).test(uen)` if a pattern is present (SG `^[0-9]{8,10}[A-Z]$`, MY `^[0-9]{6,12}-[A-Z0-9]$`). Industry is range-checked against the SSIC seed when provided. Both run on create and update — the form is convenient, but the server is authoritative.
+- **`/admin/clients` list + inline create form**. Live UEN preview: as the user types, the form re-runs the country's regex client-side and surfaces "Does not match expected format" inline + disables the Submit button until the format clears. The Submit button still posts to a server that re-validates — client preview is UX only.
+- **`/admin/clients/[id]/edit`**. Same field set plus a Status select (Active / Draft / Archived). `ClientStatus` is mirrored as a literal-union type in the client component to keep `@prisma/client` out of the browser bundle (cut the page bundle from 18.4 kB → 2.04 kB).
+- **Nav.** Admin header now leads with `Clients` ahead of the catalogue nav links.
+
+**Decisions and rationale.**
+
+1. **Reference data goes through tRPC, not direct DB calls in server components.** Two reasons. First, the create form is a client component (uses `useState` for form state), so it has to fetch via tRPC anyway. Second, having a single `referenceData` router gives later screens (S14 currency dropdown, S33 employee fk_lookup) a stable place to add to.
+2. **UEN regex evaluated server-side, even though the input has a `pattern` attribute.** Browser pattern validation is for UX only — anyone with curl can hit the endpoint. Authoritative validation lives next to the row write.
+3. **`industry` stays a free-form FK to `Industry.code`, not a strict relation.** v2 §6.1 says "Industry: dropdown from Global Reference: Industries (SSIC)" — but the SSIC code set evolves (2025 revision pending). A loose FK validated at the app layer lets us accept any seeded code today and migrate later without schema rewrites. Same model already used for `Client.countryOfIncorporation`.
+4. **Email is `.nullable().or(z.literal(''))`.** Browsers submit empty form fields as `''`, not `undefined`. Without the literal-`''` branch, Zod fails the `.email()` check on what the user perceives as "I left this blank". Normalising to `null` at the schema boundary keeps the rest of the codebase simple.
+5. **Don't import `ClientStatus` from `@prisma/client` in client components.** Prisma's runtime is server-only and pulling its type re-export drags ~16 kB of unrelated code into the page bundle. A 3-string literal union mirrors the enum at zero cost; the server route still validates via `z.nativeEnum(ClientStatus)`.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm lint && pnpm test && pnpm build` clean.
+- New routes in build manifest: `/admin/clients` (2.52 kB), `/admin/clients/[id]/edit` (2.04 kB).
+- Existing 11 unit tests still pass.
+
+**Open items / next.**
+
+- **S14 Policy + entities (Screen 2).** Add the Policy + PolicyEntity CRUD under a client. STM client requires three PolicyEntities each with own policy number. `rateOverrides` JSONB.
+- **S15 Product selection (Screen 3).** First story that filters the insurer dropdown by ProductType.code matching `Insurer.productsSupported`.
+- **S16 Catalogue seed scripts.** Seed the 12 default ProductTypes per v2 §3.5 with schemas, planSchemas, premiumStrategy refs, and Tokio Marine + Great Eastern parsing rules. Empty-state hint on `/admin/catalogue/product-types` will go away once this runs.
+- **S17 Benefit year + draft state.** Auto-create the first BenefitYear in DRAFT when a Policy is created.
+
+---
+
 ## 2026-04-27 — Phase 1B close-out (S10, S11, S12)
 
 **Session focus.** Land the remaining three Phase 1B stories — Pool Registry, Employee Schema editor, Product Catalogue editor — and close the phase with a complete catalogue layer ready to feed Phase 1C client onboarding.
