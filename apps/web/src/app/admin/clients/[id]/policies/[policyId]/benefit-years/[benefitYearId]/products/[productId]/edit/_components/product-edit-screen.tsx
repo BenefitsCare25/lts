@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { ProductDetailsTab } from './product-details-tab';
 import { ProductEligibilityTab } from './product-eligibility-tab';
 import { ProductPlansTab } from './product-plans-tab';
+import { ProductPremiumTab } from './product-premium-tab';
 
 type Tab = 'details' | 'plans' | 'eligibility' | 'premium';
 
@@ -23,7 +24,7 @@ const TABS: { id: Tab; label: string; available: boolean }[] = [
   { id: 'details', label: 'Details', available: true },
   { id: 'plans', label: 'Plans', available: true },
   { id: 'eligibility', label: 'Eligibility', available: true },
-  { id: 'premium', label: 'Premium', available: false },
+  { id: 'premium', label: 'Premium', available: true },
 ];
 
 export function ProductEditScreen({
@@ -94,11 +95,9 @@ export function ProductEditScreen({
         />
       ) : tab === 'eligibility' ? (
         <ProductEligibilityTab clientId={clientId} policyId={policyId} productId={productId} />
-      ) : (
-        <section className="section">
-          <p className="field-help">This sub-tab lands in a later story.</p>
-        </section>
-      )}
+      ) : tab === 'premium' ? (
+        <ProductPremiumTab productId={productId} />
+      ) : null}
     </>
   );
 }
