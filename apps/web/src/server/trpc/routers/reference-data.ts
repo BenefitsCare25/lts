@@ -33,4 +33,13 @@ export const referenceDataRouter = router({
       select: { code: true, name: true, parentCode: true },
     }),
   ),
+
+  // OperatorLibrary is system-level seed data shared across tenants.
+  // The predicate builder (S18) consumes it to populate the operator
+  // dropdown filtered by the chosen field's data type.
+  operators: protectedProcedure.query(() =>
+    prisma.operatorLibrary.findMany({
+      select: { dataType: true, operators: true },
+    }),
+  ),
 });
