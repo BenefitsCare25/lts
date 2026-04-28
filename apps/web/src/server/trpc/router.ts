@@ -16,6 +16,7 @@ import { insurersRouter } from './routers/insurers';
 import { plansRouter } from './routers/plans';
 import { policiesRouter } from './routers/policies';
 import { poolsRouter } from './routers/pools';
+import { productEligibilityRouter } from './routers/product-eligibility';
 import { productTypesRouter } from './routers/product-types';
 import { productsRouter } from './routers/products';
 import { referenceDataRouter } from './routers/reference-data';
@@ -34,6 +35,7 @@ export const appRouter = router({
   benefitGroups: benefitGroupsRouter,
   products: productsRouter,
   plans: plansRouter,
+  productEligibility: productEligibilityRouter,
   referenceData: referenceDataRouter,
 });
 
