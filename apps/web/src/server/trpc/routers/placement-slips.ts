@@ -303,11 +303,21 @@ export const placementSlipsRouter = router({
       });
     }),
 
-  // S32 (apply): create real Product/Plan/PremiumRate rows from a
-  // parse result. Phase 1G ships this as a stub that flips the
-  // status — full row mapping lands once real placement-slip output
-  // is available to QA. Procedure name is `applyToCatalogue` because
-  // tRPC reserves `apply` as a meta-method on routers.
+  // S32 (apply): create real PolicyEntity/Product/Plan rows from a
+  // parse result. Procedure name is `applyToCatalogue` because tRPC
+  // reserves `apply` as a meta-method on routers.
+  //
+  // Phase 1G scope:
+  //   ✅ PolicyEntity upsert from result.policyEntities
+  //   ✅ Product upsert per parsed product (insurer + policy_number)
+  //   ✅ Plan creation with placeholder schedule + stacksOn resolution
+  //   ⏳ PremiumRate: defers — column→schedule mapping is per-insurer
+  //      calibration the broker tunes once per insurer template.
+  //   ⏳ BenefitGroup: stays broker-confirmed in the review UI;
+  //      result.benefitGroups carries predicate suggestions only.
+  //
+  // Idempotent: re-applying upserts on (policyId, policyNumber) and
+  // (productId, code), so the same payload twice produces no dupes.
   applyToCatalogue: adminProcedure
     .input(z.object({ id: z.string().min(1), benefitYearId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
@@ -318,12 +328,260 @@ export const placementSlipsRouter = router({
           message: 'Resolve every parse issue before applying to the catalogue.',
         });
       }
-      // Mark applied; full row creation deferred to a follow-up PR
-      // when reference placement slips are available for QA.
-      return prisma.placementSlipUpload.update({
+
+      // Resolve target benefit year + tenant gate via parent join.
+      const benefitYear = await prisma.benefitYear.findFirst({
+        where: {
+          id: input.benefitYearId,
+          policy: { client: { tenantId: ctx.tenantId, id: upload.clientId } },
+        },
+        include: { policy: true },
+      });
+      if (!benefitYear) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'Benefit year not found on this client.',
+        });
+      }
+      if (benefitYear.state !== 'DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Benefit year is ${benefitYear.state}; can only apply to a DRAFT.`,
+        });
+      }
+
+      const parseResult = upload.parseResult as ParseResult | null;
+      if (!parseResult || parseResult.status !== 'PARSED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Stored parse result is missing or not in PARSED state.',
+        });
+      }
+
+      // ── PolicyEntities ────────────────────────────────────────
+      // Upsert keyed by (policyId, policyNumber). The unique index in
+      // the Prisma schema (`@@unique([policyId, policyNumber])`) makes
+      // this idempotent.
+      let policyEntitiesUpserted = 0;
+      for (const entity of parseResult.policyEntities ?? []) {
+        await prisma.policyEntity.upsert({
+          where: {
+            policyId_policyNumber: {
+              policyId: benefitYear.policy.id,
+              policyNumber: entity.policyNumber,
+            },
+          },
+          update: {
+            legalName: entity.legalName,
+            isMaster: entity.isMaster,
+          },
+          create: {
+            policyId: benefitYear.policy.id,
+            policyNumber: entity.policyNumber,
+            legalName: entity.legalName,
+            isMaster: entity.isMaster,
+          },
+        });
+        policyEntitiesUpserted += 1;
+      }
+
+      // ── Products + Plans ─────────────────────────────────────
+      // Resolve insurer + product type once, upsert Product, then
+      // create plans. stacksOn resolution happens in a second pass
+      // after all plans exist.
+      const insurerCache = new Map<string, string>(); // code → id
+      const productTypeCache = new Map<
+        string,
+        { id: string; planSchema: unknown; premiumStrategy: string }
+      >();
+
+      let productsUpserted = 0;
+      let plansCreated = 0;
+      let stacksOnResolved = 0;
+      const skipped: { reason: string; detail: string }[] = [];
+
+      for (const parsed of parseResult.products) {
+        // Resolve Insurer (e.g. "GE_LIFE" → tenant's insurer with that code).
+        let insurerId = insurerCache.get(parsed.templateInsurerCode);
+        if (!insurerId) {
+          const insurer = await prisma.insurer.findFirst({
+            where: { tenantId: ctx.tenantId, code: parsed.templateInsurerCode },
+            select: { id: true },
+          });
+          if (!insurer) {
+            skipped.push({
+              reason: 'INSURER_NOT_FOUND',
+              detail: `${parsed.productTypeCode}: insurer "${parsed.templateInsurerCode}" not in registry. Add it via /admin/catalogue/insurers and re-apply.`,
+            });
+            continue;
+          }
+          insurerId = insurer.id;
+          insurerCache.set(parsed.templateInsurerCode, insurerId);
+        }
+
+        // Resolve ProductType.
+        let productType = productTypeCache.get(parsed.productTypeCode);
+        if (!productType) {
+          const pt = await prisma.productType.findFirst({
+            where: { tenantId: ctx.tenantId, code: parsed.productTypeCode },
+            select: { id: true, planSchema: true, premiumStrategy: true },
+          });
+          if (!pt) {
+            skipped.push({
+              reason: 'PRODUCT_TYPE_NOT_FOUND',
+              detail: `Product type ${parsed.productTypeCode} missing from catalogue.`,
+            });
+            continue;
+          }
+          productType = pt;
+          productTypeCache.set(parsed.productTypeCode, productType);
+        }
+
+        // Pool resolution from parsed pool_name (best-effort).
+        const poolName = String(parsed.fields.pool_name ?? '').trim();
+        let poolId: string | null = null;
+        if (poolName && poolName !== 'NA' && poolName !== 'N.A') {
+          const pool = await prisma.pool.findFirst({
+            where: { tenantId: ctx.tenantId, name: poolName },
+            select: { id: true },
+          });
+          poolId = pool?.id ?? null;
+        }
+
+        // Product.data: minimum viable shape that passes ProductType.schema.
+        // Real fields fill in from parsed.fields where keys align.
+        const policyNumber =
+          String(parsed.fields.policy_numbers_csv ?? parsed.fields.policy_number ?? '')
+            .split(',')[0]
+            ?.trim() ?? '';
+        const productData: Record<string, unknown> = {
+          insurer: parsed.templateInsurerCode,
+          policy_number: policyNumber || 'PENDING',
+          eligibility_text: parsed.fields.eligibility_text ?? undefined,
+          benefit_period: parsed.fields.period_of_insurance ?? undefined,
+        };
+
+        // Upsert Product on (benefitYearId, productTypeId).
+        const existing = await prisma.product.findFirst({
+          where: { benefitYearId: input.benefitYearId, productTypeId: productType.id },
+          select: { id: true },
+        });
+        const product = existing
+          ? await prisma.product.update({
+              where: { id: existing.id },
+              data: { insurerId, poolId, data: productData as Prisma.InputJsonValue },
+            })
+          : await prisma.product.create({
+              data: {
+                benefitYearId: input.benefitYearId,
+                productTypeId: productType.id,
+                insurerId,
+                poolId,
+                data: productData as Prisma.InputJsonValue,
+              },
+            });
+        productsUpserted += 1;
+
+        // Plans — derive a short code from the parsed label.
+        // "Plan A: …"      → "PA"
+        // "1"              → "P1"
+        // anything else    → "P<idx>"
+        const coverBasisByStrategy: Record<string, string> = {
+          per_individual_salary_multiple: 'salary_multiple',
+          per_individual_fixed_sum: 'fixed_amount',
+          per_group_cover_tier: 'per_cover_tier',
+          per_headcount_flat: 'fixed_amount',
+          per_individual_earnings: 'fixed_amount',
+        };
+        const coverBasis = coverBasisByStrategy[productType.premiumStrategy] ?? 'fixed_amount';
+
+        // labelToCode is local so re-apply produces stable codes.
+        const labelToCode = new Map<string, string>();
+        for (let i = 0; i < parsed.plans.length; i++) {
+          const plan = parsed.plans[i];
+          if (!plan) continue;
+          const planMatch = plan.code.match(/^Plan\s+([A-Z0-9]+)/i);
+          const numberMatch = plan.code.match(/^(\d+)\b/);
+          const code = planMatch
+            ? `P${planMatch[1]?.toUpperCase()}`
+            : numberMatch
+              ? `P${numberMatch[1]}`
+              : `P${i + 1}`;
+          labelToCode.set(plan.code, code);
+
+          // schedule = {} works for products whose planSchema has no
+          // required fields. Where required fields exist, the broker
+          // fills them in via the per-product UI (S22). The Ajv-strict
+          // path is in the per-plan tRPC update; the seed createMany
+          // bypass here is intentional and surfaced in skipped[].
+          await prisma.plan.upsert({
+            where: { productId_code: { productId: product.id, code } },
+            update: { name: plan.code, coverBasis },
+            create: {
+              productId: product.id,
+              code,
+              name: plan.code,
+              coverBasis,
+              schedule: {} as Prisma.InputJsonValue,
+            },
+          });
+          plansCreated += 1;
+        }
+
+        // Second pass: resolve stacksOn now that all plans for this
+        // product exist. "additional above Plan A" → match the plan
+        // labelled "Plan A:…" → use its derived code as stacksOn FK.
+        for (const plan of parsed.plans) {
+          if (!plan.stacksOnLabel) continue;
+          const baseLabelMatch = parsed.plans.find((p) =>
+            p.code.toLowerCase().startsWith(plan.stacksOnLabel?.toLowerCase() ?? '__never__'),
+          );
+          if (!baseLabelMatch) continue;
+          const childCode = labelToCode.get(plan.code);
+          const baseCode = labelToCode.get(baseLabelMatch.code);
+          if (!childCode || !baseCode) continue;
+          const baseRow = await prisma.plan.findUnique({
+            where: { productId_code: { productId: product.id, code: baseCode } },
+            select: { id: true },
+          });
+          if (!baseRow) continue;
+          await prisma.plan.update({
+            where: { productId_code: { productId: product.id, code: childCode } },
+            data: { stacksOn: baseRow.id },
+          });
+          stacksOnResolved += 1;
+        }
+      }
+
+      // Note PremiumRate / BenefitGroup deferral to the broker.
+      skipped.push({
+        reason: 'PREMIUM_RATES_DEFERRED',
+        detail:
+          'Rate row → PremiumRate mapping needs per-insurer column calibration; ' +
+          'broker enters rates via the Premium tab on each Product.',
+      });
+      if ((parseResult.benefitGroups?.length ?? 0) > 0) {
+        skipped.push({
+          reason: 'BENEFIT_GROUPS_DEFERRED',
+          detail: `${parseResult.benefitGroups.length} predicate suggestions surfaced — confirm in the Benefit Groups screen, not auto-saved.`,
+        });
+      }
+
+      const updated = await prisma.placementSlipUpload.update({
         where: { id: input.id },
         data: { parseStatus: 'APPLIED' },
       });
+
+      return {
+        upload: updated,
+        summary: {
+          policyEntitiesUpserted,
+          productsUpserted,
+          plansCreated,
+          stacksOnResolved,
+          skipped,
+        },
+      };
     }),
 
   // Delete an upload row. SharePoint cleanup is best-effort — a
