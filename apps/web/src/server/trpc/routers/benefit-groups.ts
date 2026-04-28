@@ -160,4 +160,51 @@ export const benefitGroupsRouter = router({
         throw err;
       }
     }),
+
+  // S19: live employee-match preview. Counts how many Employee.data
+  // rows under the given client satisfy the provided JSONLogic predicate.
+  // The predicate is structurally validated (compile-check) but otherwise
+  // opaque — same trust model as create/update, since the goal is to
+  // evaluate exactly what the user is about to save.
+  evaluate: tenantProcedure
+    .input(
+      z.object({
+        policyId: z.string().min(1),
+        predicate: predicateSchema,
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      // Resolve the policy's clientId after asserting tenant scope.
+      const policy = await prisma.policy.findFirst({
+        where: { id: input.policyId, client: { tenantId: ctx.tenantId } },
+        select: { id: true, clientId: true },
+      });
+      if (!policy) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Policy not found.' });
+      }
+
+      // Pull every employee on the client. Phase 1's expected scale is
+      // a few hundred per client at most — full scan is fine. If a real
+      // tenant ever exceeds 50k employees, swap for a streaming evaluator.
+      const employees = await prisma.employee.findMany({
+        where: { clientId: policy.clientId },
+        select: { data: true },
+      });
+
+      let matched = 0;
+      for (const e of employees) {
+        try {
+          // jsonLogic.apply is forgiving: it returns falsy on missing
+          // fields rather than throwing. We still wrap so a malformed
+          // predicate that slipped past the schema check can't crash
+          // the request mid-loop.
+          if (jsonLogic.apply(input.predicate as jsonLogic.RulesLogic, e.data)) {
+            matched += 1;
+          }
+        } catch {
+          // Skip rows that fail evaluation; report total + matched.
+        }
+      }
+      return { total: employees.length, matched };
+    }),
 });

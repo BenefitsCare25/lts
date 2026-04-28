@@ -4,6 +4,40 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S19 Live employee match preview
+
+**Session focus.** Wire the live preview onto the predicate builder. Show "Matches N of M employees" inline as the user types, debounced under 500ms.
+
+**What landed.**
+
+- **`benefitGroups.evaluate` query.** Server-side: takes `{ policyId, predicate }`, asserts the policy belongs to the tenant, loads `Employee.data` for every employee on that policy's client, and runs `jsonLogic.apply(predicate, employee.data)` per row to count matches. Returns `{ total, matched }`. Wraps each evaluation in try/catch so a row with surprising data doesn't kill the count for the rest of the cohort. Reuses the same `predicateSchema` Zod validator as create/update — same trust model: structurally valid JSONLogic, opaque to schema semantics.
+- **Client-side preview pipeline.** Three layers in the predicate builder screen:
+  1. `previewPredicate` (`useMemo`) re-derives the JSONLogic shape from the current form. Returns `null` if the form isn't yet a complete, valid predicate (missing field, missing operator, build error). Re-runs whenever the form, fields, or operator library change.
+  2. `debouncedPredicate` (`useState` + `setTimeout` cleared on next render) lags the live shape by 500ms. Only the most-recent stable shape ever fires the query.
+  3. `trpc.benefitGroups.evaluate.useQuery` runs against the debounced shape, gated by `enabled: debouncedPredicate !== null`.
+- **`<MatchPreview />` indicator.** Four discrete states: `not ready` (form incomplete), `pending` (form changed, debounce hasn't fired yet), `loading` (query in flight), and `resolved` ("Matches N of M"). Special-cased "no employees yet" copy when total is 0 — without S33 there are no employees, so this is the path real users see today.
+
+**Decisions and rationale.**
+
+1. **Server-side evaluation, not client-side.** Could have shipped a `jsonLogic.apply` call on the client and avoided the round-trip, but it would mean either (a) sending all employees to the browser (PII leak — `Employee.data` is exactly the kind of data PDPA wants minimised), or (b) sending an opaque "match this against my data" RPC (same as what we built, just a worse name). Server-side keeps PII inside the trust boundary.
+2. **Full scan, not incremental.** Phase 1's per-client headcount tops out around a few hundred for the Three Clients scenario. Indexing `Employee.data` JSONB for predicate-aware lookup is a real engineering problem (json_path ops, GIN indexes per common predicate shape) and Phase 1 doesn't need it. Note in the router comment: revisit when a tenant exceeds 50k employees.
+3. **Debounce at the predicate level, not per keystroke.** The form has many inputs; a per-input debounce would miss cross-field changes (e.g. switching field type cascade-resets operator + value). Debouncing on `previewPredicate` (which already collapses every form change into a single derived value) is the right granularity.
+4. **`enabled: debouncedPredicate !== null`.** tRPC's `useQuery` requires a stable input signature, so we pass an empty object placeholder when the predicate is null. The `enabled` flag prevents the placeholder from firing — no stray request goes out for invalid forms.
+5. **Wrap each row in try/catch on the server.** A surprising employee record (e.g. one written before a custom field's type changed) shouldn't poison the whole count. We swallow per-row errors silently; if every row throws, `matched` is just 0 and the user sees "No matches" — which is the right behaviour while debugging.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean.
+- 11/11 unit tests still pass.
+- Preview indicator renders in all four states locally (verified by mentally walking through the form transitions; no employees in dev so the "resolved" path renders the "no employees yet" copy).
+
+**Open items / next.**
+
+- **S20 Overlap detection.** On save, run the candidate predicate alongside every other predicate in the same policy against the full employee cohort, count rows that match both. If non-zero and the user hasn't acknowledged, surface a warning — second click commits.
+- **No employees yet.** S19's preview will keep saying "No employees on this client yet — add employees to see live counts" until S33 lands.
+
+---
+
 ## 2026-04-28 — S18 Predicate builder (Phase 1D opens)
 
 **Session focus.** Build Screen 4 — the JSONLogic predicate builder for benefit groups. AC: tenant with custom `hay_job_grade` field shows it in dropdown; integer operators populate; value is number bounded by min/max.

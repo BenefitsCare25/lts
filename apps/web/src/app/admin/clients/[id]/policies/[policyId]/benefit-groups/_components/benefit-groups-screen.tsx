@@ -21,7 +21,7 @@ import {
 } from '@/lib/predicate';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type EmployeeField = {
   name: string;
@@ -151,6 +151,47 @@ export function BenefitGroupsScreen({
     for (const f of selectableFields) m.set(f.name, f);
     return m;
   }, [selectableFields]);
+
+  // S19 — derive a JSONLogic preview from the current form. Returns
+  // null when the form isn't yet a valid predicate (no rows, missing
+  // fields/operators, type mismatches). Re-runs when fields or
+  // operators change too, so toggling a STANDARD field off and back
+  // on refreshes the preview.
+  const previewPredicate = useMemo<unknown | null>(() => {
+    if (form.rows.length === 0) return null;
+    const rows: PredicateRow[] = [];
+    for (const r of form.rows) {
+      if (!r.field || !r.operator) return null;
+      const field = fieldByName.get(r.field);
+      if (!field) return null;
+      const op = operatorsByType[field.type]?.find((o) => o.code === r.operator);
+      if (!op) return null;
+      const built = buildRow(r, field, op);
+      if (typeof built === 'string') return null;
+      rows.push(built);
+    }
+    try {
+      return uiPredicateToJsonLogic({ connector: form.connector, rows });
+    } catch {
+      return null;
+    }
+  }, [form, fieldByName, operatorsByType]);
+
+  // Debounce preview changes by 500ms — avoids hammering the server
+  // while the user is mid-keystroke. Only the *value* changes are
+  // debounced; field/operator changes still go through this gate.
+  const [debouncedPredicate, setDebouncedPredicate] = useState<unknown | null>(null);
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedPredicate(previewPredicate), 500);
+    return () => window.clearTimeout(handle);
+  }, [previewPredicate]);
+
+  const preview = trpc.benefitGroups.evaluate.useQuery(
+    debouncedPredicate
+      ? { policyId, predicate: debouncedPredicate as Record<string, unknown> }
+      : { policyId, predicate: {} as Record<string, unknown> },
+    { enabled: debouncedPredicate !== null },
+  );
 
   const updateRow = (index: number, patch: Partial<FormRow>) => {
     setForm((prev) => ({
@@ -363,6 +404,18 @@ export function BenefitGroupsScreen({
               </fieldset>
 
               {formError ? <p className="field-error">{formError}</p> : null}
+
+              <div className="card card-padded" style={{ background: 'var(--bg-soft, #f8fafc)' }}>
+                <strong>Live match preview</strong>{' '}
+                <MatchPreview
+                  ready={previewPredicate !== null}
+                  pending={previewPredicate !== debouncedPredicate}
+                  loading={preview.isFetching}
+                  error={preview.error?.message ?? null}
+                  matched={preview.data?.matched ?? null}
+                  total={preview.data?.total ?? null}
+                />
+              </div>
 
               <div className="row">
                 <button
@@ -777,4 +830,43 @@ function uiRowToForm(row: PredicateRow): FormRow {
     valueHi: '',
     valueMulti: [],
   };
+}
+
+// S19 — inline match-count display. Four states:
+//   - not ready: predicate is incomplete (waiting for a valid form)
+//   - debouncing: form changed but the 500ms gate hasn't elapsed
+//   - loading: query in flight
+//   - resolved: shows matched / total
+function MatchPreview({
+  ready,
+  pending,
+  loading,
+  error,
+  matched,
+  total,
+}: {
+  ready: boolean;
+  pending: boolean;
+  loading: boolean;
+  error: string | null;
+  matched: number | null;
+  total: number | null;
+}) {
+  if (!ready) return <span className="field-help">Build a complete condition to see matches.</span>;
+  if (pending) return <span className="field-help">Waiting for typing to settle…</span>;
+  if (loading) return <span className="field-help">Counting…</span>;
+  if (error) return <span className="field-error">Preview failed: {error}</span>;
+  if (matched === null || total === null) return null;
+  if (total === 0) {
+    return (
+      <span className="field-help">
+        No employees on this client yet — add employees to see live counts.
+      </span>
+    );
+  }
+  return (
+    <span>
+      Matches <strong>{matched}</strong> of {total} employee{total === 1 ? '' : 's'}.
+    </span>
+  );
 }
