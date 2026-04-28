@@ -4,6 +4,43 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S21 Product details sub-tab (Phase 1E opens)
+
+**Session focus.** Open Phase 1E with the per-product Details tab. Auto-generate the form from `ProductType.schema` via `@rjsf/core`, validate server-side via Ajv before persisting `Product.data`.
+
+**What landed.**
+
+- **`@rjsf/core` + Ajv stack installed.** Five new deps: `@rjsf/core`, `@rjsf/utils`, `@rjsf/validator-ajv8`, `ajv`, `ajv-formats`. CLAUDE.md mandates this combination ("Admin forms are generated from catalogue JSON Schemas via `@rjsf/core`. Do not hand-write forms for product-specific data."). React 19 compatibility verified — @rjsf/core peerDeps say `react: >=18`.
+- **Server-side Ajv validation** added to the products router. New module-level `Ajv` instance with `strict: false` and `addFormats(ajv)` so date / email / similar formats validate. Added a `products.updateData` mutation that compiles `ProductType.schema` per request (Ajv caches by reference, so unchanged schemas hit the compile cache) and rejects the mutation with a structured error message listing every Ajv path + reason on validation failure.
+- **`products.byId` query** added so the edit page can load Product + ProductType.schema + BenefitYear.state + insurer/tpa/pool names in one round-trip.
+- **`/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/products/[productId]/edit`** — sub-tab host page. Four buttons: Details (live), Plans (S22 placeholder), Eligibility (S23 placeholder), Premium (S24 placeholder). Disabled non-Details tabs surface "Coming in a later story".
+- **`ProductDetailsTab` component** renders an `@rjsf/core` `<Form>` with `validator={validator}` from `@rjsf/validator-ajv8`. Form is `disabled` when the parent BenefitYear is not DRAFT; submit posts to `products.updateData`. The default RJSF submit button is hidden via `uiSchema={{ 'ui:submitButtonOptions': { norender: true } }}` and replaced with our own button so styling stays consistent with the rest of the admin.
+- **"Configure" deep-link** added to each row of the products list (always visible — read-only mode also benefits from viewing configuration). "Remove" stays gated on `editable`.
+
+**Decisions and rationale.**
+
+1. **Use @rjsf/core despite the bundle cost.** The product edit page bundle ballooned from ~3 kB to 101 kB. Hand-rolling a JSON-Schema → form renderer would have been ~200 LOC and shipped a 4 kB page, but CLAUDE.md is unambiguous: "Do not hand-write forms for product-specific data." The directive exists because product schemas are catalogue-authored at runtime via S12 — schemas can grow `oneOf`, `dependencies`, `if/then/else`, format-typed strings, and re-implementing all of that is a multi-week sink. @rjsf already covers the spec. Lazy-loading via `next/dynamic` is the right escape hatch when the page becomes hot.
+2. **Re-validate server-side.** Browser-side @rjsf validation is for UX. The server compiles the same schema with Ajv and rejects writes that don't conform. Two reasons: API callers bypass the browser, and a published-then-edited schema in the catalogue could let a stale browser pass invalid `Product.data`. Server is authoritative.
+3. **`Ajv strict: false`.** Our seeded schemas include `description` keywords on properties that aren't in the JSON Schema spec strictly. With `strict: true`, Ajv warns and refuses to compile some shapes. `strict: false` lets the catalogue grow keywords (display hints, format aliases) without breaking validation.
+4. **Compile per request, not at boot.** `ProductType.schema` can be edited at runtime via S12 — a boot-time compile cache would serve stale schemas after a catalogue edit. `ajv.compile(schema)` is fast enough (sub-millisecond for our shapes) that doing it per validation is acceptable. Ajv's internal cache keys by reference equality, so the same Prisma-fetched object skips recompilation on hot calls.
+5. **Sub-tab host renders inline, not via nested routes.** Could have had `/.../products/[productId]/details/page.tsx` and three sibling pages, but four routes for one logical "edit a product" flow felt overbuilt for what's really one entity. Inline `<ProductEditScreen>` component switches `useState<Tab>`. Plans/Eligibility/Premium will plug into the same component in S22-S24.
+6. **`Ajv` import shape.** Default export from the v8 package is the constructor; named `ErrorObject` import for the typing. Doesn't need a CJS interop tweak under our `esModuleInterop: true`.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean.
+- 11/11 unit tests still pass.
+- New routes in build manifest: `/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/products/[productId]/edit` (101 kB / 230 kB total). The 100 kB delta is `@rjsf/core` + ajv-formats + the schema compiler.
+
+**Open items / next.**
+
+- **S22 Plans sub-tab.** Repeating-row table validated against `ProductType.planSchema`. Includes `stacksOn` (dropdown of base plans) and `selectionMode` (broker_default / employee_flex). STM Plan C/D stacks-on validation lives here.
+- **S23 Eligibility matrix.** N benefit groups × M plans matrix; per cell, a default plan id (or "ineligible") for that (group, product) pair.
+- **S24 Premium calc.** Strategy auto-selected from `ProductType.premiumStrategy`; inputs vary per strategy. CUBER GHS computes 1×$1260 + 4×$172 = $1,948 ±$1 acceptance.
+- **S25 Effective-dated schedules.** Plans with `effectiveFrom` mid-year; eligibility engine + premium calc respect the boundary. Lands as a Plan.effectiveFrom/effectiveTo addition in S22 and a runtime check in S24.
+
+---
+
 ## 2026-04-28 — S20 Overlap detection (closes Phase 1D)
 
 **Session focus.** Surface a warning when saving a benefit group whose predicate already intersects with another group on the same policy. Acknowledgeable, not blocking.

@@ -14,7 +14,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | **1B** Registries / Screen 0 | S6–S12 | ✅ complete | S8 has a documented field deferral (ADR 0004); visual schema editor for S12 deferred to JSON textareas — see story note |
 | **1C** Client onboarding | S13–S17 | ✅ complete | Built S13 → S14 → S17 → S16 → S15 (re-sequenced for FK dependencies) |
 | **1D** Predicate builder | S18–S20 | ✅ complete | S18 + S19 + S20 |
-| **1E** Per-product config | S21–S25 | ⏳ not started | |
+| **1E** Per-product config | S21–S25 | 🔄 in progress | S21 landed |
 | **1F** Review + publish | S26–S28 | ⏳ not started | |
 | **1G** Excel ingestion | S29–S32 | ⏳ not started | |
 | **1H** Employees + claims | S33–S35 | ⏳ not started | S35 also re-adds `Insurer.claimFeedProtocol` per ADR 0004 |
@@ -71,7 +71,7 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 
 ## Phase 1E — Per-product config / Screen 5 (S21–S25)
 
-- [ ] **S21** Product details sub-tab (5a) — fields rendered from `ProductType.schema`; GHS shows different fields than GTL; required fields enforce.
+- [x] **S21** Product details sub-tab (5a) — fields rendered from `ProductType.schema`; GHS shows different fields than GTL; required fields enforce. (2026-04-28 — `@rjsf/core` + `@rjsf/validator-ajv8` integrated; per-product edit page at `/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/products/[productId]/edit` with sub-tab host (Details active, Plans/Eligibility/Premium placeholders for S22-S24). Server-side Ajv validation in new `products.updateData` mutation re-validates against `ProductType.schema` before persisting; `products.byId` query loads productType.schema + benefitYear.state + insurer/tpa/pool names. DRAFT-only mutation gate; PUBLISHED/ARCHIVED show read-only banner with @rjsf form `disabled`. **Bundle cost:** 101 kB for the edit page (vs 2-4 kB for hand-rolled forms) — accepted per CLAUDE.md "admin forms are generated from catalogue JSON Schemas via @rjsf/core". Lazy-loading via dynamic import is a future optimization if the page becomes hot.
 - [ ] **S22** Plans sub-tab (5b) with stacksOn and selectionMode — STM GTL has 4 plans; Plan C has `stacksOn=Plan B`; eligibility engine applies both Plan B and Plan C cover to a matching employee in dry-run.
 - [ ] **S23** Eligibility matrix sub-tab (5c) — matrix renders N benefit groups × M plans; saving creates ProductEligibility rows; missing assignments flagged on Screen 6.
 - [ ] **S24** Premium calculation sub-tab (5d) with strategy library — GHS uses `per_group_cover_tier`; CUBER GHS computes 1×$1260 (Senior EF) + 4×$172 (Corp EO) = $1,948 within ±$1.

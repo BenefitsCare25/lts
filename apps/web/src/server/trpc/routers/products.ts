@@ -18,8 +18,22 @@
 import { prisma } from '@/server/db/client';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
+import Ajv, { type ErrorObject } from 'ajv';
+import addFormats from 'ajv-formats';
 import { z } from 'zod';
 import { router, tenantProcedure } from '../init';
+
+// Single Ajv instance — compiles + caches schemas across requests.
+// `strict: false` keeps catalogue-authored schemas tolerant of
+// non-standard keywords (e.g. our own description fields).
+const ajv = new Ajv({ allErrors: true, strict: false });
+addFormats(ajv);
+
+// Format an Ajv error path + message for inline UI display.
+function formatAjvError(err: ErrorObject): string {
+  const path = err.instancePath || '/';
+  return `${path} ${err.message ?? 'is invalid'}`;
+}
 
 const productInputSchema = z.object({
   productTypeId: z.string().min(1),
@@ -209,6 +223,54 @@ export const productsRouter = router({
       });
     }),
 
+  byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
+    const product = await prisma.product.findFirst({
+      where: {
+        id: input.id,
+        benefitYear: { policy: { client: { tenantId: ctx.tenantId } } },
+      },
+      include: {
+        productType: {
+          select: { id: true, code: true, name: true, schema: true, planSchema: true },
+        },
+        benefitYear: {
+          select: {
+            id: true,
+            state: true,
+            startDate: true,
+            endDate: true,
+            policy: {
+              select: { id: true, name: true, clientId: true },
+            },
+          },
+        },
+      },
+    });
+    if (!product) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Product not found.' });
+    }
+    // Hand-fetch insurer + tpa names like listByBenefitYear does.
+    const [insurer, tpa, pool] = await Promise.all([
+      prisma.insurer.findFirst({
+        where: { id: product.insurerId, tenantId: ctx.tenantId },
+        select: { id: true, code: true, name: true, productsSupported: true, active: true },
+      }),
+      product.tpaId
+        ? prisma.tPA.findFirst({
+            where: { id: product.tpaId, tenantId: ctx.tenantId },
+            select: { id: true, code: true, name: true },
+          })
+        : Promise.resolve(null),
+      product.poolId
+        ? prisma.pool.findFirst({
+            where: { id: product.poolId, tenantId: ctx.tenantId },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve(null),
+    ]);
+    return { ...product, insurer, tpa, pool };
+  }),
+
   update: tenantProcedure
     .input(z.object({ id: z.string().min(1) }).and(productInputSchema))
     .mutation(async ({ ctx, input }) => {
@@ -228,6 +290,61 @@ export const productsRouter = router({
           insurerId: input.insurerId,
           poolId: input.poolId,
           tpaId: input.tpaId,
+          versionId: { increment: 1 },
+        },
+      });
+    }),
+
+  // S21: per-product Details sub-tab. Validates the submitted JSON
+  // against the ProductType.schema via Ajv before persisting. Returns
+  // a structured error list that the UI can surface inline. Schema
+  // can be edited in the catalogue admin (S12), so we recompile per
+  // request — Ajv caches by reference, so unchanged schemas hit the
+  // compile cache.
+  updateData: tenantProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        // Free-form record; the actual shape comes from ProductType.schema.
+        data: z.record(z.unknown()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.product.findFirst({
+        where: {
+          id: input.id,
+          benefitYear: { policy: { client: { tenantId: ctx.tenantId } } },
+        },
+        select: {
+          id: true,
+          benefitYear: { select: { state: true } },
+          productType: { select: { schema: true, code: true } },
+        },
+      });
+      if (!existing) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Product not found.' });
+      }
+      if (existing.benefitYear.state !== 'DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Products on a published benefit year are immutable.',
+        });
+      }
+
+      // biome-ignore lint/suspicious/noExplicitAny: ProductType.schema is JSONB
+      const validate = ajv.compile(existing.productType.schema as any);
+      if (!validate(input.data)) {
+        const errors = (validate.errors ?? []).map(formatAjvError);
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Validation failed: ${errors.join('; ')}`,
+        });
+      }
+
+      return prisma.product.update({
+        where: { id: input.id },
+        data: {
+          data: input.data as Prisma.InputJsonValue,
           versionId: { increment: 1 },
         },
       });
