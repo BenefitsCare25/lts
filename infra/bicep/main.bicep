@@ -86,6 +86,15 @@ param sharepointServiceAccountUsername string = ''
 @secure()
 param sharepointServiceAccountPassword string = ''
 
+// ---- NextAuth ---------------------------------------------------------------
+// Generated once; rotating invalidates all sessions. Production deploys MUST
+// set this — without it NextAuth replies "There was a problem with the
+// server configuration" and login fails.
+
+@description('NextAuth signing secret (32 random bytes, base64). Empty omits AUTH_SECRET; login will break.')
+@secure()
+param authSecret string = ''
+
 // ---- Tags -------------------------------------------------------------------
 
 @description('Resource tags.')
@@ -230,6 +239,7 @@ module containerApp 'modules/container-app.bicep' = {
     sharepointClientSecret: sharepointClientSecret
     sharepointServiceAccountUsername: sharepointServiceAccountUsername
     sharepointServiceAccountPassword: sharepointServiceAccountPassword
+    authSecret: authSecret
     tags: tags
   }
 }

@@ -68,6 +68,26 @@ The script wraps `az deployment group create` against `main.bicep` with `staging
 
 `POSTGRES_ADMIN_PASSWORD` is only required when `deployPostgres=true` in the parameters file.
 
+### NextAuth signing secret (S2)
+
+`AUTH_SECRET` is the symmetric key NextAuth uses to sign and verify session JWTs. Without it the app responds `"There was a problem with the server configuration"` to every auth request and login is broken in production.
+
+| Bicep param | Runtime env var | GitHub repo secret |
+|---|---|---|
+| `authSecret` | `AUTH_SECRET` | `AUTH_SECRET` |
+| (always-true) | `AUTH_TRUST_HOST` | n/a (Bicep sets `'true'` literally) |
+
+`AUTH_TRUST_HOST=true` tells NextAuth to trust the `X-Forwarded-Host` header coming from Container Apps' ingress; without it NextAuth rejects requests behind a reverse proxy.
+
+#### One-time setup
+
+```bash
+# Generate a fresh signing key
+gh secret set AUTH_SECRET --body "$(openssl rand -base64 32)"
+```
+
+Rotating `AUTH_SECRET` invalidates all live sessions — users have to sign in again. That's expected on rotation.
+
 ### SharePoint storage credentials (Phase 1G)
 
 Five credentials power the placement-slip upload path (`apps/web/src/server/storage/sharepoint.ts`). They're owned by the deploy invocation, not by `staging.parameters.json`:
