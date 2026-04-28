@@ -7,6 +7,7 @@
 'use client';
 
 import { trpc } from '@/lib/trpc/client';
+import Link from 'next/link';
 import { useState } from 'react';
 
 type BenefitYearState = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
@@ -27,7 +28,13 @@ const stateLabel = (state: BenefitYearState): { className: string; text: string 
   }
 };
 
-export function BenefitYearsSection({ policyId }: { policyId: string }) {
+export function BenefitYearsSection({
+  clientId,
+  policyId,
+}: {
+  clientId: string;
+  policyId: string;
+}) {
   const utils = trpc.useUtils();
   const list = trpc.benefitYears.listByPolicy.useQuery({ policyId });
 
@@ -143,6 +150,12 @@ export function BenefitYearsSection({ policyId }: { policyId: string }) {
                     <td>{by.publishedAt ? formatDate(by.publishedAt) : '—'}</td>
                     <td>
                       <div className="row-end">
+                        <Link
+                          href={`/admin/clients/${clientId}/policies/${policyId}/benefit-years/${by.id}/products`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Products
+                        </Link>
                         {by.state === 'DRAFT' && !isEditing ? (
                           <>
                             <button

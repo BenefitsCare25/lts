@@ -1,0 +1,265 @@
+// =============================================================
+// Products router (S15 — Product selection, Screen 3).
+//
+// A Product is an instance of a ProductType under a BenefitYear,
+// bound to one Insurer (and optionally a Pool + TPA). This story
+// is the picker only — Product.data is left as `{}` and gets its
+// real fields filled in at S21 (Screen 5a, per-product details).
+//
+// Insurer filter (the AC's headline check): Insurer.productsSupported
+// must contain the chosen ProductType.code, validated server-side
+// regardless of what the UI presents.
+//
+// Tenant gate: Product is reached through BenefitYear → Policy →
+// Client; every operation joins through `benefitYear: { policy:
+// { client: { tenantId } } }`. Same pattern as benefitYears.
+// =============================================================
+
+import { prisma } from '@/server/db/client';
+import { Prisma } from '@prisma/client';
+import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
+import { router, tenantProcedure } from '../init';
+
+const productInputSchema = z.object({
+  productTypeId: z.string().min(1),
+  insurerId: z.string().min(1),
+  poolId: z.string().min(1).nullable(),
+  tpaId: z.string().min(1).nullable(),
+});
+
+// Asserts the BenefitYear belongs to the caller's tenant and is
+// editable (DRAFT). Published years are immutable.
+async function assertEditableBenefitYear(tenantId: string, benefitYearId: string) {
+  const by = await prisma.benefitYear.findFirst({
+    where: { id: benefitYearId, policy: { client: { tenantId } } },
+    select: { id: true, state: true },
+  });
+  if (!by) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Benefit year not found.' });
+  }
+  if (by.state !== 'DRAFT') {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Products can only be edited on DRAFT benefit years.',
+    });
+  }
+  return by;
+}
+
+// Asserts the Product belongs to the caller's tenant. Returns the row
+// with its parent BenefitYear's state so callers can gate edits.
+async function loadProduct(tenantId: string, productId: string) {
+  const product = await prisma.product.findFirst({
+    where: {
+      id: productId,
+      benefitYear: { policy: { client: { tenantId } } },
+    },
+    select: { id: true, benefitYearId: true, benefitYear: { select: { state: true } } },
+  });
+  if (!product) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Product not found.' });
+  }
+  return product;
+}
+
+// Loads Insurer + ProductType inside the caller's tenant, validating
+// that the insurer supports the product type. Throws BAD_REQUEST on
+// mismatch with a UI-friendly message.
+async function assertInsurerSupportsProductType(
+  tenantId: string,
+  productTypeId: string,
+  insurerId: string,
+): Promise<{ productTypeCode: string; insurerName: string }> {
+  const [productType, insurer] = await Promise.all([
+    prisma.productType.findFirst({
+      where: { id: productTypeId, tenantId },
+      select: { code: true, name: true },
+    }),
+    prisma.insurer.findFirst({
+      where: { id: insurerId, tenantId },
+      select: { name: true, productsSupported: true, active: true },
+    }),
+  ]);
+  if (!productType) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Product type not found in catalogue.' });
+  }
+  if (!insurer) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Insurer not found in registry.' });
+  }
+  if (!insurer.active) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `${insurer.name} is marked inactive. Reactivate before assigning products.`,
+    });
+  }
+  if (!insurer.productsSupported.includes(productType.code)) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `${insurer.name} does not support ${productType.code} (${productType.name}). Update the insurer registry or pick a different insurer.`,
+    });
+  }
+  return { productTypeCode: productType.code, insurerName: insurer.name };
+}
+
+// Optional FK validations for Pool and TPA — both must belong to the tenant.
+async function assertOptionalPoolAndTpa(
+  tenantId: string,
+  poolId: string | null,
+  tpaId: string | null,
+): Promise<void> {
+  if (poolId) {
+    const pool = await prisma.pool.findFirst({
+      where: { id: poolId, tenantId },
+      select: { id: true },
+    });
+    if (!pool) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pool not found in registry.' });
+    }
+  }
+  if (tpaId) {
+    const tpa = await prisma.tPA.findFirst({
+      where: { id: tpaId, tenantId },
+      select: { id: true, supportedInsurerIds: true, active: true },
+    });
+    if (!tpa) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'TPA not found in registry.' });
+    }
+    if (!tpa.active) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: 'TPA is marked inactive.' });
+    }
+  }
+}
+
+export const productsRouter = router({
+  listByBenefitYear: tenantProcedure
+    .input(z.object({ benefitYearId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      // Same scope check, but DRAFT-or-PUBLISHED both readable.
+      const by = await prisma.benefitYear.findFirst({
+        where: {
+          id: input.benefitYearId,
+          policy: { client: { tenantId: ctx.tenantId } },
+        },
+        select: { id: true, state: true },
+      });
+      if (!by) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Benefit year not found.' });
+      }
+      const products = await prisma.product.findMany({
+        where: { benefitYearId: input.benefitYearId },
+        include: {
+          productType: { select: { id: true, code: true, name: true, premiumStrategy: true } },
+          pool: { select: { id: true, name: true } },
+          _count: { select: { plans: true } },
+        },
+      });
+      // Hand-fetch insurer + tpa names since they're not relations on Product.
+      const insurerIds = Array.from(new Set(products.map((p) => p.insurerId)));
+      const tpaIds = Array.from(
+        new Set(products.map((p) => p.tpaId).filter((id): id is string => id !== null)),
+      );
+      const [insurers, tpas] = await Promise.all([
+        insurerIds.length > 0
+          ? prisma.insurer.findMany({
+              where: { id: { in: insurerIds }, tenantId: ctx.tenantId },
+              select: { id: true, code: true, name: true },
+            })
+          : Promise.resolve([]),
+        tpaIds.length > 0
+          ? prisma.tPA.findMany({
+              where: { id: { in: tpaIds }, tenantId: ctx.tenantId },
+              select: { id: true, code: true, name: true },
+            })
+          : Promise.resolve([]),
+      ]);
+      const insurerById = new Map(insurers.map((i) => [i.id, i]));
+      const tpaById = new Map(tpas.map((t) => [t.id, t]));
+      return {
+        benefitYearState: by.state,
+        items: products.map((p) => ({
+          ...p,
+          insurer: insurerById.get(p.insurerId) ?? null,
+          tpa: p.tpaId ? (tpaById.get(p.tpaId) ?? null) : null,
+        })),
+      };
+    }),
+
+  create: tenantProcedure
+    .input(z.object({ benefitYearId: z.string().min(1) }).and(productInputSchema))
+    .mutation(async ({ ctx, input }) => {
+      await assertEditableBenefitYear(ctx.tenantId, input.benefitYearId);
+      await assertInsurerSupportsProductType(ctx.tenantId, input.productTypeId, input.insurerId);
+      await assertOptionalPoolAndTpa(ctx.tenantId, input.poolId, input.tpaId);
+      // No unique constraint on (benefitYearId, productTypeId) — the
+      // same product type can appear twice (e.g. a primary GHS + a
+      // top-up GHS) under different insurers. Add deduplication later
+      // if a real-world placement slip ever needs it.
+      return prisma.product.create({
+        data: {
+          benefitYearId: input.benefitYearId,
+          productTypeId: input.productTypeId,
+          insurerId: input.insurerId,
+          poolId: input.poolId,
+          tpaId: input.tpaId,
+          // Real product config arrives at S21 (Screen 5a).
+          // Empty object satisfies the JSON column for now.
+          data: {},
+        },
+      });
+    }),
+
+  update: tenantProcedure
+    .input(z.object({ id: z.string().min(1) }).and(productInputSchema))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await loadProduct(ctx.tenantId, input.id);
+      if (existing.benefitYear.state !== 'DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Products on a published benefit year are immutable.',
+        });
+      }
+      await assertInsurerSupportsProductType(ctx.tenantId, input.productTypeId, input.insurerId);
+      await assertOptionalPoolAndTpa(ctx.tenantId, input.poolId, input.tpaId);
+      return prisma.product.update({
+        where: { id: input.id },
+        data: {
+          productTypeId: input.productTypeId,
+          insurerId: input.insurerId,
+          poolId: input.poolId,
+          tpaId: input.tpaId,
+          versionId: { increment: 1 },
+        },
+      });
+    }),
+
+  delete: tenantProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await loadProduct(ctx.tenantId, input.id);
+      if (existing.benefitYear.state !== 'DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot delete products on a published benefit year. Archive the year first.',
+        });
+      }
+      try {
+        await prisma.product.delete({ where: { id: input.id } });
+        return { id: input.id };
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError) {
+          if (err.code === 'P2025') {
+            throw new TRPCError({ code: 'NOT_FOUND', message: 'Product not found.' });
+          }
+          if (err.code === 'P2003') {
+            throw new TRPCError({
+              code: 'CONFLICT',
+              message:
+                'Cannot delete: this product has linked plans, eligibility rules, or premium rates. Remove those first.',
+            });
+          }
+        }
+        throw err;
+      }
+    }),
+});
