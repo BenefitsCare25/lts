@@ -6,10 +6,16 @@
 // tenantProcedure    — UNAUTHORIZED + resolves tenant; ctx gains
 //                      tenantId, userId, db (tenant-scoped client).
 //                      Auto-audits successful mutations to AuditLog.
+//                      Use for read-only / list / byId queries.
+// adminProcedure     — tenantProcedure + role gate. Allows the
+//                      three broker roles (TENANT_ADMIN,
+//                      BROKER_ADMIN, CATALOGUE_ADMIN). Use for
+//                      every mutation in the broker admin surface.
 // =============================================================
 
 import { auditEvent, deriveEntity } from '@/server/audit';
 import { UserNotProvisionedError, requireTenantContext } from '@/server/db/tenant';
+import { UserRole } from '@prisma/client';
 import { TRPCError, initTRPC } from '@trpc/server';
 import superjson from 'superjson';
 import type { Context } from './context';
@@ -80,9 +86,49 @@ const auditMutationsMiddleware = t.middleware(async ({ ctx, next, type, path, in
   return result;
 });
 
-// Every broker-admin procedure should use tenantProcedure.
+// Every tenant-scoped procedure should use tenantProcedure for
+// queries; mutations should use adminProcedure (below) so the role
+// gate fires before any state changes.
 // ctx.db is a Prisma client pre-scoped to ctx.tenantId.
 export const tenantProcedure = t.procedure
   .use(requireSessionMiddleware)
   .use(requireTenantMiddleware)
   .use(auditMutationsMiddleware);
+
+// The three internal broker roles. CLIENT_HR / EMPLOYEE exist in
+// the enum for the Phase 2 employee portal; they must NOT reach
+// any broker-admin mutation.
+const BROKER_ROLES = new Set<UserRole>([
+  UserRole.TENANT_ADMIN,
+  UserRole.BROKER_ADMIN,
+  UserRole.CATALOGUE_ADMIN,
+]);
+
+// roleGuard rejects callers whose User.role isn't in `allowed`.
+// Stricter inline gates inside specific handlers (e.g. publish
+// requiring TENANT_ADMIN | BROKER_ADMIN) layer on top of this.
+//
+// Reads the role from ctx.session.user.role (the JWT-carried value)
+// rather than re-querying the DB — requireTenantContext() upstream
+// already confirmed the User row exists, and avoiding a DB round-trip
+// keeps the middleware cheap on every mutation.
+export function roleGuard(allowed: ReadonlySet<UserRole>) {
+  return t.middleware(async ({ ctx, next }) => {
+    if (!ctx.session?.user) {
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in required.' });
+    }
+    const role = ctx.session.user.role as UserRole | undefined;
+    if (!role || !allowed.has(role)) {
+      throw new TRPCError({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to perform this action.',
+      });
+    }
+    return next();
+  });
+}
+
+// Use for all broker-admin mutations. Composing on top of
+// tenantProcedure means ctx.db / ctx.userId / ctx.tenantId are
+// already populated and the audit middleware has fired.
+export const adminProcedure = tenantProcedure.use(roleGuard(BROKER_ROLES));

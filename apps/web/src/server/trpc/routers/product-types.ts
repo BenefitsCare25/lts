@@ -19,7 +19,7 @@ import { PREMIUM_STRATEGIES, type ProductTypeCode } from '@insurance-saas/shared
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // Code: uppercase + digits + underscore. Same shape used by Insurer
 // and TPA codes — keeps catalogue codes visually consistent. Allows
@@ -80,7 +80,7 @@ export const productTypesRouter = router({
     return productType;
   }),
 
-  create: tenantProcedure.input(productTypeInputSchema).mutation(async ({ ctx, input }) => {
+  create: adminProcedure.input(productTypeInputSchema).mutation(async ({ ctx, input }) => {
     try {
       return await ctx.db.productType.create({
         data: {
@@ -112,7 +112,7 @@ export const productTypesRouter = router({
     }
   }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1), data: productTypeInputSchema }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -154,7 +154,7 @@ export const productTypesRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {

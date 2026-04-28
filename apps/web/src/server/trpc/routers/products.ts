@@ -20,7 +20,7 @@ import { prisma } from '@/server/db/client';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 const productInputSchema = z.object({
   productTypeId: z.string().min(1),
@@ -186,7 +186,7 @@ export const productsRouter = router({
       };
     }),
 
-  create: tenantProcedure
+  create: adminProcedure
     .input(z.object({ benefitYearId: z.string().min(1) }).and(productInputSchema))
     .mutation(async ({ ctx, input }) => {
       await assertEditableBenefitYear(ctx.tenantId, input.benefitYearId);
@@ -258,7 +258,7 @@ export const productsRouter = router({
     return { ...product, insurer, tpa, pool };
   }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1) }).and(productInputSchema))
     .mutation(async ({ ctx, input }) => {
       const existing = await loadProduct(ctx.tenantId, input.id);
@@ -288,7 +288,7 @@ export const productsRouter = router({
   // can be edited in the catalogue admin (S12), so we recompile per
   // request — Ajv caches by reference, so unchanged schemas hit the
   // compile cache.
-  updateData: tenantProcedure
+  updateData: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -342,7 +342,7 @@ export const productsRouter = router({
       });
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const existing = await loadProduct(ctx.tenantId, input.id);

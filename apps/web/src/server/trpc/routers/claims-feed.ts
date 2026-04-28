@@ -15,7 +15,7 @@
 import { prisma } from '@/server/db/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 type ClaimRow = {
   memberId: string;
@@ -110,7 +110,7 @@ export const claimsFeedRouter = router({
   // currently parse.
   protocolsSupported: tenantProcedure.query(() => Object.keys(HANDLERS)),
 
-  ingest: tenantProcedure
+  ingest: adminProcedure
     .input(
       z.object({
         insurerId: z.string().min(1),

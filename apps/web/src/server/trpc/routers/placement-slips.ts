@@ -27,7 +27,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 async function assertClient(tenantId: string, clientId: string): Promise<void> {
   const client = await prisma.client.findFirst({
@@ -94,7 +94,7 @@ export const placementSlipsRouter = router({
     return upload;
   }),
 
-  upload: tenantProcedure
+  upload: adminProcedure
     .input(
       z.object({
         clientId: z.string().min(1),
@@ -230,7 +230,7 @@ export const placementSlipsRouter = router({
   // back from SharePoint and running the parser again. Only works
   // when storageKey starts with "sharepoint:" — inline fallback uploads
   // can't be re-parsed because we never kept the bytes.
-  reparse: tenantProcedure
+  reparse: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const upload = await loadUploadForTenant(ctx.tenantId, input.id);
@@ -258,7 +258,7 @@ export const placementSlipsRouter = router({
 
   // S32: mark resolved issues so the review UI tracks progress. Keeps
   // the upload row in NEEDS_REVIEW until every blocker is resolved.
-  resolveIssue: tenantProcedure
+  resolveIssue: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -293,7 +293,7 @@ export const placementSlipsRouter = router({
   // status — full row mapping lands once real placement-slip output
   // is available to QA. Procedure name is `applyToCatalogue` because
   // tRPC reserves `apply` as a meta-method on routers.
-  applyToCatalogue: tenantProcedure
+  applyToCatalogue: adminProcedure
     .input(z.object({ id: z.string().min(1), benefitYearId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const upload = await loadUploadForTenant(ctx.tenantId, input.id);
@@ -313,7 +313,7 @@ export const placementSlipsRouter = router({
 
   // Delete an upload row. SharePoint cleanup is best-effort — a
   // missing remote file shouldn't block the DB delete.
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const upload = await loadUploadForTenant(ctx.tenantId, input.id);

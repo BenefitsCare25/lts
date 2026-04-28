@@ -21,7 +21,7 @@ import { prisma } from '@/server/db/client';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // PolicyEntity input. id is optional (existing rows carry it; new
 // rows omit it). rateOverrides is a free-form JSONB blob — schema
@@ -128,7 +128,7 @@ export const policiesRouter = router({
     return policy;
   }),
 
-  create: tenantProcedure
+  create: adminProcedure
     .input(z.object({ clientId: z.string().min(1), data: policyInputSchema }))
     .mutation(async ({ ctx, input }) => {
       await assertClient(ctx.db, input.clientId);
@@ -175,7 +175,7 @@ export const policiesRouter = router({
       }
     }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -247,7 +247,7 @@ export const policiesRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       // Re-verify before deleting to keep cross-tenant safety.

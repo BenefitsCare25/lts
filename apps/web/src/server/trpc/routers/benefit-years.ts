@@ -23,7 +23,7 @@ import { prisma } from '@/server/db/client';
 import { BenefitYearState, Prisma, UserRole } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 const PUBLISH_ROLES = new Set<UserRole>([UserRole.TENANT_ADMIN, UserRole.BROKER_ADMIN]);
 
@@ -111,7 +111,7 @@ export const benefitYearsRouter = router({
 
   // Add an additional benefit year to an existing policy. The first year
   // is auto-created when the Policy itself is created (see policies.create).
-  create: tenantProcedure
+  create: adminProcedure
     .input(z.object({ policyId: z.string().min(1) }).and(datesSchema))
     .mutation(async ({ ctx, input }) => {
       await assertPolicy(ctx.tenantId, input.policyId);
@@ -136,7 +136,7 @@ export const benefitYearsRouter = router({
     }),
 
   // Edit dates on a DRAFT year. PUBLISHED years are immutable.
-  updateDates: tenantProcedure
+  updateDates: adminProcedure
     .input(z.object({ id: z.string().min(1) }).and(datesSchema))
     .mutation(async ({ ctx, input }) => {
       const by = await loadBenefitYear(ctx.tenantId, input.id);
@@ -162,7 +162,7 @@ export const benefitYearsRouter = router({
       }
     }),
 
-  setState: tenantProcedure
+  setState: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),

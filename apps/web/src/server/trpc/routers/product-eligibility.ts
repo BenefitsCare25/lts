@@ -12,7 +12,7 @@
 import { prisma } from '@/server/db/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 async function loadProductForEligibility(tenantId: string, productId: string) {
   const product = await prisma.product.findFirst({
@@ -72,7 +72,7 @@ export const productEligibilityRouter = router({
   // idempotent: empty entries (defaultPlanId === null) drop the
   // existing row, non-empty entries upsert. Wrapped in a transaction
   // so partial saves don't strand orphaned rows.
-  setForProduct: tenantProcedure
+  setForProduct: adminProcedure
     .input(
       z.object({
         productId: z.string().min(1),

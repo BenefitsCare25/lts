@@ -12,7 +12,7 @@ import { TPA_FEED_FORMATS } from '@insurance-saas/shared-types';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 const codeSchema = z
   .string()
@@ -42,7 +42,7 @@ export const tpasRouter = router({
     return tpa;
   }),
 
-  create: tenantProcedure.input(tpaInputSchema).mutation(async ({ ctx, input }) => {
+  create: adminProcedure.input(tpaInputSchema).mutation(async ({ ctx, input }) => {
     // Defence-in-depth: every insurerId must belong to the current tenant.
     // The Prisma extension already filters by tenantId on findMany.
     if (input.supportedInsurerIds.length > 0) {
@@ -70,7 +70,7 @@ export const tpasRouter = router({
     }
   }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1), data: tpaInputSchema }))
     .mutation(async ({ ctx, input }) => {
       if (input.data.supportedInsurerIds.length > 0) {
@@ -103,7 +103,7 @@ export const tpasRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {

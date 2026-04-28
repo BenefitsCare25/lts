@@ -10,7 +10,7 @@ import { PRODUCT_TYPE_CODES } from '@insurance-saas/shared-types';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
-import { router, tenantProcedure } from '../init';
+import { adminProcedure, router, tenantProcedure } from '../init';
 
 // Code: short uppercase identifier, unique within a tenant.
 // Constrained pattern matches the v2 plan §3.4 examples (TM_LIFE, GE_LIFE, ...).
@@ -52,7 +52,7 @@ export const insurersRouter = router({
     return insurer;
   }),
 
-  create: tenantProcedure.input(insurerInputSchema).mutation(async ({ ctx, input }) => {
+  create: adminProcedure.input(insurerInputSchema).mutation(async ({ ctx, input }) => {
     try {
       // tenantId is auto-injected by the Prisma $extends middleware in
       // server/db/tenant.ts; we pass ctx.tenantId here only to satisfy
@@ -73,7 +73,7 @@ export const insurersRouter = router({
     }
   }),
 
-  update: tenantProcedure
+  update: adminProcedure
     .input(z.object({ id: z.string().min(1), data: insurerInputSchema }))
     .mutation(async ({ ctx, input }) => {
       try {
@@ -94,7 +94,7 @@ export const insurersRouter = router({
       }
     }),
 
-  delete: tenantProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       try {
