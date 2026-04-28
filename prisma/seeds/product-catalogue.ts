@@ -151,13 +151,19 @@ const productSchema = (extra: Record<string, unknown> = {}) => ({
   },
 });
 
-// ── Tokio Marine + Great Eastern parsing rules ─────────────────────────
-// CSS-like selectors against the parsed Excel grid. The S30/S31 parsers
-// (Phase 1G) interpret these against insurer-specific templates.
+// ── Per-insurer × per-product parsing rules ────────────────────────────
+// Cell coordinates calibrated against the STM placement slip (see
+// docs/STM_PLACEMENT_SLIP_LAYOUT.md for the full reference).
+//
+// TM_LIFE rules remain placeholder; calibrating them needs the Balance
+// and CUBER reference slips, which are not in the repo. Phase 1 ships
+// structurally complete — when those land, only the constants below
+// need updating, no code change.
 
-const TM_PARSING_RULES = {
+// Tokio Marine — placeholder layout, generic across products.
+const TM_GENERIC_RULES = {
   insurer_code: 'TM_LIFE',
-  template_version: 'TM_2024_v1',
+  template_version: 'TM_2024_v1_placeholder',
   product_field_map: {
     policy_number: { sheet: 'Cover', cell: 'B5' },
     benefit_period: { sheet: 'Cover', cell: 'B7' },
@@ -167,25 +173,137 @@ const TM_PARSING_RULES = {
   rates_block: { sheet: 'Rates', startRow: 4, endRow: 200 },
 };
 
-const GE_PARSING_RULES = {
+// Great Eastern — STM-calibrated. Each GE product lives on its own
+// sheet (`GEL-<PRODUCT>`); the common header at rows 1-17 is shared
+// across the four GE sheets.
+const ge = (
+  sheet: string,
+  plansBlock: { startRow: number; endRow: number; codeColumn: string },
+  ratesBlock: { startRow: number; endRow: number },
+) => ({
   insurer_code: 'GE_LIFE',
-  template_version: 'GE_2024_v1',
+  template_version: 'GE_STM_2026_v1',
   product_field_map: {
-    policy_number: { sheet: 'Schedule', cell: 'C8' },
-    benefit_period: { sheet: 'Schedule', cell: 'C10' },
-    eligibility_text: { sheet: 'Schedule', range: 'A14:Z18' },
+    policyholder_name: { sheet, cell: 'C4' },
+    insured_entities_csv: { sheet, cell: 'C5' },
+    address: { sheet, cell: 'C6' },
+    business: { sheet, cell: 'C7' },
+    period_of_insurance: { sheet, cell: 'C8' },
+    insurer_name: { sheet, cell: 'C9' },
+    pool_name: { sheet, cell: 'C10' },
+    policy_numbers_csv: { sheet, cell: 'C11' },
+    eligibility_text: { sheet, cell: 'C13' },
+    eligibility_date: { sheet, cell: 'C14' },
+    last_entry_age: { sheet, cell: 'C15' },
+    administration_type: { sheet, cell: 'C17' },
   },
-  plans_block: { sheet: 'Benefits', startRow: 8, endRow: 100, codeColumn: 'B' },
-  rates_block: { sheet: 'Premium', startRow: 5, endRow: 200 },
+  plans_block: { sheet, ...plansBlock },
+  rates_block: { sheet, ...ratesBlock },
+});
+
+const GE_GTL_RULES = ge(
+  'GEL-GTL',
+  // Plans A/B/C/D in column D. C stacksOn B, D stacksOn A — encoded by
+  // the basis text "additional above Plan B/A" (post-parse heuristic).
+  { startRow: 21, endRow: 24, codeColumn: 'D' },
+  { startRow: 29, endRow: 32 },
+);
+
+const GE_GHS_RULES = ge(
+  'GEL-GHS',
+  // Plans 1-6 in column I; 4/5/6 are FW variants.
+  { startRow: 22, endRow: 27, codeColumn: 'I' },
+  { startRow: 32, endRow: 37 },
+);
+
+const GE_GMM_RULES = ge(
+  'GEL-GMM',
+  { startRow: 22, endRow: 24, codeColumn: 'I' },
+  { startRow: 30, endRow: 32 },
+);
+
+const GE_SP_RULES = ge(
+  'GEL-SP',
+  { startRow: 21, endRow: 23, codeColumn: 'I' },
+  { startRow: 29, endRow: 31 },
+);
+
+// Zurich — STM-calibrated. Same header layout as GE; plan/rate blocks
+// shifted slightly because Zurich omits the "Pool" row.
+const ZURICH_GPA_RULES = {
+  insurer_code: 'ZURICH',
+  template_version: 'ZURICH_STM_2026_v1',
+  product_field_map: {
+    policyholder_name: { sheet: 'Zurich-GPA', cell: 'C4' },
+    insured_entities_csv: { sheet: 'Zurich-GPA', cell: 'C5' },
+    address: { sheet: 'Zurich-GPA', cell: 'C6' },
+    business: { sheet: 'Zurich-GPA', cell: 'C7' },
+    period_of_insurance: { sheet: 'Zurich-GPA', cell: 'C8' },
+    insurer_name: { sheet: 'Zurich-GPA', cell: 'C9' },
+    policy_numbers_csv: { sheet: 'Zurich-GPA', cell: 'C11' },
+    eligibility_text: { sheet: 'Zurich-GPA', cell: 'C13' },
+    eligibility_date: { sheet: 'Zurich-GPA', cell: 'C14' },
+    last_entry_age: { sheet: 'Zurich-GPA', cell: 'C15' },
+    administration_type: { sheet: 'Zurich-GPA', cell: 'C17' },
+  },
+  plans_block: { sheet: 'Zurich-GPA', startRow: 20, endRow: 23, codeColumn: 'D' },
+  rates_block: { sheet: 'Zurich-GPA', startRow: 28, endRow: 31 },
 };
 
-// Compose insurer-specific parsing rules into a per-product map.
-const parsingRulesFor = (insurers: ('TM_LIFE' | 'GE_LIFE')[]) => ({
-  templates: {
-    ...(insurers.includes('TM_LIFE') ? { TM_LIFE: TM_PARSING_RULES } : {}),
-    ...(insurers.includes('GE_LIFE') ? { GE_LIFE: GE_PARSING_RULES } : {}),
+// Chubb — STM-calibrated. Note the leading space in the sheet name —
+// the placement slip itself contains it; we match it verbatim.
+const CHUBB_GBT_RULES = {
+  insurer_code: 'CHUBB',
+  template_version: 'CHUBB_STM_2026_v1',
+  product_field_map: {
+    policyholder_name: { sheet: ' Chubb -GBT', cell: 'C4' },
+    insured_entities_csv: { sheet: ' Chubb -GBT', cell: 'C5' },
+    address: { sheet: ' Chubb -GBT', cell: 'C6' },
+    business: { sheet: ' Chubb -GBT', cell: 'C7' },
+    period_of_insurance: { sheet: ' Chubb -GBT', cell: 'C8' },
+    insurer_name: { sheet: ' Chubb -GBT', cell: 'C9' },
+    policy_numbers_csv: { sheet: ' Chubb -GBT', cell: 'C11' },
+    eligibility_text: { sheet: ' Chubb -GBT', cell: 'C13' },
+    eligibility_date: { sheet: ' Chubb -GBT', cell: 'C14' },
+    last_entry_age: { sheet: ' Chubb -GBT', cell: 'C15' },
+    administration_type: { sheet: ' Chubb -GBT', cell: 'C17' },
   },
-});
+  plans_block: { sheet: ' Chubb -GBT', startRow: 21, endRow: 21, codeColumn: 'D' },
+  rates_block: { sheet: ' Chubb -GBT', startRow: 25, endRow: 25 },
+};
+
+// Allianz — STM-calibrated. Header sits one column right (col D not C)
+// and one row up from R12 (Eligibility) onwards — the "Group" row is
+// indented differently from the other insurers.
+const ALLIANZ_WICI_RULES = {
+  insurer_code: 'ALLIANZ',
+  template_version: 'ALLIANZ_STM_2026_v1',
+  product_field_map: {
+    policyholder_name: { sheet: 'Allianz-WICI', cell: 'D4' },
+    insured_entities_csv: { sheet: 'Allianz-WICI', cell: 'D5' },
+    address: { sheet: 'Allianz-WICI', cell: 'D6' },
+    business: { sheet: 'Allianz-WICI', cell: 'D7' },
+    period_of_insurance: { sheet: 'Allianz-WICI', cell: 'D8' },
+    insurer_name: { sheet: 'Allianz-WICI', cell: 'D9' },
+    policy_numbers_csv: { sheet: 'Allianz-WICI', cell: 'D10' },
+    eligibility_text: { sheet: 'Allianz-WICI', cell: 'D12' },
+    eligibility_date: { sheet: 'Allianz-WICI', cell: 'D13' },
+    last_entry_age: { sheet: 'Allianz-WICI', cell: 'D14' },
+    administration_type: { sheet: 'Allianz-WICI', cell: 'D16' },
+  },
+  // Allianz has multi-entity rate tables — one block per PolicyEntity.
+  // The current parser's single `rates_block` handles only one. The
+  // multi-block extension is a Phase 2 item; for now we capture the
+  // first entity's tables and surface a NEEDS_REVIEW issue downstream.
+  plans_block: { sheet: 'Allianz-WICI', startRow: 21, endRow: 25, codeColumn: 'D' },
+  rates_block: { sheet: 'Allianz-WICI', startRow: 34, endRow: 38 },
+};
+
+// Compose insurer-specific parsing rules into a per-product map. Each
+// product type owns the (insurer → rules) entries that apply to it,
+// reflecting the reality that not every insurer underwrites every
+// product, and the same insurer's slip layout differs per product.
+const parsingRulesFor = (templates: Record<string, object>) => ({ templates });
 
 // Minimal display template — employee portal renders a card with these
 // fields. Full rendering hints land at S33+ when the portal is built.
@@ -219,7 +337,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_SALARY_MULTIPLE, ['multiplier', 'ratePerThousand']),
     premiumStrategy: 'per_individual_salary_multiple',
-    parsingRules: parsingRulesFor(['TM_LIFE', 'GE_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES, GE_LIFE: GE_GTL_RULES }),
     displayTemplate: displayTemplateFor('Term Life', ['sumAssured', 'beneficiaries']),
   },
   {
@@ -230,7 +348,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_FIXED_SUM, ['sumAssured', 'ratePerThousand']),
     premiumStrategy: 'per_individual_fixed_sum',
-    parsingRules: parsingRulesFor(['TM_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES }),
     displayTemplate: displayTemplateFor('Critical Illness', ['sumAssured', 'conditionsCovered']),
   },
   {
@@ -253,7 +371,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_FIXED_SUM, ['sumAssured', 'ratePerThousand']),
     premiumStrategy: 'per_individual_fixed_sum',
-    parsingRules: null,
+    parsingRules: parsingRulesFor({ ZURICH: ZURICH_GPA_RULES }),
     displayTemplate: displayTemplateFor('Personal Accident', ['sumAssured', 'permanentDisability']),
   },
   {
@@ -266,7 +384,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_PER_TIER_HOSPITAL, ['dailyRoomBoard'], 'per_cover_tier'),
     premiumStrategy: 'per_group_cover_tier',
-    parsingRules: parsingRulesFor(['TM_LIFE', 'GE_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES, GE_LIFE: GE_GHS_RULES }),
     displayTemplate: displayTemplateFor('Hospital & Surgical', ['roomBoard', 'panelStatus']),
   },
   {
@@ -278,7 +396,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_PER_TIER_HOSPITAL, [], 'per_cover_tier'),
     premiumStrategy: 'per_group_cover_tier',
-    parsingRules: parsingRulesFor(['TM_LIFE', 'GE_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES, GE_LIFE: GE_GMM_RULES }),
     displayTemplate: displayTemplateFor('Major Medical', ['inpatientCap', 'topUpLimit']),
   },
   {
@@ -301,7 +419,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_PER_TIER_OUTPATIENT, [], 'per_cover_tier'),
     premiumStrategy: 'per_group_cover_tier',
-    parsingRules: parsingRulesFor(['TM_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES }),
     displayTemplate: displayTemplateFor('GP Visits', ['visitLimit', 'panelStatus']),
   },
   {
@@ -313,7 +431,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_PER_TIER_OUTPATIENT, [], 'per_cover_tier'),
     premiumStrategy: 'per_group_cover_tier',
-    parsingRules: parsingRulesFor(['TM_LIFE', 'GE_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES, GE_LIFE: GE_SP_RULES }),
     displayTemplate: displayTemplateFor('Specialist Outpatient', [
       'visitLimit',
       'referralRequired',
@@ -327,7 +445,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_PER_TIER_DENTAL, ['annualCap'], 'per_cover_tier'),
     premiumStrategy: 'per_group_cover_tier',
-    parsingRules: parsingRulesFor(['TM_LIFE']),
+    parsingRules: parsingRulesFor({ TM_LIFE: TM_GENERIC_RULES }),
     displayTemplate: displayTemplateFor('Dental', ['annualCap', 'panelStatus']),
   },
   {
@@ -339,7 +457,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_PER_REGION_TRAVEL, ['region'], 'per_region'),
     premiumStrategy: 'per_headcount_flat',
-    parsingRules: null,
+    parsingRules: parsingRulesFor({ CHUBB: CHUBB_GBT_RULES }),
     displayTemplate: displayTemplateFor('Business Travel', ['region', 'medicalCap']),
   },
   {
@@ -351,7 +469,7 @@ export const PRODUCT_TYPE_SEEDS: ProductTypeSeed[] = [
     }),
     planSchema: planSchemaFor(SCHEDULE_WICI, ['earningsBands'], 'fixed_amount'),
     premiumStrategy: 'per_individual_earnings',
-    parsingRules: null,
+    parsingRules: parsingRulesFor({ ALLIANZ: ALLIANZ_WICI_RULES }),
     displayTemplate: displayTemplateFor('Work Injury Compensation', [
       'medicalExpenseCap',
       'permanentDisabilityCap',
