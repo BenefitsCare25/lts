@@ -80,8 +80,7 @@ export function EditClientForm({ clientId }: { clientId: string }) {
   }, [form?.uen, selectedCountry?.uenPattern]);
 
   if (client.isLoading || form === null) return <p>Loading…</p>;
-  if (client.error)
-    return <p className="field-error">Failed to load: {client.error.message}</p>;
+  if (client.error) return <p className="field-error">Failed to load: {client.error.message}</p>;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,9 +151,7 @@ export function EditClientForm({ clientId }: { clientId: string }) {
                 className="input"
                 required
                 value={form.countryOfIncorporation}
-                onChange={(e) =>
-                  setForm({ ...form, countryOfIncorporation: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, countryOfIncorporation: e.target.value })}
                 disabled={countries.isLoading}
               >
                 {countries.data?.map((c) => (
@@ -265,9 +262,7 @@ export function EditClientForm({ clientId }: { clientId: string }) {
                 id="cli-status"
                 className="input"
                 value={form.status}
-                onChange={(e) =>
-                  setForm({ ...form, status: e.target.value as ClientStatus })
-                }
+                onChange={(e) => setForm({ ...form, status: e.target.value as ClientStatus })}
               >
                 <option value="ACTIVE">Active</option>
                 <option value="DRAFT">Draft</option>
