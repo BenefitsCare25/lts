@@ -4,6 +4,40 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S17 BenefitYear + draft state (out-of-order)
+
+**Session focus.** Land BenefitYear lifecycle ahead of S15 (Product selection), because Product carries `benefitYearId` as a required FK — without S17, S15's "save 10 products" AC isn't physically possible. Re-sequenced the phase as S17 → S16 → S15 instead of the v2 plan order S15 → S16 → S17.
+
+**What landed.**
+
+- **`benefitYears` tRPC router** under `apps/web/src/server/trpc/routers/benefit-years.ts`. Five procedures via `tenantProcedure`: listByPolicy / byId / create / updateDates / setState. Like the policies router, BenefitYear isn't directly tenant-scoped, so every read goes through `policy: { client: { tenantId } }` and writes load through a `loadBenefitYear` helper that does the same join.
+- **State machine.** `rejectTransition(from, to)` rejects every move except DRAFT→PUBLISHED, DRAFT→ARCHIVED, and PUBLISHED→ARCHIVED. PUBLISHED→DRAFT and ARCHIVED→anything are firmly closed — once published, the year is immutable; once archived, it stays archived. `updateDates` is a separate procedure that only accepts DRAFT rows (to avoid invalidating a published configuration via a sneaky date edit).
+- **Role gate.** `setState` looks up the caller's `User.role` from the DB on every publish/archive-of-published, requires `TENANT_ADMIN` or `BROKER_ADMIN`. Going to the DB instead of trusting the session token costs a query but means revoked admins lose publish rights immediately, not at next sign-in. `becomingPublished` branch stamps `publishedAt: new Date()` and `publishedBy: ctx.userId` atomically with the state change.
+- **`policies.create` auto-creates the first BenefitYear.** Same write, nested `benefitYears: { create: [{ startDate, endDate }] }`. Default period is today (UTC midnight) → today + 365 - 1 days, all in UTC to avoid TZ drift. Brokers can edit those dates afterward via `updateDates` while the year is still DRAFT.
+- **`BenefitYearsSection` component** dropped under the policy form on `/admin/clients/[id]/policies/[policyId]/edit/`. Lists every benefit year with state pill + product count + publish date. Per-row actions: Edit dates (DRAFT only, inline date inputs), Publish (DRAFT → PUBLISHED with confirm dialog), Archive (DRAFT or PUBLISHED → ARCHIVED with confirm dialog). Below the list, a small "Add benefit year" form for renewals.
+- **`BenefitYearState` mirrored as a literal-union in client.** Same trick as S13's `ClientStatus` — keeps `@prisma/client` runtime out of the bundle.
+
+**Decisions and rationale.**
+
+1. **Re-sequenced ahead of S15.** Phase 1C ordering in the v2 plan is logical (Client → Policy → Product → Catalogue Seed → BenefitYear), but the schema makes Product depend on BenefitYear. The cheapest path to a runnable AC is BenefitYear first, Product UI second, catalogue seed last. Documented in PROGRESS.md S17 row.
+2. **Default period = 12 months from today, not from policy creation date.** Same thing in practice, but tying it to `new Date()` at the moment of the create call means two policies created back-to-back share the same period — easier to reason about during testing.
+3. **Role gate goes through the DB.** Session token has the role too, but a session cached pre-revocation would let a fired admin publish. The extra query is cheap in this hot-path (publish is a rare action) and leaves no stale-permission window.
+4. **`updateDates` separate from `setState`.** Could have collapsed both into a single "update" mutation with optional fields, but keeping them split makes the state-immutability rule self-documenting: `updateDates` exists precisely to declare which mutations are safe on DRAFT.
+5. **No optimistic lock on BenefitYear.** Policy has `versionId`; BenefitYear doesn't. Concurrent edits to BenefitYear dates are rare (it's a single broker action per renewal), and `@@unique([policyId, startDate])` catches the only real conflict.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean.
+- Existing 11/11 tests still pass.
+- Build manifest: policy edit page bundle 2.51 kB → 4.07 kB (added BenefitYearsSection).
+
+**Open items / next.**
+
+- **S16 Catalogue seed scripts.** Seed the 12 default ProductTypes per v2 §3.5 with schemas, planSchemas, premiumStrategy refs, and Tokio Marine + Great Eastern parsing rules. Currently the `/admin/catalogue/product-types` table is empty on staging — the Product selection UI in S15 needs at least the GTL/GHS/GPA/WICI rows to render the dropdown.
+- **S15 Product selection (Screen 3).** Picker UI under a BenefitYear — repeating row of (ProductType, Insurer, Pool, TPA, per-entity policyNumber). Filters: Insurer dropdown shows only insurers whose `productsSupported` array includes the selected product type's code. CUBER acceptance: 10 products spanning Tokio Marine + Zurich + Allied World.
+
+---
+
 ## 2026-04-28 — S14 Policy + entities
 
 **Session focus.** Land Screen 2 — Policy editor with PolicyEntity rows + rate-overrides JSONB. First story to deal with optimistic locking (Policy.versionId), and the first model that isn't directly tenant-scoped.

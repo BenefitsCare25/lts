@@ -133,6 +133,16 @@ export const policiesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertClient(ctx.db, input.clientId);
       assertEntityInvariants(input.data);
+
+      // S17: every new Policy spawns a DRAFT BenefitYear running for
+      // 12 months from today. Brokers can edit the dates or add
+      // additional years from the policy edit page.
+      const startDate = new Date();
+      startDate.setUTCHours(0, 0, 0, 0);
+      const endDate = new Date(startDate);
+      endDate.setUTCFullYear(endDate.getUTCFullYear() + 1);
+      endDate.setUTCDate(endDate.getUTCDate() - 1);
+
       try {
         return await prisma.policy.create({
           data: {
@@ -148,8 +158,11 @@ export const policiesRouter = router({
                 rateOverrides: rateOverridesToJson(e.rateOverrides),
               })),
             },
+            benefitYears: {
+              create: [{ startDate, endDate }],
+            },
           },
-          include: { entities: true },
+          include: { entities: true, benefitYears: true },
         });
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
