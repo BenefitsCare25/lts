@@ -5,11 +5,7 @@
 // validator wherever Vitest can reach Zod's superRefine).
 // =============================================================
 
-import {
-  jsonLogicToUiPredicate,
-  rowToJsonLogic,
-  uiPredicateToJsonLogic,
-} from '@/lib/predicate';
+import { jsonLogicToUiPredicate, rowToJsonLogic, uiPredicateToJsonLogic } from '@/lib/predicate';
 import { describe, expect, it } from 'vitest';
 
 describe('rowToJsonLogic', () => {
@@ -23,13 +19,8 @@ describe('rowToJsonLogic', () => {
   });
 
   it('emits and(>=, <=) for between', () => {
-    expect(
-      rowToJsonLogic({ field: 'employee.hjg', operator: 'between', value: [8, 10] }),
-    ).toEqual({
-      and: [
-        { '>=': [{ var: 'employee.hjg' }, 8] },
-        { '<=': [{ var: 'employee.hjg' }, 10] },
-      ],
+    expect(rowToJsonLogic({ field: 'employee.hjg', operator: 'between', value: [8, 10] })).toEqual({
+      and: [{ '>=': [{ var: 'employee.hjg' }, 8] }, { '<=': [{ var: 'employee.hjg' }, 10] }],
     });
   });
 
@@ -43,9 +34,9 @@ describe('rowToJsonLogic', () => {
   });
 
   it('throws on unknown operator', () => {
-    expect(() =>
-      rowToJsonLogic({ field: 'f', operator: 'unknown_op', value: 1 }),
-    ).toThrow(/Unsupported operator/);
+    expect(() => rowToJsonLogic({ field: 'f', operator: 'unknown_op', value: 1 })).toThrow(
+      /Unsupported operator/,
+    );
   });
 });
 
