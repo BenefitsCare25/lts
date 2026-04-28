@@ -133,7 +133,13 @@ Phase 1 ships everything in v2 §8; Phase 2 picks up the deferrals in v2 §11 pl
 | d | PolicyEntity extraction from sheet 1 | ✅ done. `policy_entities_block: { sheet, startRow, endRow, policyNumberColumn, legalNameColumn, masterRow }` declared once on each insurer's rules; parser dedupes and emits `result.policyEntities` with `isMaster` flag. STM-calibrated to comments sheet rows 21-23; live run extracts all 3 entities (G0005086 master, G0005088, G0005089). |
 | e | Rider-stack detection | ✅ done. Plan rows scan all column values for "additional above Plan X" text and emit `stacksOnLabel: "Plan X"` for `applyToCatalogue` to resolve. STM Plan D matches "additional above Plan A"; Plan C's row in the per-product sheet doesn't carry the rider hint (slip data quality issue — broker flags via review UI). |
 
-**`placementSlips.applyToCatalogue` row mapping.** Still pending — turns the parsed payload into real `Product` / `Plan` / `PremiumRate` / `BenefitGroup` / `PolicyEntity` rows. With items a–e in place, it's the integration item that closes the v2 §9 STM acceptance test.
+**`placementSlips.applyToCatalogue` row mapping.** ✅ structural cut shipped. Mutation now upserts `PolicyEntity` rows (idempotent on `policyId, policyNumber`), `Product` rows (idempotent on `benefitYearId, productTypeId`), and `Plan` rows (idempotent on `productId, code`) with derived codes (`PA`, `PB`, `P1`, ...) and `coverBasis` from the ProductType's premium strategy. Two-pass `stacksOn` resolution links rider plans to their base after all plans exist. Returns a `summary` payload with counts + a `skipped[]` list documenting the deferred items:
+
+- **PremiumRate row mapping** — defers because rate-row column → schedule-field mapping is per-insurer calibration the broker tunes once per template. Today the broker enters rates via the Premium tab on each Product (S24).
+- **Plan schedule details** — Plans land with `schedule: {}` so `applyToCatalogue` doesn't bypass Ajv validation requirements that vary per ProductType. Broker fills the schedule via the per-product UI.
+- **BenefitGroup creation** — `result.benefitGroups` carries 24 predicate suggestions; broker confirms in the Benefit Groups screen, not auto-saved.
+
+Phase 2 follow-ups: per-insurer rate-column mapping (so PremiumRate creation lands), schedule-field heuristic from rate row context, broker-confirmation UI for the predicate suggestions.
 
 ### Security / hardening — Phase 2A ✅
 
