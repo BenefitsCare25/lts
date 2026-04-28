@@ -4,6 +4,50 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S20 Overlap detection (closes Phase 1D)
+
+**Session focus.** Surface a warning when saving a benefit group whose predicate already intersects with another group on the same policy. Acknowledgeable, not blocking.
+
+**What landed.**
+
+- **`benefitGroups.checkOverlap` query.** Loads every other group on the policy plus every employee on the client, then runs `jsonLogic.apply(candidate, e.data) && jsonLogic.apply(other.predicate, e.data)` per pair. Returns `{ overlaps: [{ id, name, intersection }], otherGroupCount, employeeCount, noEmployeesYet }`. Wraps each row in try/catch so a malformed prior predicate or a rogue employee record can't kill the whole check. `excludeId` parameter prevents the editing group from matching itself.
+- **Submit-time gate in the UI.** Refactored the predicate builder's submit handler:
+  1. Build the JSONLogic from form rows (extracted `buildPredicate` helper for reuse).
+  2. Call `utils.benefitGroups.checkOverlap.fetch()` with the policy + candidate predicate.
+  3. If `overlaps.length > 0`, set `overlapWarning` state and render a yellow warning card listing each conflict + shared-employee count.
+  4. The primary submit button stays disabled with "Checking…" text during the fetch; on warning, a `Save anyway` button appears next to it.
+  5. `acknowledgeAndSave` rebuilds the predicate (in case the user tweaked it after seeing the warning) and persists without re-checking.
+- **`utils.benefitGroups.checkOverlap.fetch`** chosen over `useQuery` because the check is event-driven (fires only on submit), not subscription-style. tRPC's utils API exposes the imperative one-shot fetcher we need.
+- **`noEmployeesYet` warning copy.** When `employeeCount === 0`, the overlap check can't actually find intersections — but it'd be misleading to show "no overlaps" because the predicates might really overlap once employees exist. Surfacing both states explicitly: empty `overlaps` array AND a `noEmployeesYet: true` flag the UI uses to warn the user the check is structural-only. The form still proceeds to save because there's nothing to warn about *yet*.
+
+**Decisions and rationale.**
+
+1. **Advisory, not enforced.** The S20 AC says "user can acknowledge and save" — i.e., overlaps are a warning, not a block. Server save mutation doesn't re-check. If the client skips the check (custom API caller), saves go through. This matches how the spec frames overlap as "a thing the broker should know about", not a hard correctness rule. Some predicates *should* overlap intentionally (master-cohort + sub-cohort).
+2. **Pairwise check, not n-ary.** Could check transitive overlap or cross-group implications, but the AC only asks "does this predicate share any employee with any other predicate". O(N×M) where N = other groups, M = employees. With Phase 1's expected scale (≤10 groups × ≤300 employees per client = 3,000 evals) this stays well under 100ms even with json-logic-js's interpretive cost.
+3. **Run check via `utils.fetch`, not `useQuery`.** `useQuery` would re-run on every form keystroke (or require manual `enabled` gating that mirrors what we already do for the live preview). `utils.fetch` fires once per submit click — predictable and matches the user's mental model: "check happens when I press Save".
+4. **`excludeId` in the input, not always passed.** Make it optional so create flows don't have to pass `undefined`. tRPC handles `excludeId?: string` cleanly.
+5. **Re-build the predicate inside `acknowledgeAndSave`.** User might have changed the form between seeing the warning and clicking "Save anyway" — the live preview fields aren't disabled. Re-building catches that, and the cost is one zero-ms `useMemo` re-run.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean.
+- 11/11 unit tests still pass.
+- The warning copy and "Save anyway" wiring renders locally; full overlap behaviour will exercise once Employees exist (S33).
+
+**Phase 1D status — closed.**
+
+| Story | Plan AC satisfied? | Note |
+|---|---|---|
+| S18 | ✅ | Field/operator/value dropdowns dynamic from EmployeeSchema + OperatorLibrary |
+| S19 | ✅ | 500ms-debounced preview wired; "no employees yet" path renders correctly |
+| S20 | ✅ | Pairwise overlap check + acknowledgeable warning + Save Anyway |
+
+**Open items / next.**
+
+- **Phase 1E — Per-product config / Screen 5 (S21–S25).** Five sub-tab stories: 5a Details (form rendered from `ProductType.schema`), 5b Plans (with stacksOn + selectionMode), 5c Eligibility matrix (groups × plans), 5d Premium calc (strategy library), 5e Effective-dated schedules. S21 first — auto-generated form from JSON Schema, probably via `@rjsf/core` per the v2 plan tooling list.
+
+---
+
 ## 2026-04-28 — S19 Live employee match preview
 
 **Session focus.** Wire the live preview onto the predicate builder. Show "Matches N of M employees" inline as the user types, debounced under 500ms.

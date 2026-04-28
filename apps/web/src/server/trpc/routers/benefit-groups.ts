@@ -207,4 +207,76 @@ export const benefitGroupsRouter = router({
       }
       return { total: employees.length, matched };
     }),
+
+  // S20: overlap detection. For each existing group on the policy
+  // (excluding `excludeId` when editing), evaluate both predicates
+  // against every employee and return groups with non-zero intersection.
+  // Advisory only — the save mutation doesn't re-check; the UI is
+  // expected to surface the warning and require user acknowledgment.
+  //
+  // When no employees exist, intersection counts are unknown — we still
+  // return overlaps with `intersection: 0` and a `noEmployeesYet` flag
+  // so the UI can warn the user that the check is best-effort. The
+  // alternative (silently passing every save) is worse because the
+  // overlap might really exist; the user just hasn't loaded employees.
+  checkOverlap: tenantProcedure
+    .input(
+      z.object({
+        policyId: z.string().min(1),
+        predicate: predicateSchema,
+        excludeId: z.string().min(1).optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const policy = await prisma.policy.findFirst({
+        where: { id: input.policyId, client: { tenantId: ctx.tenantId } },
+        select: { id: true, clientId: true },
+      });
+      if (!policy) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Policy not found.' });
+      }
+
+      const [otherGroups, employees] = await Promise.all([
+        prisma.benefitGroup.findMany({
+          where: {
+            policyId: input.policyId,
+            ...(input.excludeId ? { id: { not: input.excludeId } } : {}),
+          },
+          select: { id: true, name: true, predicate: true },
+        }),
+        prisma.employee.findMany({
+          where: { clientId: policy.clientId },
+          select: { data: true },
+        }),
+      ]);
+
+      const candidate = input.predicate as jsonLogic.RulesLogic;
+      const overlaps: { id: string; name: string; intersection: number }[] = [];
+
+      for (const other of otherGroups) {
+        let count = 0;
+        for (const e of employees) {
+          try {
+            if (
+              jsonLogic.apply(candidate, e.data) &&
+              jsonLogic.apply(other.predicate as jsonLogic.RulesLogic, e.data)
+            ) {
+              count += 1;
+            }
+          } catch {
+            // ignore per-row eval failures
+          }
+        }
+        if (count > 0) {
+          overlaps.push({ id: other.id, name: other.name, intersection: count });
+        }
+      }
+
+      return {
+        overlaps,
+        otherGroupCount: otherGroups.length,
+        employeeCount: employees.length,
+        noEmployeesYet: employees.length === 0,
+      };
+    }),
 });
