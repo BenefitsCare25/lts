@@ -113,7 +113,7 @@ When all 35 stories are done, this end-to-end test must pass:
 - [ ] SEC-001 through SEC-010 (v2 §7) implemented with integration tests. **SEC-001 (MFA) blocked by ADR 0003** — closes when WorkOS is re-added.
 - [ ] A new client (CUBER-complexity) can be onboarded end-to-end in <30 min through the UI alone. (Manual walkthrough not yet performed against staging.)
 - [x] A catalogue admin can add a new ProductType in-session with no deploy.
-- [ ] Cross-tenant isolation has a passing test. (Today's audit caught + fixed CRITICAL leak in `claims-feed.ingest`; an automated regression test still needs to land — Phase 2 hardening item.)
+- [x] Cross-tenant isolation has a passing test. (`apps/web/tests/integration/cross-tenant.test.ts` — 15 assertions across insurers/clients/policies/benefitYears/employees/claimsFeed/placementSlips. Skipped without `INTEGRATION_DATABASE_URL`; CI runs them against an ephemeral Postgres service container.)
 
 ---
 
@@ -129,13 +129,15 @@ Phase 1 ships everything in v2 §8; Phase 2 picks up the deferrals in v2 §11 pl
 
 ### Security / hardening — surfaced by today's audit
 
-| # | Item | Notes |
-|---|---|---|
-| 1 | RLS policies on Policy / BenefitYear / Plan / Employee / Product / etc. | Currently app-layer only via `client: { tenantId }` joins; defence-in-depth gap on 9 tables. Add ADR. |
-| 2 | Per-action role gates beyond publish | Phase 1 is admin-only so surface is intentional; before non-admin users land in Phase 2, every mutation needs a role check. |
-| 3 | Cross-tenant isolation regression test | Automated test that signs in as tenant A and confirms zero rows visible from tenant B's resources via every public tRPC endpoint. |
-| 4 | Bicep param drift for SharePoint env | Five `AZURE_*` Container App secrets aren't represented in `infra/bicep/modules/container-app.bicep` — a full Bicep deploy would strip them. Add params + GitHub repo secrets, OR move secrets into Bicep with `existing` lookup. |
-| 5 | Audit log writes (`AuditLog` schema model exists, no router) | Capture every mutation: who/what/when. Phase 1 has the table, Phase 2 wires the writes. |
+This is now **Phase 2A**, in-flight. Tracked items:
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| 1 | RLS policies on Policy / BenefitYear / Plan / Employee / Product / etc. | pending | Currently app-layer only via `client: { tenantId }` joins; defence-in-depth gap on 12 tables. |
+| 2 | Per-action role gates beyond publish | pending | Phase 1 is admin-only so surface is intentional; before non-admin users land in Phase 2, every mutation needs a role check. |
+| 3 | Cross-tenant isolation regression test | ✅ done | `apps/web/tests/integration/cross-tenant.test.ts` covers insurers / clients / policies / benefitYears / employees / claimsFeed / placementSlips. CI runs against an ephemeral Postgres service container; locally the suite skips without `INTEGRATION_DATABASE_URL` so dev DBs aren't truncated. |
+| 4 | Bicep param drift for SharePoint env | pending | Five `AZURE_*` Container App secrets aren't represented in `infra/bicep/modules/container-app.bicep` — a full Bicep deploy would strip them. Add params + GitHub repo secrets, OR move secrets into Bicep with `existing` lookup. |
+| 5 | Audit log writes (`AuditLog` schema model exists, no router) | pending | Capture every mutation: who/what/when. Phase 1 has the table, Phase 2 wires the writes. |
 
 ### From v2 §11 (explicit Phase 2 deferrals)
 
