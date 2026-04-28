@@ -40,12 +40,37 @@ param redisUrl string = ''
 @description('Application Insights connection string. Empty string omits APPLICATIONINSIGHTS_CONNECTION_STRING.')
 param appInsightsConnectionString string = ''
 
+// SharePoint storage credentials (Phase 1G — placement-slip uploads).
+// Five values together; presence of `sharepointTenantId` is the gate
+// because all five are required for the ROPC delegated-auth flow.
+// Marked @secure() so values stay masked in deployment logs.
+@description('Azure AD tenant ID for the SharePoint app registration. Empty string omits the SharePoint env vars.')
+@secure()
+param sharepointTenantId string = ''
+
+@description('App registration client ID with Microsoft Graph delegated permissions.')
+@secure()
+param sharepointClientId string = ''
+
+@description('App registration client secret.')
+@secure()
+param sharepointClientSecret string = ''
+
+@description('Service account UPN (e.g. BenefitsCare@inspro.com.sg) used by the ROPC flow.')
+@secure()
+param sharepointServiceAccountUsername string = ''
+
+@description('Service account password.')
+@secure()
+param sharepointServiceAccountPassword string = ''
+
 @description('Tags applied to the resource.')
 param tags object = {}
 
 var hasDatabase = !empty(databaseUrl)
 var hasRedis = !empty(redisUrl)
 var hasAppInsights = !empty(appInsightsConnectionString)
+var hasSharepoint = !empty(sharepointTenantId)
 
 var baseSecrets = [
   {
@@ -66,6 +91,30 @@ var redisSecret = hasRedis
       {
         name: 'redis-url'
         value: redisUrl
+      }
+    ]
+  : []
+var sharepointSecrets = hasSharepoint
+  ? [
+      {
+        name: 'sharepoint-tenant-id'
+        value: sharepointTenantId
+      }
+      {
+        name: 'sharepoint-client-id'
+        value: sharepointClientId
+      }
+      {
+        name: 'sharepoint-client-secret'
+        value: sharepointClientSecret
+      }
+      {
+        name: 'sharepoint-service-account-username'
+        value: sharepointServiceAccountUsername
+      }
+      {
+        name: 'sharepoint-service-account-password'
+        value: sharepointServiceAccountPassword
       }
     ]
   : []
@@ -100,6 +149,30 @@ var aiEnv = hasAppInsights
       }
     ]
   : []
+var sharepointEnv = hasSharepoint
+  ? [
+      {
+        name: 'AZURE_TENANT_ID'
+        secretRef: 'sharepoint-tenant-id'
+      }
+      {
+        name: 'AZURE_CLIENT_ID'
+        secretRef: 'sharepoint-client-id'
+      }
+      {
+        name: 'AZURE_CLIENT_SECRET'
+        secretRef: 'sharepoint-client-secret'
+      }
+      {
+        name: 'AZURE_SERVICE_ACCOUNT_USERNAME'
+        secretRef: 'sharepoint-service-account-username'
+      }
+      {
+        name: 'AZURE_SERVICE_ACCOUNT_PASSWORD'
+        secretRef: 'sharepoint-service-account-password'
+      }
+    ]
+  : []
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -123,7 +196,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           passwordSecretRef: 'registry-password'
         }
       ]
-      secrets: concat(baseSecrets, dbSecret, redisSecret)
+      secrets: concat(baseSecrets, dbSecret, redisSecret, sharepointSecrets)
     }
     template: {
       containers: [
@@ -134,7 +207,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: concat(baseEnv, dbEnv, redisEnv, aiEnv)
+          env: concat(baseEnv, dbEnv, redisEnv, aiEnv, sharepointEnv)
         }
       ]
       scale: {

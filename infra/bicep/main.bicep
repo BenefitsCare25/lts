@@ -61,6 +61,31 @@ param postgresAdminUsername string = 'saas_admin'
 @secure()
 param postgresAdminPassword string = ''
 
+// ---- SharePoint storage credentials (Phase 1G) -----------------------------
+// All five required for the placement-slip upload path. Empty values keep
+// the env vars out of the Container App so local dev / fresh stacks fall
+// back to inline-marker storage instead.
+
+@description('SharePoint app registration tenant ID.')
+@secure()
+param sharepointTenantId string = ''
+
+@description('SharePoint app registration client ID.')
+@secure()
+param sharepointClientId string = ''
+
+@description('SharePoint app registration client secret.')
+@secure()
+param sharepointClientSecret string = ''
+
+@description('SharePoint service account UPN.')
+@secure()
+param sharepointServiceAccountUsername string = ''
+
+@description('SharePoint service account password.')
+@secure()
+param sharepointServiceAccountPassword string = ''
+
 // ---- Tags -------------------------------------------------------------------
 
 @description('Resource tags.')
@@ -200,6 +225,11 @@ module containerApp 'modules/container-app.bicep' = {
     redisUrl: deployRedis ? redis.outputs.connectionString : ''
     #disable-next-line BCP318
     appInsightsConnectionString: deployObservability ? appInsights.outputs.connectionString : ''
+    sharepointTenantId: sharepointTenantId
+    sharepointClientId: sharepointClientId
+    sharepointClientSecret: sharepointClientSecret
+    sharepointServiceAccountUsername: sharepointServiceAccountUsername
+    sharepointServiceAccountPassword: sharepointServiceAccountPassword
     tags: tags
   }
 }
