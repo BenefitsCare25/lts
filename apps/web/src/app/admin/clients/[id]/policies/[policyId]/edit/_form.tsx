@@ -361,6 +361,20 @@ export function EditPolicyForm({
       </section>
 
       <BenefitYearsSection clientId={clientId} policyId={policyId} />
+
+      <section className="section">
+        <h3 style={{ marginBottom: '0.75rem' }}>Benefit groups</h3>
+        <p style={{ marginBottom: '1rem', maxWidth: '60ch' }}>
+          Predicate-based cohorts (e.g. "Senior Management", "Foreign Workers WP/SP HJG 08-10") that
+          drive the eligibility matrix on each product.
+        </p>
+        <Link
+          href={`/admin/clients/${clientId}/policies/${policyId}/benefit-groups`}
+          className="btn btn-primary"
+        >
+          Manage benefit groups →
+        </Link>
+      </section>
     </>
   );
 }

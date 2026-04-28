@@ -13,7 +13,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | **1A** Foundation | S1–S5 | ✅ complete | S2 shipped Auth.js Credentials, not WorkOS — see ADR 0003 |
 | **1B** Registries / Screen 0 | S6–S12 | ✅ complete | S8 has a documented field deferral (ADR 0004); visual schema editor for S12 deferred to JSON textareas — see story note |
 | **1C** Client onboarding | S13–S17 | ✅ complete | Built S13 → S14 → S17 → S16 → S15 (re-sequenced for FK dependencies) |
-| **1D** Predicate builder | S18–S20 | ⏳ not started | |
+| **1D** Predicate builder | S18–S20 | 🔄 in progress | S18 landed |
 | **1E** Per-product config | S21–S25 | ⏳ not started | |
 | **1F** Review + publish | S26–S28 | ⏳ not started | |
 | **1G** Excel ingestion | S29–S32 | ⏳ not started | |
@@ -65,7 +65,7 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 
 ## Phase 1D — Predicate builder / Screen 4 (S18–S20)
 
-- [ ] **S18** Predicate builder reading EmployeeSchema dynamically — opening Screen 4 for a tenant with `hay_job_grade` (custom) shows it in the field dropdown; selecting populates operator dropdown with integer operators; value is a number bounded by schema min/max.
+- [x] **S18** Predicate builder reading EmployeeSchema dynamically — opening Screen 4 for a tenant with `hay_job_grade` (custom) shows it in the field dropdown; selecting populates operator dropdown with integer operators; value is a number bounded by schema min/max. (2026-04-28 — `benefitGroups` tRPC router with structural JSONLogic validation via `json-logic-js.apply` against `{}`. New `/admin/clients/[id]/policies/[policyId]/benefit-groups` page with field/operator/value triplet rows + AND/OR connector, repeating rows for compound predicates, edit-existing flow that round-trips JSONLogic back to the UI. Field dropdown reads `EmployeeSchema.fields` filtered by `selectableForPredicates && (tier !== STANDARD || enabled)`. Operator dropdown sourced from new `referenceData.operators` query backed by `OperatorLibrary`. Value control switches per data type: number with min/max for integer/number; date input for date; select for enum; boolean toggle; multi-select chips for `in/notIn` over enums; comma-separated input for `in/notIn` over text/numbers; range inputs for `between`. JSONLogic round-trip helpers in `apps/web/src/lib/predicate.ts`.
 - [ ] **S19** Live employee match preview — typing a predicate and waiting <500ms shows matching count; preview re-evaluates on schema field changes.
 - [ ] **S20** Overlap detection on save — saving two benefit groups with intersecting predicates surfaces a warning; user can acknowledge and save; intersection check is JSONLogic-aware.
 

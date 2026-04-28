@@ -7,6 +7,7 @@
 // =============================================================
 
 import { router } from './init';
+import { benefitGroupsRouter } from './routers/benefit-groups';
 import { benefitYearsRouter } from './routers/benefit-years';
 import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
@@ -29,6 +30,7 @@ export const appRouter = router({
   clients: clientsRouter,
   policies: policiesRouter,
   benefitYears: benefitYearsRouter,
+  benefitGroups: benefitGroupsRouter,
   products: productsRouter,
   referenceData: referenceDataRouter,
 });

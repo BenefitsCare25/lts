@@ -4,6 +4,49 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S18 Predicate builder (Phase 1D opens)
+
+**Session focus.** Build Screen 4 — the JSONLogic predicate builder for benefit groups. AC: tenant with custom `hay_job_grade` field shows it in dropdown; integer operators populate; value is number bounded by min/max.
+
+**What landed.**
+
+- **`benefitGroups` tRPC router** under `apps/web/src/server/trpc/routers/benefit-groups.ts`. listByPolicy / byId / create / update / delete via `tenantProcedure`, gated by joining through `policy: { client: { tenantId } }`. **Structural-only JSONLogic validation:** the server runs `jsonLogic.apply(predicate, {})` to compile-check the shape, but doesn't validate against the EmployeeSchema. Stored predicates stay opaque to the server, so future schema changes (renaming a field, removing a custom field) don't invalidate existing groups — semantic checks happen at evaluation time.
+- **`json-logic-js` added** to `apps/web/package.json`. Used server-side for shape validation; will be used again at S19 for live employee-match preview and at S23+ for runtime eligibility evaluation. The TypeScript package only exposes `RulesLogic` as the recursive-shape type.
+- **`referenceData.operators`** query exposes the `OperatorLibrary` table (system-level seed from S7) so the predicate builder can populate operators per data type.
+- **`apps/web/src/lib/predicate.ts`** — bidirectional UI ↔ JSONLogic adapter. `uiPredicateToJsonLogic({ connector, rows })` builds the canonical shape; `jsonLogicToUiPredicate` recognises the shapes the builder produces (flat conditions, single-level and/or, between as `and(>=,<=)`, notIn as `!.in`, contains as `in[value, var]`) and returns null for anything deeper. Edit flow falls back to a fresh empty form + warning banner when a stored predicate doesn't round-trip.
+- **`/admin/clients/[id]/policies/[policyId]/benefit-groups`** — Screen 4 page. Repeating predicate rows where each row picks: a field (from `EmployeeSchema.fields` filtered by `selectableForPredicates && (tier !== STANDARD || enabled)`), an operator (filtered by the field's data type), and a value control whose JSX shape varies by data type:
+  - `integer` / `number` → numeric input with `min`/`max` from the schema (S18's headline AC)
+  - `date` → date picker
+  - `enum` (single arity) → `<select>` of `enumValues`
+  - `enum` (multi arity for `in`/`notIn`) → multi-select chip group
+  - `boolean` → true/false select
+  - `string` → free text
+  - `between` (range arity) → two inputs of the field's type with min/max preserved
+- **Compound predicates baked in.** AND/OR connector dropdown appears when the user adds a second row. Single-row groups skip the connector. `between` translates to `{ and: [{ ">=": [...] }, { "<=": [...] }] }` so the JSONLogic stays canonical regardless of how the UI surfaces it.
+- **Edit existing groups round-trips.** Clicking Edit decodes the stored JSONLogic and re-populates the form. If decoding fails (deeper nesting, hand-edited shapes the builder can't represent), the form resets and the user is warned that saving will overwrite.
+- **Manage benefit groups CTA** added to the policy edit page below the BenefitYears section.
+
+**Decisions and rationale.**
+
+1. **Server validates shape, not semantics.** Two reasons. First, the EmployeeSchema is mutable per-tenant — strict server validation would reject a saved predicate the moment the broker disables a field, even if no employee actually uses it. Second, the parser story (S31) will produce predicates from Excel that include schema fields the broker may not have added yet; we want the parser to pre-populate groups that get fixed up afterward, not fail mid-import.
+2. **Compound predicates from S18, not deferred.** S20's overlap detection and the parser's compound predicates (4 of 6 STM groups are compound) need this regardless. Single-row case is the same code path with `rows.length === 1`.
+3. **Value coercion at submit time, not as-you-type.** Inputs hold strings; `coerce()` casts at build-row time. Lets the user type "1" without it being instantly tokenised, which makes the experience feel less twitchy on numeric and date fields.
+4. **`useEffect` for "reset operator on field change" replaced with event handler.** Biome's `useExhaustiveDependencies` rule flagged the effect because `field`, `ops`, `row.operator`, and `onChange` were all referenced but only `field?.type` was in deps. Doing the reset in `onFieldChange` is cleaner anyway — it's an event-driven change, not a reactive consequence.
+5. **`json-logic-js` for shape check, not Ajv.** Ajv is for JSON Schema validation; JSONLogic isn't a JSON Schema target. `jsonLogic.apply(predicate, {})` is the lightest possible round-trip — if it doesn't throw, the structure compiles. Cheap, correct, and reuses the same library we'll need for runtime evaluation.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean.
+- Existing 11/11 tests still pass.
+- New routes in build manifest: `/admin/clients/[id]/policies/[policyId]/benefit-groups` (~4.7 kB).
+
+**Open items / next.**
+
+- **S19 Live employee match preview.** Show "matches N employees" inline as the predicate is built, debounced under 500ms. Needs a server-side evaluator that compiles the WIP predicate and counts matching `Employee.data` rows. Without S33 (Employee CRUD), there are no employees yet — the count will be 0; the wiring still needs to exist.
+- **S20 Overlap detection.** On save, if another group's predicate has any employee overlap with the saved one, surface a warning the user can acknowledge. Cheapest implementation: evaluate both predicates against every Employee in the policy's client, count the intersection. Probabilistic optimisation (e.g. Bloom filter) only if real-world headcount makes the naive scan too slow.
+
+---
+
 ## 2026-04-28 — S15 Product selection (closes Phase 1C)
 
 **Session focus.** Build the Product picker UI under a BenefitYear. Headline AC: Insurer dropdown filtered by `productsSupported` matching the chosen ProductType. Closes Phase 1C.
