@@ -117,6 +117,20 @@ export const placementSlipsRouter = router({
           message: 'File exceeds 25 MB limit.',
         });
       }
+      // Magic-byte sniff: every XLSX is a ZIP archive starting with PK\x03\x04.
+      // Reject early before exceljs allocates parser state on a non-Excel file.
+      if (
+        buffer.length < 4 ||
+        buffer[0] !== 0x50 ||
+        buffer[1] !== 0x4b ||
+        buffer[2] !== 0x03 ||
+        buffer[3] !== 0x04
+      ) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'File is not a valid XLSX (missing ZIP signature).',
+        });
+      }
 
       const catalogueRules = await loadCatalogueParsingRules(ctx.tenantId);
       let result: ParseResult;
@@ -174,10 +188,13 @@ export const placementSlipsRouter = router({
         } catch (err) {
           // SharePoint failure shouldn't drop the parse work — record
           // it as a NEEDS_REVIEW issue and keep the parsed payload.
+          // Detail goes server-side; client gets a generic message.
+          console.error('[placement-slips] SharePoint upload failed:', err);
           result.issues.push({
             severity: 'warning',
             code: 'SHAREPOINT_UPLOAD_FAILED',
-            message: `SharePoint upload failed: ${err instanceof Error ? err.message : 'unknown'}. Re-parse will require re-upload.`,
+            message:
+              'SharePoint upload failed. Re-parse will require re-upload (file bytes were not retained).',
           });
           if (result.status === 'PARSED') result.status = 'NEEDS_REVIEW';
           storageKey = `inline:pending-${Date.now()}`;

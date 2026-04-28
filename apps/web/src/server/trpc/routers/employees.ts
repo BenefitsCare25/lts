@@ -8,18 +8,14 @@
 // enrollment lands when the engagement workflow is built).
 // =============================================================
 
+import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
 import type { EmployeeField } from '@insurance-saas/shared-types';
 import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 import jsonLogic from 'json-logic-js';
 import { z } from 'zod';
 import { router, tenantProcedure } from '../init';
-
-const ajv = new Ajv({ allErrors: true, strict: false });
-addFormats(ajv);
 
 // Build a JSON Schema from the tenant's EmployeeSchema fields.
 // Used to validate Employee.data on every write.
@@ -162,9 +158,15 @@ export const employeesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertClient(ctx.tenantId, input.clientId);
       const fields = await loadTenantEmployeeFields(ctx.tenantId);
-      const validate = ajv.compile(fieldsToJsonSchema(fields));
-      if (!validate(input.data)) {
-        const messages = (validate.errors ?? []).map(
+      const compiled = safeCompile(fieldsToJsonSchema(fields));
+      if (!compiled.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Employee schema failed to compile.',
+        });
+      }
+      if (!compiled.validate(input.data)) {
+        const messages = (compiled.validate.errors ?? []).map(
           (e) => `${e.instancePath || '/'} ${e.message ?? 'is invalid'}`,
         );
         throw new TRPCError({
@@ -194,9 +196,15 @@ export const employeesRouter = router({
       }
       await assertClient(ctx.tenantId, existing.clientId);
       const fields = await loadTenantEmployeeFields(ctx.tenantId);
-      const validate = ajv.compile(fieldsToJsonSchema(fields));
-      if (!validate(input.data)) {
-        const messages = (validate.errors ?? []).map(
+      const compiled = safeCompile(fieldsToJsonSchema(fields));
+      if (!compiled.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Employee schema failed to compile.',
+        });
+      }
+      if (!compiled.validate(input.data)) {
+        const messages = (compiled.validate.errors ?? []).map(
           (e) => `${e.instancePath || '/'} ${e.message ?? 'is invalid'}`,
         );
         throw new TRPCError({
@@ -235,7 +243,9 @@ export const employeesRouter = router({
       z.object({
         clientId: z.string().min(1),
         // Each row is { fieldName: value } already mapped on the client.
-        rows: z.array(z.record(z.unknown())),
+        // Cap at 10k rows so a malicious caller can't tie up a worker
+        // with millions of validations.
+        rows: z.array(z.record(z.unknown())).max(10_000),
         // The hire-date field is required for Employee.hireDate.
         hireDateField: z.string().min(1),
       }),
@@ -243,10 +253,18 @@ export const employeesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertClient(ctx.tenantId, input.clientId);
       const fields = await loadTenantEmployeeFields(ctx.tenantId);
-      const validate = ajv.compile(fieldsToJsonSchema(fields));
+      const compiled = safeCompile(fieldsToJsonSchema(fields));
+      if (!compiled.ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Employee schema failed to compile.',
+        });
+      }
+      const validate = compiled.validate;
 
-      const created: { rowIndex: number; id: string }[] = [];
       const failures: { rowIndex: number; reason: string }[] = [];
+      // Build the prepared row set first; only valid rows get inserted.
+      const insertable: { rowIndex: number; data: Prisma.InputJsonValue; hireDate: Date }[] = [];
 
       for (let i = 0; i < input.rows.length; i++) {
         const row = input.rows[i];
@@ -268,23 +286,35 @@ export const employeesRouter = router({
           failures.push({ rowIndex: i, reason: messages.join('; ') });
           continue;
         }
+        insertable.push({ rowIndex: i, data: row as Prisma.InputJsonValue, hireDate });
+      }
+
+      // Single batched write — orders of magnitude faster than per-row
+      // create + lets us return a single failure on a transactional error.
+      let createdCount = 0;
+      if (insertable.length > 0) {
         try {
-          const emp = await prisma.employee.create({
-            data: {
+          const result = await prisma.employee.createMany({
+            data: insertable.map((r) => ({
               clientId: input.clientId,
-              data: row as Prisma.InputJsonValue,
+              data: r.data,
               status: 'ACTIVE',
-              hireDate,
-            },
+              hireDate: r.hireDate,
+            })),
+            skipDuplicates: true,
           });
-          created.push({ rowIndex: i, id: emp.id });
+          createdCount = result.count;
         } catch (err) {
-          failures.push({
-            rowIndex: i,
-            reason: err instanceof Error ? err.message : 'DB write failed.',
-          });
+          // Roll the whole batch into failures so the UI can surface it.
+          console.error('[employees] importCsv batch insert failed:', err);
+          for (const r of insertable) {
+            failures.push({
+              rowIndex: r.rowIndex,
+              reason: 'Batch insert failed — see server logs.',
+            });
+          }
         }
       }
-      return { created, failures };
+      return { createdCount, failures };
     }),
 });

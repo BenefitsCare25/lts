@@ -61,7 +61,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
   const [csvHireField, setCsvHireField] = useState('employee.hire_date');
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{
-    created: { rowIndex: number; id: string }[];
+    createdCount: number;
     failures: { rowIndex: number; reason: string }[];
   } | null>(null);
 
@@ -218,7 +218,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
           {importResult ? (
             <div style={{ marginTop: '1rem' }}>
               <p>
-                <strong>{importResult.created.length}</strong> created,{' '}
+                <strong>{importResult.createdCount}</strong> created,{' '}
                 <strong>{importResult.failures.length}</strong> failed.
               </p>
               {importResult.failures.length > 0 ? (

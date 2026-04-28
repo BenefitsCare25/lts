@@ -94,6 +94,16 @@ async function assertInsurer(tenantId: string, insurerId: string) {
   return insurer;
 }
 
+async function assertClient(tenantId: string, clientId: string): Promise<void> {
+  const client = await prisma.client.findFirst({
+    where: { id: clientId, tenantId },
+    select: { id: true },
+  });
+  if (!client) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found.' });
+  }
+}
+
 export const claimsFeedRouter = router({
   // Returns the supported claim-feed protocols (those with a handler).
   // The insurer admin UI can show this so users know which formats
@@ -109,6 +119,9 @@ export const claimsFeedRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      // Tenant-gate both ends — without this, the unmatched.reason
+      // strings could enumerate other tenants' employees by id.
+      await assertClient(ctx.tenantId, input.clientId);
       const insurer = await assertInsurer(ctx.tenantId, input.insurerId);
       if (!insurer.claimFeedProtocol) {
         throw new TRPCError({

@@ -65,7 +65,10 @@ async function getGraphToken(): Promise<string> {
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`SharePoint ROPC auth failed (${res.status}): ${body}`);
+    // Body may include `error_description` echoing parts of the request
+    // (client_id, trace ids). Log server-side, return generic message.
+    console.error(`[sharepoint] ROPC auth failed (${res.status}):`, body);
+    throw new Error(`SharePoint authentication failed (${res.status}).`);
   }
 
   const data = (await res.json()) as { access_token: string; expires_in: number };
@@ -124,7 +127,11 @@ export async function ensureFolder(folderPath: string): Promise<void> {
 
     if (!createRes.ok && createRes.status !== 409) {
       const body = await createRes.text();
-      throw new Error(`Failed to create folder "${currentPath}": ${body}`);
+      console.error(
+        `[sharepoint] create folder ${currentPath} failed (${createRes.status}):`,
+        body,
+      );
+      throw new Error(`Failed to create folder "${currentPath}" (${createRes.status}).`);
     }
   }
 }
@@ -152,7 +159,8 @@ export async function uploadFile(
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Failed to upload "${filePath}": ${body}`);
+    console.error(`[sharepoint] upload ${filePath} failed (${res.status}):`, body);
+    throw new Error(`Failed to upload "${filePath}" (${res.status}).`);
   }
 
   const data = (await res.json()) as { id: string; webUrl: string };
@@ -179,7 +187,8 @@ async function uploadLargeFile(
 
   if (!sessionRes.ok) {
     const body = await sessionRes.text();
-    throw new Error(`Failed to create upload session for "${filePath}": ${body}`);
+    console.error(`[sharepoint] upload session ${filePath} failed (${sessionRes.status}):`, body);
+    throw new Error(`Failed to create upload session for "${filePath}" (${sessionRes.status}).`);
   }
 
   const { uploadUrl } = (await sessionRes.json()) as { uploadUrl: string };
@@ -235,7 +244,8 @@ export async function deleteFile(filePath: string): Promise<void> {
   });
   if (!res.ok && res.status !== 404) {
     const body = await res.text();
-    throw new Error(`Failed to delete "${filePath}": ${body}`);
+    console.error(`[sharepoint] delete ${filePath} failed (${res.status}):`, body);
+    throw new Error(`Failed to delete "${filePath}" (${res.status}).`);
   }
 }
 
