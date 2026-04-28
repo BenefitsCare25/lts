@@ -4,6 +4,54 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S15 Product selection (closes Phase 1C)
+
+**Session focus.** Build the Product picker UI under a BenefitYear. Headline AC: Insurer dropdown filtered by `productsSupported` matching the chosen ProductType. Closes Phase 1C.
+
+**What landed.**
+
+- **`products` tRPC router** under `apps/web/src/server/trpc/routers/products.ts`. listByBenefitYear / create / update / delete via `tenantProcedure`. Tenant gate joins through `benefitYear: { policy: { client: { tenantId } } }` — same pattern as benefitYears. listByBenefitYear hand-fetches Insurer + TPA names because they aren't relations on the Product model in the Prisma schema (just String FKs); the cost is two extra batched queries per response, fine at this scale.
+- **`assertInsurerSupportsProductType`** loads both rows in parallel and rejects the mutation if `insurer.productsSupported` doesn't include the chosen ProductType's code. Also gates on `insurer.active === true`. The error message is UI-friendly and names both the insurer and the product type code so the broker knows what to fix in the registry.
+- **DRAFT-only mutation gate.** `assertEditableBenefitYear` throws BAD_REQUEST when the year is PUBLISHED or ARCHIVED. Same gate on update + delete via `loadProduct → benefitYear.state` check. `versionId` increments on every update for downstream optimistic locking (S22+ plan editor will rely on it).
+- **`/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/products`** — list + add form for one BenefitYear. Cascading dropdown logic:
+  - Picking a ProductType drives `eligibleInsurers` via `useMemo` filtering on `productsSupported.includes(code) && active`.
+  - If the user changes ProductType after picking an insurer, `onProductTypeChange` clears the insurer iff it no longer supports the new type.
+  - Help text reads "Showing N insurers supporting GHS." so the filter is visible.
+  - Pool + TPA dropdowns are simple optional refinements; TPA filtered to `active` rows.
+- **DRAFT-only UI mode.** PUBLISHED/ARCHIVED years render the table read-only with a banner explaining why; no Add form, no Remove buttons. The server enforces this regardless.
+- **Products deep-link** added to each BenefitYear row in `BenefitYearsSection`. `BenefitYearsSection` signature took a `clientId` prop to build the URL.
+
+**Decisions and rationale.**
+
+1. **Filter the insurer list on the client AND on the server.** The client filter is for UX (the user shouldn't see ineligible insurers in the dropdown). The server filter is for correctness (a curl request bypassing the UI must still be rejected). Two filters, one source of truth (`Insurer.productsSupported` array).
+2. **`Product.data = {}` for now.** The Prisma column is required JSON but Phase 1's S15 AC only says "save 10 products spanning Tokio Marine + Zurich + Allied World" — i.e., the picker, not the configuration. S21 (Screen 5a, per-product details) is where the form field renderer reads `ProductType.schema` and lets the broker fill in `Product.data`. Empty object today, populated then.
+3. **No unique constraint on (benefitYearId, productTypeId).** Removed the speculative P2002 branch from the create mutation. Reasoning: real placement slips do sometimes carry two products of the same type (e.g., a primary GHS plan plus a top-up GHS rider) under different insurers. If a real-world scenario ever requires uniqueness, add the constraint via migration then.
+4. **Update mutation versions but doesn't change `data`.** `data` only changes via S21's full per-product editor; S15's update is for swapping insurer/pool/tpa. Splitting these keeps the audit trail clean — a "swapped insurer" event doesn't smell like a "rewrote the whole product config".
+5. **Read-only mode renders the products table without action columns rather than disabled buttons.** Cleaner than a dimmed delete button — the user can immediately see what's locked.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` all clean.
+- 11/11 unit tests still pass.
+- New routes in build manifest: `/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/products` (~3.0 kB).
+
+**Phase 1C status — closed.**
+
+| Story | Plan AC satisfied? | Note |
+|---|---|---|
+| S13 | ✅ | Client CRUD with country-pattern UEN validation |
+| S14 | ✅ | Policy + entities + rateOverrides JSON, optimistic lock |
+| S17 | ✅ | Auto-create DRAFT BenefitYear; role-gated PUBLISH; immutable when published |
+| S16 | ✅ | 12 default ProductTypes seeded; GHS planSchema has stacksOn + selectionMode |
+| S15 | ✅ | Insurer dropdown filtered by productsSupported; server-validated |
+
+**Open items / next.**
+
+- **Phase 1D — Predicate builder / Screen 4 (S18-S20).** Build the benefit-group predicate builder reading from EmployeeSchema dynamically, with live employee-match preview and overlap detection on save. First story: S18 — predicate builder UI with field/operator/value dropdowns sourced from EmployeeSchema + OperatorLibrary.
+- **No Employee data exists yet.** S19's "live match preview" needs employees in the DB to count against; we'll surface a "0 matches (seed employees first)" message until S33 lands. Acceptable for Phase 1D since the AC focuses on the dropdown wiring.
+
+---
+
 ## 2026-04-28 — S16 Catalogue seed (12 ProductTypes)
 
 **Session focus.** Seed the 12 default ProductTypes per v2 §3.5 so the Product Catalogue table has rows for S15 (Product selection) to render against.

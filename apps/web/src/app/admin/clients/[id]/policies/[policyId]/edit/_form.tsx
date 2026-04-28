@@ -360,7 +360,7 @@ export function EditPolicyForm({
         </div>
       </section>
 
-      <BenefitYearsSection policyId={policyId} />
+      <BenefitYearsSection clientId={clientId} policyId={policyId} />
     </>
   );
 }
