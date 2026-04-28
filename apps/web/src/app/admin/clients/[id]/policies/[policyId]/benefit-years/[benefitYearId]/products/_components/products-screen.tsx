@@ -266,7 +266,7 @@ export function ProductsScreen({
                   <th>Pool</th>
                   <th>TPA</th>
                   <th>Plans</th>
-                  {editable ? <th aria-label="Actions" /> : null}
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -281,9 +281,15 @@ export function ProductsScreen({
                     <td>{p.pool?.name ?? '—'}</td>
                     <td>{p.tpa ? `${p.tpa.name} (${p.tpa.code})` : '—'}</td>
                     <td>{p._count.plans}</td>
-                    {editable ? (
-                      <td>
-                        <div className="row-end">
+                    <td>
+                      <div className="row-end">
+                        <Link
+                          href={`/admin/clients/${clientId}/policies/${policyId}/benefit-years/${benefitYearId}/products/${p.id}/edit`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Configure
+                        </Link>
+                        {editable ? (
                           <button
                             type="button"
                             className="btn btn-danger btn-sm"
@@ -300,9 +306,9 @@ export function ProductsScreen({
                           >
                             Remove
                           </button>
-                        </div>
-                      </td>
-                    ) : null}
+                        ) : null}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
