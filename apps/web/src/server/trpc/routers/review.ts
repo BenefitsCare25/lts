@@ -12,6 +12,7 @@
 //     year, unusual premium variance).
 // =============================================================
 
+import { auditEvent } from '@/server/audit';
 import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
 import { UserRole } from '@prisma/client';
@@ -384,6 +385,28 @@ export const reviewRouter = router({
         }),
         prisma.benefitYear.findUniqueOrThrow({ where: { id: input.benefitYearId } }),
       ]);
+
+      // Rich audit entry. The auto-middleware also fires for this
+      // mutation (logs path + input as `after`), but a publish is
+      // irreversible enough that we capture an explicit before/after
+      // snapshot identifying the policy + product set being frozen.
+      await auditEvent({
+        db: ctx.db,
+        userId: ctx.userId,
+        action: 'review.publish',
+        entityType: 'BenefitYear',
+        entityId: input.benefitYearId,
+        before: { state: 'DRAFT', policyVersionId: by.policy.versionId },
+        after: {
+          state: 'PUBLISHED',
+          publishedAt: published.publishedAt,
+          policyId: by.policy.id,
+          policyVersionId: by.policy.versionId + 1,
+          productCount: by.products.length,
+          acknowledgedWarnings: input.acknowledgedWarnings,
+        },
+      });
+
       return { ...published, acknowledgedWarnings: input.acknowledgedWarnings };
     }),
 });
