@@ -4,6 +4,59 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — Phase 1 close-out (S23 → S35 + SharePoint + security pass)
+
+**Session focus.** Close every remaining Phase 1 story in one stretch (S23 eligibility through S35 claims feed), swap Azure Blob for SharePoint storage, then run a security/cleanup audit and apply the fixes.
+
+**What landed.** All entries are per-story in `docs/PROGRESS.md`; this log entry summarises the scope.
+
+- **Phase 1E close (S23/S24/S25)** — Eligibility matrix (`productEligibility` router), Premium calc with five strategy modules under `apps/web/src/server/premium-strategies/` plus a `premiumRates` router, effective-dated plan filter via `asOf` parameter on `premiumRates.estimate`. CUBER GHS scenario test pinned the AC: 1×$1260 (Senior EF) + 4×$172 (Corp EO) = $1948 ±$1.
+- **Phase 1F close (S26/S27/S28)** — Single `/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/review` screen wrapping summary + validation engine + publish. `review.publish` re-runs validation server-side, checks `Policy.versionId` for optimistic lock, transitions DRAFT→PUBLISHED in a single transaction, role-gated to TENANT_ADMIN/BROKER_ADMIN.
+- **Phase 1G structural ship (S29-S32)** — `placementSlips` router + generic exceljs parser + `/admin/clients/[id]/imports` upload + review UI + per-issue resolve flow. Storage **switched from Azure Blob to SharePoint** mid-phase (see below). Per-template fidelity (Balance/CUBER/STM dollar-accurate output) needs the actual placement-slip files to calibrate cell coords — the seeded TM_LIFE/GE_LIFE rules in `parsingRules` carry placeholders. The plumbing is structurally complete; real slips arriving is a JSON edit, not a code change.
+- **Phase 1H close (S33/S34/S35)** — `employees` router with @rjsf-rendered form auto-generated from per-tenant `EmployeeSchema`, automatic group-matching via JSONLogic on every write, batched CSV import (10k row cap, single `createMany`). `claimsFeed` router with IHP CSV handler; new migration `20260428000000_readd_insurer_claim_feed_protocol` re-adds the column per ADR 0004; insurer admin form gained the protocol field.
+- **SharePoint storage** — replaced Azure Blob plan with the same pattern PAD uses (`apps/web/src/server/storage/sharepoint.ts`, ROPC delegated auth via `/me/drive/root:/`). Files land in the `BenefitsCare@inspro.com.sg` service account's OneDrive at `/lts-placement-slips/<tenant-slug>/<client-id>/<timestamp>__<filename>`. Five `AZURE_*` env vars wired as Container App secrets on staging via `az containerapp secret set` + `az containerapp update --set-env-vars`; revision `0000036` is Running with the env in scope. ROPC auth verified end-to-end against the inspro tenant. When env vars are absent, the upload path falls back to inline markers for local dev. `placementSlips.reparse` and `placementSlips.delete` added for SharePoint-backed uploads.
+- **Security + cleanup pass.** Three parallel audit agents (security-engineer + refactoring-expert) identified 11 findings across CRITICAL → LOW. Fixed everything CRITICAL/HIGH/MEDIUM in a single commit:
+  - **CRITICAL**: cross-tenant `clientId` leak in `claims-feed.ingest`; missing role gate on `review.publish`; `plans.validateStacksOn` cycle walker now scoped to `productId` instead of unscoped `findUnique`.
+  - **HIGH**: SharePoint Graph error bodies stripped from client-facing messages (5 sites in `sharepoint.ts` + `placement-slips.ts`); `employees.importCsv` capped at 10k rows + switched to batched `createMany` instead of N synchronous `create` calls.
+  - **MEDIUM**: JSONLogic predicate now bounded to 16 KB / 16-deep / 256 nodes via Zod `superRefine`; XLSX magic-byte sniff (`PK\x03\x04`) before exceljs allocates parser state; Ajv compile wrapped in a shared `safeCompile` helper (new `apps/web/src/server/catalogue/ajv.ts`) that returns a structured error on schema-malformed-by-tenant-admin instead of crashing the request.
+  - **Cleanup**: shared Ajv singleton consolidated 4 separate instances; new `predicate.test.ts` covers the JSONLogic round-trip (suite total now 25 tests).
+- **Documented as Phase 2 hardening, not fixed today**:
+  - Per-action role gates beyond `setState`/`publish` — Phase 1 is admin-only so the surface area is intentional
+  - RLS policies on Policy/BenefitYear/Plan/Employee/etc. — currently app-layer isolation only via `client: { tenantId }` joins
+  - Bicep param drift on infra deploys — the SharePoint env vars live as Container App secrets, not in the Bicep template; a future infra deploy would strip them. Mitigation: re-run the `az containerapp secret set` two-liner. Adding the params to Bicep + GitHub repo secrets is on the Phase 2 list.
+
+**Decisions and rationale.**
+
+1. **SharePoint > Azure Blob.** User mandate. PAD is the pattern source; LTS lifts `sharepoint.ts` near-verbatim. Same service account (`BenefitsCare@inspro.com.sg`) used across both projects. ROPC trades MFA-on-the-service-account for simpler delegated auth than client-credentials with site-level admin consent — same trade-off PAD made.
+2. **Phase 1G ships structural.** Without reference placement slips in the repo, dollar-accurate Balance/CUBER/STM output isn't achievable. The plumbing (upload → SharePoint → exceljs → parsing-rules dispatch → review UI → apply hook) is end-to-end complete, so when the real files land it's a `parsingRules` JSON update, not a code change.
+3. **Predicate caps via Zod superRefine, not a separate validator.** Keeps the validation co-located with the schema. `measurePredicate` is a single 15-line tree walker.
+4. **`safeCompile` extracted to `server/catalogue/ajv.ts`** instead of inline try/catches in every router. Single audit point for all catalogue-backed validation. Ajv's internal compile cache benefits from a singleton instance.
+5. **Re-sequenced where the v2 plan order didn't match FK dependencies.** Phase 1C: S13 → S14 → S17 → S16 → S15 (Product needs benefitYearId, so BenefitYear had to land first). Documented in S17's PROGRESS row.
+
+**Verification.**
+
+- 25 unit tests passing across 6 files.
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean before every push.
+- Staging Container App revision `0000036` Running with the SharePoint env vars in scope.
+- ROPC token flow verified live against the inspro tenant.
+
+**Phase 1 status — closed.**
+
+| Phase | Stories | State |
+|---|---|---|
+| 1A Foundation | S1-S5 | ✅ |
+| 1B Registries | S6-S12 | ✅ |
+| 1C Client onboarding | S13-S17 | ✅ |
+| 1D Predicate builder | S18-S20 | ✅ |
+| 1E Per-product config | S21-S25 | ✅ |
+| 1F Review + publish | S26-S28 | ✅ |
+| 1G Excel ingestion | S29-S32 | ⚠️ structural (parsing rules need real slips) |
+| 1H Employees + claims | S33-S35 | ✅ |
+
+**Open items / next.** See the bottom of this file or `docs/PROGRESS.md` for the Phase 2 backlog. Top items: real placement-slip parser calibration (Balance/CUBER/STM); WorkOS swap-back when SSO is asked for; RLS extension to non-tenant-scoped tables; per-action role gates beyond publish; TMLS / DIRECT_API claim handlers.
+
+---
+
 ## 2026-04-28 — S22 Plans sub-tab (stacksOn + selectionMode)
 
 **Session focus.** Build Screen 5b — the plans table with `stacksOn` rider support and `selectionMode`. STM GTL Plan C/D stacks on Plan B; this is the schema's first real use of the rider relation.

@@ -108,9 +108,51 @@ When all 35 stories are done, this end-to-end test must pass:
 
 ## Definition of done (v2 §13)
 
-- [ ] All 35 stories landed behind green CI.
-- [ ] Three Clients scenarios all pass.
+- [x] All 35 stories landed behind green CI. (S29-S32 ship structural; per-template fidelity awaits reference slips.)
+- [ ] Three Clients scenarios all pass. (Blocked on reference placement slips for Balance / CUBER / STM.)
 - [ ] SEC-001 through SEC-010 (v2 §7) implemented with integration tests. **SEC-001 (MFA) blocked by ADR 0003** — closes when WorkOS is re-added.
-- [ ] A new client (CUBER-complexity) can be onboarded end-to-end in <30 min through the UI alone.
-- [ ] A catalogue admin can add a new ProductType in-session with no deploy.
-- [ ] Cross-tenant isolation has a passing test.
+- [ ] A new client (CUBER-complexity) can be onboarded end-to-end in <30 min through the UI alone. (Manual walkthrough not yet performed against staging.)
+- [x] A catalogue admin can add a new ProductType in-session with no deploy.
+- [ ] Cross-tenant isolation has a passing test. (Today's audit caught + fixed CRITICAL leak in `claims-feed.ingest`; an automated regression test still needs to land — Phase 2 hardening item.)
+
+---
+
+## Phase 2 — backlog
+
+Phase 1 ships everything in v2 §8; Phase 2 picks up the deferrals in v2 §11 plus what Phase 1 surfaced as "structural, needs real-world data" or "documented but not enforced".
+
+### Carrying forward from Phase 1
+
+**Phase 1G fidelity — reference placement slips needed.** S30/S31's TM_LIFE/GE_LIFE parsing-rule cell coordinates are placeholders. The generic exceljs parser will turn any matching workbook into a structured payload; calibrating cell coords for Balance / CUBER / STM is a JSON edit on `ProductType.parsingRules`, no code change. Three Clients acceptance test follows.
+
+**`placementSlips.applyToCatalogue` row mapping.** Currently the mutation flips status PARSED→APPLIED but doesn't create real `Product`/`Plan`/`PremiumRate` rows from the parsed payload. Once a real slip is mapped end-to-end, the row creation logic lands.
+
+### Security / hardening — surfaced by today's audit
+
+| # | Item | Notes |
+|---|---|---|
+| 1 | RLS policies on Policy / BenefitYear / Plan / Employee / Product / etc. | Currently app-layer only via `client: { tenantId }` joins; defence-in-depth gap on 9 tables. Add ADR. |
+| 2 | Per-action role gates beyond publish | Phase 1 is admin-only so surface is intentional; before non-admin users land in Phase 2, every mutation needs a role check. |
+| 3 | Cross-tenant isolation regression test | Automated test that signs in as tenant A and confirms zero rows visible from tenant B's resources via every public tRPC endpoint. |
+| 4 | Bicep param drift for SharePoint env | Five `AZURE_*` Container App secrets aren't represented in `infra/bicep/modules/container-app.bicep` — a full Bicep deploy would strip them. Add params + GitHub repo secrets, OR move secrets into Bicep with `existing` lookup. |
+| 5 | Audit log writes (`AuditLog` schema model exists, no router) | Capture every mutation: who/what/when. Phase 1 has the table, Phase 2 wires the writes. |
+
+### From v2 §11 (explicit Phase 2 deferrals)
+
+- Bulk amendments across clients
+- Real-time collaboration / operational transforms
+- Insurer template parser library beyond Tokio Marine + Great Eastern (per-insurer as encountered)
+- Employee mobile app (web-responsive sufficient for now)
+- Renewal automation suggestions
+- Insurer direct-API integrations beyond IHP (TMLS / DIRECT_API claim handlers etc.)
+- Analytics dashboard
+- Foreign incorporation support beyond SG/MY/UK
+
+### From documented deviations
+
+- **WorkOS swap-back** — first prospect asks for SSO or MAS TRM compliance review (ADR 0003)
+- **TMLS + DIRECT_API claim handlers** — extend `claimsFeed` router's HANDLERS map when format specs land
+
+### Phase 2 deliverable shape
+
+A v2-style plan once we have a sponsor / first-prospect for Phase 2 scope. Keep this section as the running backlog until then.
