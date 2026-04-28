@@ -5,9 +5,8 @@
 //   S4:  demo Tenant ("Acme Brokers")
 //   S6:  Global Reference — Country (249), Currency (9), Industry (SSIC 2020)
 //   S7:  Operator Library — 6 data type rows
-//
-// Full catalogue seeds (S11 EmployeeSchema, S16 ProductTypes)
-// are added by their own stories.
+//   S11: Employee Schema for the demo tenant
+//   S16: Product Catalogue — 12 default ProductTypes for the demo tenant
 // =============================================================
 
 import { PrismaClient } from '@prisma/client';
@@ -15,6 +14,7 @@ import { hash } from 'bcryptjs';
 import { seedEmployeeSchemaForTenant } from './seeds/employee-schema';
 import { seedCountries, seedCurrencies, seedIndustries } from './seeds/global-reference';
 import { seedOperatorLibrary } from './seeds/operators';
+import { seedProductCatalogueForTenant } from './seeds/product-catalogue';
 
 const prisma = new PrismaClient();
 
@@ -60,6 +60,9 @@ async function main(): Promise<void> {
 
   // S11 — Employee Schema for the demo tenant
   await seedEmployeeSchemaForTenant(prisma, tenant.id);
+
+  // S16 — Product Catalogue (12 default product types) for the demo tenant
+  await seedProductCatalogueForTenant(prisma, tenant.id);
 
   // biome-ignore lint/suspicious/noConsoleLog: intentional seed output
   console.log('[seed] done.');

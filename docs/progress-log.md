@@ -4,6 +4,43 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-28 — S16 Catalogue seed (12 ProductTypes)
+
+**Session focus.** Seed the 12 default ProductTypes per v2 §3.5 so the Product Catalogue table has rows for S15 (Product selection) to render against.
+
+**What landed.**
+
+- **`prisma/seeds/product-catalogue.ts`** — 12 ProductTypeSeed entries: GTL, GCI, GDI, GPA, GHS, GMM, FWM, GP, SP, Dental, GBT, WICI. Each carries:
+  - `schema` — shared `PRODUCT_BASE_PROPERTIES` (insurer, policy_number, eligibility_text, age_limits, member_cover, benefit_period, free_cover_limit, evidence_of_health_threshold) plus per-product extras (e.g. GHS gets `tpa`, `panel_clinics`, `letter_of_guarantee`; WICI gets `mom_class_codes`).
+  - `planSchema` — shared `PLAN_BASE_PROPERTIES` (code, name, coverBasis, **stacksOn**, **selectionMode**, effectiveFrom, effectiveTo) plus a `schedule` block specific to the cover basis. Six schedule shapes: PER_TIER_HOSPITAL (GHS, GMM, FWM), PER_TIER_OUTPATIENT (GP, SP), PER_TIER_DENTAL (Dental), SALARY_MULTIPLE (GTL, GDI), FIXED_SUM (GCI, GPA), PER_REGION_TRAVEL (GBT), WICI (earnings bands).
+  - `premiumStrategy` — one of the 5 codes from `PREMIUM_STRATEGIES`. Mapping mirrors v2 §4 Table.
+  - `parsingRules` — Tokio Marine (TM_LIFE) and Great Eastern (GE_LIFE) Excel templates at seed time. Other insurers (Zurich, Allied World, Allianz, Chubb) get `null` until their templates are added at S30/S31. Both templates carry `product_field_map` (cell/range selectors), `plans_block`, `rates_block` for the parser to consume.
+  - `displayTemplate` — a minimal `{ card: { title, summaryFields } }` placeholder; the employee portal at S33+ extends it.
+- **`prisma/seed-catalogue.ts`** — standalone CLI runner. Iterates every tenant and calls `seedProductCatalogueForTenant`. Skips when no tenants exist (instructs the caller to run `pnpm db:seed` first). Fired via the new `pnpm seed:catalogue` script.
+- **Folded into `prisma/seed.ts`.** The full bootstrap seed (`pnpm db:seed`, also wired through the `prisma.seed` config so `pnpm prisma db seed` triggers it) now calls `seedProductCatalogueForTenant(prisma, tenant.id)` after the EmployeeSchema seed. CI/CD's deploy step runs `pnpm prisma db seed` after `prisma migrate deploy`, so the next staging deploy will populate the 12 rows automatically.
+- **Defensive drift check.** `PRODUCT_TYPE_SEEDS` is validated against `PRODUCT_TYPE_CODES` from `@insurance-saas/shared-types` at module load — adding a code to one list without the other throws at startup.
+
+**Decisions and rationale.**
+
+1. **Reusable schema fragments rather than 12 hand-rolled JSON Schemas.** The base properties recur on every product type; copy-pasting them invites drift (one product loses an `age_limits` validation by accident, no one notices). Composing via spread keeps the per-product file under 350 lines and makes "what's actually different about WICI" obvious — its `productSchema` extras and its WICI-specific `schedule.earningsBands`.
+2. **`coverBasisOverride` per product.** The shared `PLAN_BASE_PROPERTIES.coverBasis` enum lists every option, but each product type narrows it via override (GHS only allows `per_cover_tier`; GBT only allows `per_region`). Lets us reuse the shared object yet still validate per-product on write.
+3. **Parsing rules opt-in per product.** TM and GE templates are seeded only for the products those insurers actually offer (TM does GTL/GCI/GHS/GMM/GP/SP/Dental; GE does GTL/GHS/GMM/SP). GDI, GPA, FWM, GBT, WICI start with `parsingRules = null` because no template exists yet. Phase 1G's parser will gate on `parsingRules` being non-null before attempting to ingest.
+4. **Standalone `seed:catalogue` runner alongside `db:seed`.** v2 plan AC says "`pnpm seed:catalogue` populates 12 rows" — implying a focused command that doesn't also create the demo tenant. Two scripts: `db:seed` is the full bootstrap (creates tenant + admin + global ref + catalogue), `seed:catalogue` is the surgical refresh (ProductType only, against every existing tenant). Both are idempotent.
+5. **Schemas don't have `additionalProperties: false`.** Could lock down strictness, but Phase 1B's S12 lets admins extend product schemas at runtime. A globally-strict schema would reject any field added through the editor. Trust the editor's schema authoring; validation kicks in via Ajv at write-time per ADR.
+6. **CI/CD picks up automatically.** No workflow change needed because `prisma db seed` is already in the deploy step. Next deploy hydrates the demo tenant with all 12 rows.
+
+**Verification.**
+
+- `pnpm typecheck && pnpm check && pnpm test && pnpm build` clean.
+- One-off smoke check confirmed all 12 codes present + GHS planSchema has both `stacksOn` and `selectionMode`. (Smoke script removed after verification — no need to keep it in the repo.)
+- Build manifest unchanged (server-only seed; no client bundle impact).
+
+**Open items / next.**
+
+- **S15 Product selection (Screen 3).** Now unblocked. Picker UI under a BenefitYear: repeating row of (ProductType, Insurer, Pool, TPA, per-entity policyNumber). Insurer dropdown filtered by `productsSupported` matching the row's product type code. CUBER acceptance: 10 products spanning Tokio Marine + Zurich + Allied World.
+
+---
+
 ## 2026-04-28 — S17 BenefitYear + draft state (out-of-order)
 
 **Session focus.** Land BenefitYear lifecycle ahead of S15 (Product selection), because Product carries `benefitYearId` as a required FK — without S17, S15's "save 10 products" AC isn't physically possible. Re-sequenced the phase as S17 → S16 → S15 instead of the v2 plan order S15 → S16 → S17.
