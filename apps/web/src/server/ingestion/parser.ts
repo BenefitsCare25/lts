@@ -29,8 +29,35 @@ export type ParsedProduct = {
   productTypeCode: string; // e.g. "GTL", "GHS"
   templateInsurerCode: string; // e.g. "TM_LIFE"
   fields: Record<string, unknown>;
-  plans: { code: string; row: Record<string, unknown> }[];
+  // `stacksOnLabel` carries the rider-base hint detected from text like
+  // "additional above Plan B" — the applyToCatalogue step resolves it
+  // to a real Plan.id at write time.
+  plans: {
+    code: string;
+    row: Record<string, unknown>;
+    stacksOnLabel?: string;
+  }[];
+  // Each rate row carries an optional `_blockIndex` when sourced from
+  // a multi-block rates_blocks layout (Allianz-style per-entity blocks).
+  // Single-block products emit rates without `_blockIndex`.
   rates: Record<string, unknown>[];
+};
+
+export type ParsedPolicyEntity = {
+  policyNumber: string;
+  legalName: string;
+  isMaster: boolean;
+};
+
+export type ParsedBenefitGroup = {
+  // The plan whose eligibility text seeded the predicate.
+  sourceProductCode: string;
+  sourcePlanLabel: string;
+  // Suggested JSONLogic predicate for broker confirmation. Not auto-saved.
+  predicate: Record<string, unknown>;
+  // Confidence: how many recognised tokens contributed to the predicate.
+  // 0 means "no patterns matched" — broker should write the predicate from scratch.
+  confidence: number;
 };
 
 export type ParseResult = {
@@ -39,6 +66,12 @@ export type ParseResult = {
   // (STM-style) carry several; single-insurer slips carry one.
   detectedTemplate: string | null;
   products: ParsedProduct[];
+  // Workbook-level metadata extracted once when any product's rules
+  // declare a `policy_entities_block`. Empty when no such block exists.
+  policyEntities: ParsedPolicyEntity[];
+  // Heuristic predicate suggestions for review-screen display. The
+  // broker confirms or edits before they become real BenefitGroup rows.
+  benefitGroups: ParsedBenefitGroup[];
   issues: ParseIssue[];
   raw?: { sheets: string[] };
 };
@@ -69,7 +102,26 @@ export type ParsingRules = {
   template_version?: string;
   product_field_map?: Record<string, { sheet: string; cell?: string; range?: string }>;
   plans_block?: { sheet: string; startRow: number; endRow: number; codeColumn: string };
+  // Single-block rate table — all rate rows on one sheet contiguously.
   rates_block?: { sheet: string; startRow: number; endRow: number };
+  // Multi-block rate tables — one block per PolicyEntity (Allianz WICI).
+  // Either rates_block or rates_blocks may be set; if both are present,
+  // rates_blocks wins.
+  rates_blocks?: {
+    sheet: string;
+    blocks: { startRow: number; endRow: number; label?: string }[];
+  };
+  // Workbook-level metadata: the list of PolicyEntities (legal entity
+  // legal name + insurer-issued policy number, one row each). Identical
+  // across every product on the workbook, so the parser dedupes.
+  policy_entities_block?: {
+    sheet: string;
+    startRow: number;
+    endRow: number;
+    policyNumberColumn: string;
+    legalNameColumn: string;
+    masterRow?: number; // 1-indexed row that's flagged as master; defaults to startRow.
+  };
 };
 
 // Reads a cell value as a primitive. exceljs returns rich objects
@@ -124,7 +176,22 @@ function parseProduct(
         ws.getRow(r).eachCell((cell, col) => {
           row[`col${col}`] = cell.value;
         });
-        plans.push({ code: String(code), row });
+        const codeStr = String(code);
+        // Detect "additional above Plan X" — the rider-stack hint that
+        // STM uses for GTL Plan C/D layering on top of B/A. The phrase
+        // can appear in any column (STM has it in the cover-basis col,
+        // not the plan-name col), so scan every cell value of the row.
+        const plan: ParsedProduct['plans'][number] = { code: codeStr, row };
+        const haystack = Object.values(row)
+          .map((v) =>
+            v && typeof v === 'object' && 'richText' in v
+              ? (v as { richText: { text: string }[] }).richText.map((p) => p.text).join('')
+              : String(v ?? ''),
+          )
+          .join(' ');
+        const stacksMatch = haystack.match(/additional\s+above\s+Plan\s+([A-Z0-9]+)/i);
+        if (stacksMatch?.[1]) plan.stacksOnLabel = `Plan ${stacksMatch[1]}`;
+        plans.push(plan);
       }
     } else {
       issues.push({
@@ -136,7 +203,25 @@ function parseProduct(
   }
 
   const rates: Record<string, unknown>[] = [];
-  if (rules.rates_block) {
+  // rates_blocks (plural) wins when both shapes are present; single
+  // rates_block path stays unchanged for backward compatibility.
+  if (rules.rates_blocks) {
+    const ws = workbook.getWorksheet(rules.rates_blocks.sheet);
+    if (ws) {
+      rules.rates_blocks.blocks.forEach((block, blockIndex) => {
+        for (let r = block.startRow; r <= block.endRow; r++) {
+          const row = ws.getRow(r);
+          if (!row.hasValues) continue;
+          const obj: Record<string, unknown> = { _blockIndex: blockIndex };
+          if (block.label) obj._blockLabel = block.label;
+          row.eachCell((cell, col) => {
+            obj[`col${col}`] = cell.value;
+          });
+          if (Object.keys(obj).length > 1) rates.push(obj);
+        }
+      });
+    }
+  } else if (rules.rates_block) {
     const ws = workbook.getWorksheet(rules.rates_block.sheet);
     if (ws) {
       for (let r = rules.rates_block.startRow; r <= rules.rates_block.endRow; r++) {
@@ -152,6 +237,142 @@ function parseProduct(
   }
 
   return { productTypeCode, templateInsurerCode: insurerCode, fields, plans, rates };
+}
+
+// Extracts the workbook-level PolicyEntity list from the first product
+// rule that declares a `policy_entities_block`. Idempotent across products
+// — every product rule on a single workbook references the same metadata.
+function extractPolicyEntities(
+  workbook: ExcelJS.Workbook,
+  candidates: { rules: ParsingRules }[],
+): ParsedPolicyEntity[] {
+  for (const c of candidates) {
+    const block = c.rules.policy_entities_block;
+    if (!block) continue;
+    const ws = workbook.getWorksheet(block.sheet);
+    if (!ws) continue;
+    const masterRow = block.masterRow ?? block.startRow;
+    const entities: ParsedPolicyEntity[] = [];
+    for (let r = block.startRow; r <= block.endRow; r++) {
+      const policyNumber = readCell(workbook, block.sheet, `${block.policyNumberColumn}${r}`);
+      const legalName = readCell(workbook, block.sheet, `${block.legalNameColumn}${r}`);
+      if (!policyNumber || !legalName) continue;
+      entities.push({
+        policyNumber: String(policyNumber).trim(),
+        legalName: String(legalName).trim(),
+        isMaster: r === masterRow,
+      });
+    }
+    if (entities.length > 0) return entities;
+  }
+  return [];
+}
+
+// Heuristic predicate inference. Each plan name (or eligibility text)
+// carries domain phrases like "Hay Job Grade 18 and above", "Foreign
+// Workers WP/SP", "Bargainable", etc. We pattern-match those into a
+// JSONLogic predicate the broker confirms in the review screen.
+//
+// The patterns are intentionally narrow — false-positive predicates
+// damage trust more than false-negatives. Anything we don't recognise
+// becomes a {confidence: 0} suggestion that the broker writes by hand.
+const PATTERNS: {
+  re: RegExp;
+  // biome-ignore lint/suspicious/noExplicitAny: JSONLogic atom shape varies.
+  build: (m: RegExpMatchArray) => any;
+}[] = [
+  // "Hay Job Grade 18 and above"
+  {
+    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:and\s*above|\+)/i,
+    build: (m) => ({ '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] }),
+  },
+  // "Hay Job Grade 08 to 15" or "08 - 15"
+  {
+    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})/i,
+    build: (m) => ({
+      and: [
+        { '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] },
+        { '<=': [{ var: 'employee.hay_job_grade' }, Number(m[2])] },
+      ],
+    }),
+  },
+  // "Foreign Workers" / "FW WP/SP" / "Work Permit or S-Pass"
+  {
+    re: /Foreign\s*Workers?|FW\s*(?:WP|SP)|Work\s*Permit\s*or\s*S-?\s*Pass/i,
+    build: () => ({ in: [{ var: 'employee.work_pass_type' }, ['WORK_PERMIT', 'S_PASS']] }),
+  },
+  // "Bargainable" (employee category)
+  {
+    re: /\bBargainable\b/i,
+    build: () => ({ '==': [{ var: 'employee.bargainable' }, true] }),
+  },
+  // "Intern" / "Contract"
+  {
+    re: /\bInterns?\b|\bContract\s*Employees?\b/i,
+    build: () => ({ in: [{ var: 'employee.employment_type' }, ['INTERN', 'CONTRACT']] }),
+  },
+  // "Manual Workers" (Allianz WICI categorisation)
+  {
+    re: /\bManual\s*Workers?\b/i,
+    build: () => ({ '==': [{ var: 'employee.manual_worker' }, true] }),
+  },
+];
+
+// Flattens nested `{ and: [...] }` so a predicate like
+// { and: [{ and: [a, b] }, c] } collapses to { and: [a, b, c] }.
+// Cosmetic — JSONLogic evaluates both shapes identically — but the
+// flat form is what a human would write and matches what the
+// review UI expects.
+function flattenAnd(node: unknown): unknown {
+  if (!node || typeof node !== 'object' || !('and' in (node as Record<string, unknown>))) {
+    return node;
+  }
+  const arr = (node as { and: unknown[] }).and;
+  const out: unknown[] = [];
+  for (const child of arr) {
+    const flat = flattenAnd(child);
+    if (flat && typeof flat === 'object' && 'and' in (flat as Record<string, unknown>)) {
+      out.push(...(flat as { and: unknown[] }).and);
+    } else {
+      out.push(flat);
+    }
+  }
+  return { and: out };
+}
+
+function inferPredicate(text: string): { predicate: Record<string, unknown>; confidence: number } {
+  const matches: Record<string, unknown>[] = [];
+  for (const p of PATTERNS) {
+    const m = text.match(p.re);
+    if (m) matches.push(p.build(m));
+  }
+  if (matches.length === 0) {
+    // Empty object — broker must replace. JSONLogic treats {} as truthy
+    // so don't ship this to the eligibility engine without confirmation.
+    return { predicate: {}, confidence: 0 };
+  }
+  const raw = matches.length === 1 ? (matches[0] ?? {}) : { and: matches };
+  return { predicate: flattenAnd(raw) as Record<string, unknown>, confidence: matches.length };
+}
+
+function inferBenefitGroups(products: ParsedProduct[]): ParsedBenefitGroup[] {
+  // De-dupe by source label across products — STM's GHS Plans 4/5/6
+  // and the equivalent SP/GMM rows describe the same employee groups.
+  const seen = new Map<string, ParsedBenefitGroup>();
+  for (const product of products) {
+    for (const plan of product.plans) {
+      const label = String(plan.code).replace(/\s+/g, ' ').trim();
+      if (label.length === 0 || seen.has(label)) continue;
+      const { predicate, confidence } = inferPredicate(label);
+      seen.set(label, {
+        sourceProductCode: product.productTypeCode,
+        sourcePlanLabel: label,
+        predicate,
+        confidence,
+      });
+    }
+  }
+  return Array.from(seen.values());
 }
 
 // Top-level entry point. Iterates ProductType.parsingRules across
@@ -182,6 +403,8 @@ export async function parsePlacementSlip(
       status: 'FAILED',
       detectedTemplate: null,
       products: [],
+      policyEntities: [],
+      benefitGroups: [],
       issues: [
         {
           severity: 'error',
@@ -198,6 +421,8 @@ export async function parsePlacementSlip(
       status: 'FAILED',
       detectedTemplate: null,
       products: [],
+      policyEntities: [],
+      benefitGroups: [],
       issues: [{ severity: 'error', code: 'EMPTY_WORKBOOK', message: 'Workbook has no sheets.' }],
       raw: { sheets },
     };
@@ -238,6 +463,8 @@ export async function parsePlacementSlip(
       status: 'NEEDS_REVIEW',
       detectedTemplate: null,
       products: [],
+      policyEntities: [],
+      benefitGroups: [],
       issues: [
         {
           severity: 'error',
@@ -263,6 +490,11 @@ export async function parsePlacementSlip(
     }
   }
 
+  // Workbook-level metadata extracted once across all detected candidates.
+  const allMatchingCandidates = detectedInsurers.flatMap((i) => groups[i] ?? []);
+  const policyEntities = extractPolicyEntities(workbook, allMatchingCandidates);
+  const benefitGroups = inferBenefitGroups(products);
+
   const status: ParseResult['status'] = issues.some((i) => i.severity === 'error')
     ? 'FAILED'
     : issues.length > 0
@@ -273,6 +505,8 @@ export async function parsePlacementSlip(
     status,
     detectedTemplate: detectedInsurers.join(','),
     products,
+    policyEntities,
+    benefitGroups,
     issues,
     raw: { sheets },
   };

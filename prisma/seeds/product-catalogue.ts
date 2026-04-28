@@ -173,6 +173,19 @@ const TM_GENERIC_RULES = {
   rates_block: { sheet: 'Rates', startRow: 4, endRow: 200 },
 };
 
+// PolicyEntities for STM live in the comments sheet rows 21-23: the
+// first column has the policy number, the second the legal name, and
+// the master entity is row 21. Same block referenced from every GE
+// product rule; the parser dedupes on extraction.
+const STM_POLICY_ENTITIES_BLOCK = {
+  sheet: 'comments',
+  startRow: 21,
+  endRow: 23,
+  policyNumberColumn: 'A',
+  legalNameColumn: 'B',
+  masterRow: 21,
+};
+
 // Great Eastern — STM-calibrated. Each GE product lives on its own
 // sheet (`GEL-<PRODUCT>`); the common header at rows 1-17 is shared
 // across the four GE sheets.
@@ -199,6 +212,7 @@ const ge = (
   },
   plans_block: { sheet, ...plansBlock },
   rates_block: { sheet, ...ratesBlock },
+  policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
 });
 
 const GE_GTL_RULES = ge(
@@ -253,6 +267,7 @@ const ZURICH_GPA_RULES = {
   },
   plans_block: { sheet: 'Zurich-GPA', startRow: 20, endRow: 23, codeColumn: 'D' },
   rates_block: { sheet: 'Zurich-GPA', startRow: 28, endRow: 31 },
+  policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
 };
 
 // Chubb — STM-calibrated. Note the leading space in the sheet name —
@@ -275,6 +290,7 @@ const CHUBB_GBT_RULES = {
   },
   plans_block: { sheet: ' Chubb -GBT', startRow: 21, endRow: 21, codeColumn: 'D' },
   rates_block: { sheet: ' Chubb -GBT', startRow: 25, endRow: 25 },
+  policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
 };
 
 // Allianz — STM-calibrated. Header sits one column right (col D not C)
@@ -296,12 +312,20 @@ const ALLIANZ_WICI_RULES = {
     last_entry_age: { sheet: 'Allianz-WICI', cell: 'D14' },
     administration_type: { sheet: 'Allianz-WICI', cell: 'D16' },
   },
-  // Allianz has multi-entity rate tables — one block per PolicyEntity.
-  // The current parser's single `rates_block` handles only one. The
-  // multi-block extension is a Phase 2 item; for now we capture the
-  // first entity's tables and surface a NEEDS_REVIEW issue downstream.
+  // Allianz has one rate block per PolicyEntity. STM's slip puts the
+  // Asia Pacific block at R34-38, the AMK block at R40-41, and the
+  // TPY block at R43-44. The parser merges all blocks into one rate
+  // array, tagging each row with its `_blockIndex`.
   plans_block: { sheet: 'Allianz-WICI', startRow: 21, endRow: 25, codeColumn: 'D' },
-  rates_block: { sheet: 'Allianz-WICI', startRow: 34, endRow: 38 },
+  rates_blocks: {
+    sheet: 'Allianz-WICI',
+    blocks: [
+      { startRow: 34, endRow: 38, label: 'STM Asia Pacific' },
+      { startRow: 40, endRow: 41, label: 'STM AMK' },
+      { startRow: 43, endRow: 44, label: 'STM TPY' },
+    ],
+  },
+  policy_entities_block: STM_POLICY_ENTITIES_BLOCK,
 };
 
 // Compose insurer-specific parsing rules into a per-product map. Each
