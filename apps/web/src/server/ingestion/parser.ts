@@ -15,6 +15,7 @@
 // =============================================================
 
 import ExcelJS from 'exceljs';
+import { normalizeToXlsxBuffer } from './xls-to-xlsx';
 
 export type ParseIssue = {
   severity: 'error' | 'warning';
@@ -163,13 +164,17 @@ export async function parsePlacementSlip(
   const issues: ParseIssue[] = [];
   let workbook: ExcelJS.Workbook;
   try {
+    // .xls inputs are converted to .xlsx in memory before exceljs
+    // sees them. .xlsx inputs pass through unchanged. See
+    // xls-to-xlsx.ts for the security boundary around SheetJS.
+    const xlsxBuffer = normalizeToXlsxBuffer(fileBuffer);
     workbook = new ExcelJS.Workbook();
     // exceljs's `load` accepts ArrayBuffer-shaped input. Pass the
     // underlying ArrayBuffer slice so the Node `Buffer<ArrayBufferLike>`
     // → `ArrayBuffer` typing mismatch in @types/exceljs disappears.
-    const arrayBuffer = fileBuffer.buffer.slice(
-      fileBuffer.byteOffset,
-      fileBuffer.byteOffset + fileBuffer.byteLength,
+    const arrayBuffer = xlsxBuffer.buffer.slice(
+      xlsxBuffer.byteOffset,
+      xlsxBuffer.byteOffset + xlsxBuffer.byteLength,
     ) as ArrayBuffer;
     await workbook.xlsx.load(arrayBuffer);
   } catch (err) {
@@ -181,7 +186,7 @@ export async function parsePlacementSlip(
         {
           severity: 'error',
           code: 'NOT_AN_EXCEL_FILE',
-          message: err instanceof Error ? err.message : 'Could not read file as XLSX.',
+          message: err instanceof Error ? err.message : 'Could not read file as Excel workbook.',
         },
       ],
     };

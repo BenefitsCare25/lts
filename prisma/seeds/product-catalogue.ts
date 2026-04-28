@@ -218,13 +218,18 @@ const GE_GHS_RULES = ge(
 
 const GE_GMM_RULES = ge(
   'GEL-GMM',
-  { startRow: 22, endRow: 24, codeColumn: 'I' },
+  // GMM has 3 plans listed by category description in column D. Unlike
+  // GHS, GMM doesn't repeat a plan-number column on every row — col D's
+  // category text is the only consistent identifier (verified against
+  // the live STM slip).
+  { startRow: 22, endRow: 24, codeColumn: 'D' },
   { startRow: 30, endRow: 32 },
 );
 
 const GE_SP_RULES = ge(
   'GEL-SP',
-  { startRow: 21, endRow: 23, codeColumn: 'I' },
+  // Same as GMM — category text in column D is the plan identifier.
+  { startRow: 21, endRow: 23, codeColumn: 'D' },
   { startRow: 29, endRow: 31 },
 );
 

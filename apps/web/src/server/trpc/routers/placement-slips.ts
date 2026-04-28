@@ -117,18 +117,31 @@ export const placementSlipsRouter = router({
           message: 'File exceeds 25 MB limit.',
         });
       }
-      // Magic-byte sniff: every XLSX is a ZIP archive starting with PK\x03\x04.
-      // Reject early before exceljs allocates parser state on a non-Excel file.
-      if (
-        buffer.length < 4 ||
-        buffer[0] !== 0x50 ||
-        buffer[1] !== 0x4b ||
-        buffer[2] !== 0x03 ||
-        buffer[3] !== 0x04
-      ) {
+      // Magic-byte sniff: accept both .xlsx (ZIP signature PK\x03\x04)
+      // and .xls (CFB / OLE2 signature D0 CF 11 E0 A1 B1 1A E1). Reject
+      // early before the parser allocates state on a non-Excel file.
+      // The .xls path normalises to .xlsx in-memory inside parser.ts
+      // via xls-to-xlsx.ts.
+      const isXlsx =
+        buffer.length >= 4 &&
+        buffer[0] === 0x50 &&
+        buffer[1] === 0x4b &&
+        buffer[2] === 0x03 &&
+        buffer[3] === 0x04;
+      const isXls =
+        buffer.length >= 8 &&
+        buffer[0] === 0xd0 &&
+        buffer[1] === 0xcf &&
+        buffer[2] === 0x11 &&
+        buffer[3] === 0xe0 &&
+        buffer[4] === 0xa1 &&
+        buffer[5] === 0xb1 &&
+        buffer[6] === 0x1a &&
+        buffer[7] === 0xe1;
+      if (!isXlsx && !isXls) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'File is not a valid XLSX (missing ZIP signature).',
+          message: 'File is not a valid Excel workbook (.xls or .xlsx).',
         });
       }
 
