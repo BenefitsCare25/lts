@@ -13,6 +13,7 @@ import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
+import { placementSlipsRouter } from './routers/placement-slips';
 import { plansRouter } from './routers/plans';
 import { policiesRouter } from './routers/policies';
 import { poolsRouter } from './routers/pools';
@@ -39,6 +40,7 @@ export const appRouter = router({
   plans: plansRouter,
   productEligibility: productEligibilityRouter,
   premiumRates: premiumRatesRouter,
+  placementSlips: placementSlipsRouter,
   review: reviewRouter,
   referenceData: referenceDataRouter,
 });

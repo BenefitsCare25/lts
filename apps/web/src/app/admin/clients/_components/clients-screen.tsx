@@ -322,6 +322,12 @@ export function ClientsScreen() {
                           Policies
                         </Link>
                         <Link
+                          href={`/admin/clients/${client.id}/imports`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Imports
+                        </Link>
+                        <Link
                           href={`/admin/clients/${client.id}/edit`}
                           className="btn btn-ghost btn-sm"
                         >
