@@ -16,6 +16,7 @@ type FormState = {
   name: string;
   code: string;
   productsSupported: ProductTypeCode[];
+  claimFeedProtocol: string;
   active: boolean;
 };
 
@@ -41,6 +42,7 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
       name: insurer.data.name,
       code: insurer.data.code,
       productsSupported: insurer.data.productsSupported as ProductTypeCode[],
+      claimFeedProtocol: insurer.data.claimFeedProtocol ?? '',
       active: insurer.data.active,
     });
   }, [insurer.data, form]);
@@ -57,6 +59,7 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
         name: form.name.trim(),
         code: form.code.trim(),
         productsSupported: form.productsSupported,
+        claimFeedProtocol: form.claimFeedProtocol.trim() || null,
         active: form.active,
       },
     });
@@ -131,6 +134,21 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
                 ))}
               </div>
             </fieldset>
+
+            <div className="field">
+              <label className="field-label" htmlFor="ins-claim-feed">
+                Claim feed protocol <span className="field-help-inline">(optional)</span>
+              </label>
+              <input
+                id="ins-claim-feed"
+                className="input"
+                type="text"
+                maxLength={40}
+                value={form.claimFeedProtocol}
+                onChange={(e) => setForm({ ...form, claimFeedProtocol: e.target.value })}
+                placeholder="IHP"
+              />
+            </div>
 
             <label className="toggle">
               <input

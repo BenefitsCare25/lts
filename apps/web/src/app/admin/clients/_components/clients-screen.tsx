@@ -328,6 +328,18 @@ export function ClientsScreen() {
                           Imports
                         </Link>
                         <Link
+                          href={`/admin/clients/${client.id}/employees`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Employees
+                        </Link>
+                        <Link
+                          href={`/admin/clients/${client.id}/claims`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Claims
+                        </Link>
+                        <Link
                           href={`/admin/clients/${client.id}/edit`}
                           className="btn btn-ghost btn-sm"
                         >
