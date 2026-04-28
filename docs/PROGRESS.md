@@ -15,7 +15,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 | **1C** Client onboarding | S13–S17 | ✅ complete | Built S13 → S14 → S17 → S16 → S15 (re-sequenced for FK dependencies) |
 | **1D** Predicate builder | S18–S20 | ✅ complete | S18 + S19 + S20 |
 | **1E** Per-product config | S21–S25 | ✅ complete | All five sub-tabs (Details, Plans, Eligibility, Premium, Effective dates) |
-| **1F** Review + publish | S26–S28 | ⏳ not started | |
+| **1F** Review + publish | S26–S28 | ✅ complete | Single Review screen wraps S26 + S27 + S28 |
 | **1G** Excel ingestion | S29–S32 | ⏳ not started | |
 | **1H** Employees + claims | S33–S35 | ⏳ not started | S35 also re-adds `Insurer.claimFeedProtocol` per ADR 0004 |
 
@@ -79,9 +79,9 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 
 ## Phase 1F — Review + publish / Screen 6 (S26–S28)
 
-- [ ] **S26** Review summary view — Three Clients render correctly: Balance shows 4 cards, CUBER 10, STM 7; each card has Edit deep-link.
-- [ ] **S27** Validation engine — STM with stacked plans missing `stacksOn` raises a Blocker; mid-year period change raises a Warning; clean Balance setup raises 0 issues.
-- [ ] **S28** Draft → publish workflow with optimistic locking — concurrent edits to the same Policy raise 409 on the second save; publishing creates an immutable BenefitYear snapshot.
+- [x] **S26** Review summary view — Three Clients render correctly: Balance shows 4 cards, CUBER 10, STM 7; each card has Edit deep-link. (2026-04-28 — `review.summary` tRPC query loads BenefitYear → Policy + Client + Entities + Products + Plans + Eligibility + PremiumRates + Insurer/TPA/Pool names in one round-trip. Review screen at `/admin/clients/[id]/policies/[policyId]/benefit-years/[benefitYearId]/review` renders one card per product with Edit deep-link, plus benefit-groups + entities sections.)
+- [x] **S27** Validation engine — STM with stacked plans missing `stacksOn` raises a Blocker; mid-year period change raises a Warning; clean Balance setup raises 0 issues. (2026-04-28 — `review.validate` tRPC query runs the rule pass: NO_PRODUCTS / NO_ENTITIES / NO_PLANS / BROKEN_STACKS_ON / PLAN_INVALID / PRODUCT_DATA_INVALID as Blockers; NO_MASTER_ENTITY / MISSING_ELIGIBILITY as Warnings. Each issue carries a `surface` hint for UI deep-linking. Counts blockers + warnings; `canPublish` = blockers === 0.)
+- [x] **S28** Draft → publish workflow with optimistic locking — concurrent edits to the same Policy raise 409 on the second save; publishing creates an immutable BenefitYear snapshot. (2026-04-28 — `review.publish` mutation re-runs validation server-side (trust nothing), checks `expectedPolicyVersionId` against `Policy.versionId` (CONFLICT on mismatch), then atomically transitions BenefitYear DRAFT→PUBLISHED + bumps Policy.versionId + stamps publishedAt/publishedBy. UI gates the Publish button on `canPublish` AND warning acknowledgement. The original quick-publish button on the BenefitYears section was removed in favor of the Review-screen flow.)
 
 ## Phase 1G — Excel ingestion (S29–S32)
 

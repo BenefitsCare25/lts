@@ -165,22 +165,12 @@ export function BenefitYearsSection({
                             >
                               Edit dates
                             </button>
-                            <button
-                              type="button"
+                            <Link
+                              href={`/admin/clients/${clientId}/policies/${policyId}/benefit-years/${by.id}/review`}
                               className="btn btn-primary btn-sm"
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    'Publish this benefit year? Configuration will be locked.',
-                                  )
-                                ) {
-                                  setState.mutate({ id: by.id, state: 'PUBLISHED' });
-                                }
-                              }}
-                              disabled={setState.isPending}
                             >
-                              Publish
-                            </button>
+                              Review &amp; publish
+                            </Link>
                           </>
                         ) : null}
                         {isEditing ? (
