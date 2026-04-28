@@ -18,7 +18,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           <span className="app-header__brand">
             <a href="/admin">Insurance SaaS</a>
           </span>
-          <nav className="app-header__nav" aria-label="Catalogue admin">
+          <nav className="app-header__nav" aria-label="Admin">
+            <a className="nav-link" href="/admin/clients">
+              Clients
+            </a>
             <a className="nav-link" href="/admin/catalogue/employee-schema">
               Employee Schema
             </a>

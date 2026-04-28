@@ -12,7 +12,7 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · `[!]` blocked (l
 |---|---|---|---|
 | **1A** Foundation | S1–S5 | ✅ complete | S2 shipped Auth.js Credentials, not WorkOS — see ADR 0003 |
 | **1B** Registries / Screen 0 | S6–S12 | ✅ complete | S8 has a documented field deferral (ADR 0004); visual schema editor for S12 deferred to JSON textareas — see story note |
-| **1C** Client onboarding | S13–S17 | ⏳ not started | |
+| **1C** Client onboarding | S13–S17 | 🔄 in progress | S13 landed |
 | **1D** Predicate builder | S18–S20 | ⏳ not started | |
 | **1E** Per-product config | S21–S25 | ⏳ not started | |
 | **1F** Review + publish | S26–S28 | ⏳ not started | |
@@ -57,7 +57,7 @@ These are conscious, recorded deviations — each has an ADR and a re-add trigge
 
 ## Phase 1C — Client onboarding setup (S13–S17)
 
-- [ ] **S13** Client CRUD (Screen 1) — broker admin adds Balance Medical with country=SG, UEN validator passes.
+- [x] **S13** Client CRUD (Screen 1) — broker admin adds Balance Medical with country=SG, UEN validator passes. (2026-04-28 — `/admin/clients` list + inline create form + edit page; `clients` tRPC router with full CRUD, server-side UEN validation against `Country.uenPattern`, FK-style validation against `Industry.code`. New `referenceData` router exposes Country/Currency/Industry queries via `protectedProcedure` since those tables aren't tenant-scoped. Client-side UEN regex preview with disabled-submit until the pattern clears; email field tolerates empty string and normalises to null. `ClientStatus` mirrored as literal union in client to keep Prisma out of browser bundle.)
 - [ ] **S14** Policy + entities (Screen 2) — STM client has 3 PolicyEntities each with own policy number; `rateOverrides` JSONB accepts null and sample override.
 - [ ] **S15** Product selection (Screen 3) — Insurer dropdown filtered by `productsSupported` matching the row's product type; CUBER saves with 10 products spanning Tokio Marine + Zurich + Allied World.
 - [ ] **S16** Catalogue seed scripts — seed all 12 ProductTypes per v2 §3.5 with schemas, planSchemas, premiumStrategy refs, and Tokio Marine + Great Eastern parsing rules. `npm run seed:catalogue` populates 12 rows; GHS planSchema includes `stacksOn` and `selectionMode`.
