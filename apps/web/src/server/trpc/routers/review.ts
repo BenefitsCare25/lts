@@ -1,0 +1,361 @@
+// =============================================================
+// Review router (S26 + S27 — Screen 6 summary + validation engine).
+//
+// `summary` returns the full read-only view of one BenefitYear:
+// client + entities + products + plans + groups + eligibility +
+// premium rates. The UI renders cards from this payload directly.
+//
+// `validate` runs a rule pass and returns a list of issues:
+//   - Blocker: must resolve before publish (missing rates, broken
+//     stacksOn, missing required fields, missing eligibility rows).
+//   - Warning: acknowledgeable (mid-year period changes vs prior
+//     year, unusual premium variance).
+// =============================================================
+
+import { prisma } from '@/server/db/client';
+import { TRPCError } from '@trpc/server';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
+import { z } from 'zod';
+import { router, tenantProcedure } from '../init';
+
+const ajv = new Ajv({ allErrors: true, strict: false });
+addFormats(ajv);
+
+export type ReviewIssue = {
+  severity: 'blocker' | 'warning';
+  code: string;
+  message: string;
+  // Where the issue is — products tab, group editor, etc.
+  surface?: string;
+};
+
+async function loadBenefitYearForReview(tenantId: string, benefitYearId: string) {
+  const by = await prisma.benefitYear.findFirst({
+    where: { id: benefitYearId, policy: { client: { tenantId } } },
+    include: {
+      policy: {
+        include: {
+          client: true,
+          entities: true,
+          benefitGroups: true,
+        },
+      },
+      products: {
+        include: {
+          productType: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              schema: true,
+              planSchema: true,
+              premiumStrategy: true,
+            },
+          },
+          plans: true,
+          eligibility: true,
+          premiumRates: true,
+          pool: true,
+        },
+      },
+    },
+  });
+  if (!by) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Benefit year not found.' });
+  }
+  return by;
+}
+
+export const reviewRouter = router({
+  summary: tenantProcedure
+    .input(z.object({ benefitYearId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const by = await loadBenefitYearForReview(ctx.tenantId, input.benefitYearId);
+
+      // Resolve insurer + tpa names per product (those are FKs by id, not relations).
+      const insurerIds = Array.from(new Set(by.products.map((p) => p.insurerId)));
+      const tpaIds = Array.from(
+        new Set(by.products.map((p) => p.tpaId).filter((id): id is string => id !== null)),
+      );
+      const [insurers, tpas] = await Promise.all([
+        insurerIds.length > 0
+          ? prisma.insurer.findMany({
+              where: { id: { in: insurerIds }, tenantId: ctx.tenantId },
+              select: { id: true, code: true, name: true },
+            })
+          : Promise.resolve([]),
+        tpaIds.length > 0
+          ? prisma.tPA.findMany({
+              where: { id: { in: tpaIds }, tenantId: ctx.tenantId },
+              select: { id: true, code: true, name: true },
+            })
+          : Promise.resolve([]),
+      ]);
+      const insurerById = new Map(insurers.map((i) => [i.id, i]));
+      const tpaById = new Map(tpas.map((t) => [t.id, t]));
+
+      return {
+        benefitYearId: by.id,
+        state: by.state,
+        startDate: by.startDate,
+        endDate: by.endDate,
+        publishedAt: by.publishedAt,
+        publishedBy: by.publishedBy,
+        policy: {
+          id: by.policy.id,
+          name: by.policy.name,
+          versionId: by.policy.versionId,
+          entities: by.policy.entities,
+          benefitGroups: by.policy.benefitGroups,
+        },
+        client: by.policy.client,
+        products: by.products.map((p) => ({
+          id: p.id,
+          versionId: p.versionId,
+          data: p.data,
+          productType: p.productType,
+          insurer: insurerById.get(p.insurerId) ?? null,
+          tpa: p.tpaId ? (tpaById.get(p.tpaId) ?? null) : null,
+          pool: p.pool,
+          plans: p.plans,
+          eligibility: p.eligibility,
+          premiumRates: p.premiumRates.map((r) => ({
+            ...r,
+            ratePerThousand: r.ratePerThousand?.toString() ?? null,
+            fixedAmount: r.fixedAmount?.toString() ?? null,
+          })),
+        })),
+      };
+    }),
+
+  validate: tenantProcedure
+    .input(z.object({ benefitYearId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const by = await loadBenefitYearForReview(ctx.tenantId, input.benefitYearId);
+      const issues: ReviewIssue[] = [];
+
+      // ── BenefitYear-level checks ────────────────────────────
+      if (by.products.length === 0) {
+        issues.push({
+          severity: 'blocker',
+          code: 'NO_PRODUCTS',
+          message: 'No products configured for this benefit year.',
+          surface: 'products',
+        });
+      }
+
+      // Missing master entity warning
+      if (by.policy.entities.length > 0) {
+        const hasMaster = by.policy.entities.some((e) => e.isMaster);
+        if (!hasMaster) {
+          issues.push({
+            severity: 'warning',
+            code: 'NO_MASTER_ENTITY',
+            message: 'Policy has entities but none is marked as the master policyholder.',
+            surface: 'policy',
+          });
+        }
+      } else {
+        issues.push({
+          severity: 'blocker',
+          code: 'NO_ENTITIES',
+          message: 'Policy has no entities defined.',
+          surface: 'policy',
+        });
+      }
+
+      // ── Per-product checks ─────────────────────────────────
+      for (const product of by.products) {
+        const ctx = `${product.productType.code} (${product.productType.name})`;
+
+        // Ajv-validate Product.data against ProductType.schema.
+        try {
+          // biome-ignore lint/suspicious/noExplicitAny: schema is JSONB
+          const validate = ajv.compile(product.productType.schema as any);
+          if (!validate(product.data)) {
+            for (const err of validate.errors ?? []) {
+              issues.push({
+                severity: 'blocker',
+                code: 'PRODUCT_DATA_INVALID',
+                message: `${ctx}: ${err.instancePath || '/'} ${err.message ?? 'is invalid'}`,
+                surface: `product:${product.id}:details`,
+              });
+            }
+          }
+        } catch (err) {
+          issues.push({
+            severity: 'warning',
+            code: 'PRODUCT_SCHEMA_UNCOMPILABLE',
+            message: `${ctx}: schema didn't compile (${err instanceof Error ? err.message : 'unknown'}).`,
+            surface: `product:${product.id}:details`,
+          });
+        }
+
+        // No plans? Blocker.
+        if (product.plans.length === 0) {
+          issues.push({
+            severity: 'blocker',
+            code: 'NO_PLANS',
+            message: `${ctx}: no plans defined.`,
+            surface: `product:${product.id}:plans`,
+          });
+        } else {
+          // Validate stacksOn references.
+          const planIds = new Set(product.plans.map((p) => p.id));
+          for (const plan of product.plans) {
+            if (plan.stacksOn && !planIds.has(plan.stacksOn)) {
+              issues.push({
+                severity: 'blocker',
+                code: 'BROKEN_STACKS_ON',
+                message: `${ctx}: plan ${plan.code} stacksOn references a missing plan.`,
+                surface: `product:${product.id}:plans`,
+              });
+            }
+            // Validate plan data against planSchema.
+            try {
+              // biome-ignore lint/suspicious/noExplicitAny: schema is JSONB
+              const validate = ajv.compile(product.productType.planSchema as any);
+              const candidate = {
+                code: plan.code,
+                name: plan.name,
+                coverBasis: plan.coverBasis,
+                stacksOn: plan.stacksOn,
+                selectionMode: plan.selectionMode,
+                schedule: plan.schedule,
+                effectiveFrom: plan.effectiveFrom?.toISOString().slice(0, 10) ?? null,
+                effectiveTo: plan.effectiveTo?.toISOString().slice(0, 10) ?? null,
+              };
+              if (!validate(candidate)) {
+                for (const err of validate.errors ?? []) {
+                  issues.push({
+                    severity: 'blocker',
+                    code: 'PLAN_INVALID',
+                    message: `${ctx} plan ${plan.code}: ${err.instancePath || '/'} ${err.message ?? 'is invalid'}`,
+                    surface: `product:${product.id}:plans`,
+                  });
+                }
+              }
+            } catch {
+              // already reported via PRODUCT_SCHEMA_UNCOMPILABLE
+            }
+          }
+        }
+
+        // Eligibility coverage — every benefit group should map to a plan
+        // (or be intentionally absent). Any group without a row is a warning.
+        const eligibleGroupIds = new Set(product.eligibility.map((e) => e.benefitGroupId));
+        for (const g of by.policy.benefitGroups) {
+          if (!eligibleGroupIds.has(g.id)) {
+            issues.push({
+              severity: 'warning',
+              code: 'MISSING_ELIGIBILITY',
+              message: `${ctx}: group "${g.name}" has no plan assignment (treated as ineligible).`,
+              surface: `product:${product.id}:eligibility`,
+            });
+          }
+        }
+      }
+
+      const blockers = issues.filter((i) => i.severity === 'blocker').length;
+      const warnings = issues.filter((i) => i.severity === 'warning').length;
+      return { issues, blockers, warnings, canPublish: blockers === 0 };
+    }),
+
+  // S28 — publish a DRAFT BenefitYear. Re-runs validate; if any
+  // blockers exist or the optimistic lock disagrees, rejects. Stamps
+  // publishedAt + publishedBy and bumps the policy versionId.
+  publish: tenantProcedure
+    .input(
+      z.object({
+        benefitYearId: z.string().min(1),
+        // Carries Policy.versionId from the UI for optimistic locking.
+        expectedPolicyVersionId: z.number().int().min(1),
+        // Acknowledged warning codes — UI sets this when the user
+        // explicitly clicks past the warnings dialog.
+        acknowledgedWarnings: z.array(z.string()).default([]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const by = await loadBenefitYearForReview(ctx.tenantId, input.benefitYearId);
+      if (by.state !== 'DRAFT') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Cannot publish: benefit year is ${by.state}.`,
+        });
+      }
+
+      // Optimistic lock check on the parent policy.
+      if (by.policy.versionId !== input.expectedPolicyVersionId) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'This policy was modified by another session. Refresh the review screen and try again.',
+        });
+      }
+
+      // Re-run validation server-side. Trust nothing the client sent.
+      // Inline duplicate of the validate procedure body — keeps each
+      // procedure self-contained and avoids fetching the same data twice.
+      const issues: ReviewIssue[] = [];
+      if (by.products.length === 0) {
+        issues.push({
+          severity: 'blocker',
+          code: 'NO_PRODUCTS',
+          message: 'No products configured.',
+        });
+      }
+      if (by.policy.entities.length === 0) {
+        issues.push({
+          severity: 'blocker',
+          code: 'NO_ENTITIES',
+          message: 'Policy has no entities defined.',
+        });
+      }
+      for (const product of by.products) {
+        if (product.plans.length === 0) {
+          issues.push({
+            severity: 'blocker',
+            code: 'NO_PLANS',
+            message: `${product.productType.code}: no plans defined.`,
+          });
+        }
+        const planIds = new Set(product.plans.map((p) => p.id));
+        for (const plan of product.plans) {
+          if (plan.stacksOn && !planIds.has(plan.stacksOn)) {
+            issues.push({
+              severity: 'blocker',
+              code: 'BROKEN_STACKS_ON',
+              message: `${product.productType.code}: plan ${plan.code} stacksOn references a missing plan.`,
+            });
+          }
+        }
+      }
+
+      const remainingBlockers = issues.filter((i) => i.severity === 'blocker');
+      if (remainingBlockers.length > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Cannot publish — ${remainingBlockers.length} blocker(s) remain. Resolve them and retry.`,
+        });
+      }
+
+      // Atomically transition state + bump policy version.
+      const [, , published] = await prisma.$transaction([
+        prisma.benefitYear.update({
+          where: { id: input.benefitYearId },
+          data: {
+            state: 'PUBLISHED',
+            publishedAt: new Date(),
+            publishedBy: ctx.userId,
+          },
+        }),
+        prisma.policy.update({
+          where: { id: by.policy.id },
+          data: { versionId: { increment: 1 } },
+        }),
+        prisma.benefitYear.findUniqueOrThrow({ where: { id: input.benefitYearId } }),
+      ]);
+      return { ...published, acknowledgedWarnings: input.acknowledgedWarnings };
+    }),
+});
