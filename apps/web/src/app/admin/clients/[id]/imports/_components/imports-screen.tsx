@@ -49,6 +49,12 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
     },
     onError: (err) => setUploadError(err.message),
   });
+  const reparse = trpc.placementSlips.reparse.useMutation({
+    onSuccess: () => utils.placementSlips.listByClient.invalidate({ clientId }),
+  });
+  const remove = trpc.placementSlips.delete.useMutation({
+    onSuccess: () => utils.placementSlips.listByClient.invalidate({ clientId }),
+  });
 
   const [selected, setSelected] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -93,7 +99,12 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
                 accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={(e) => setSelected(e.target.files?.[0] ?? null)}
               />
-              <span className="field-help">Maximum 5 MB. Parsed synchronously.</span>
+              <span className="field-help">
+                Maximum 25 MB. Parsed synchronously. Stored on SharePoint (
+                <code>/lts-placement-slips/&lt;tenant&gt;/&lt;client&gt;/</code>) when the Azure
+                ROPC env vars are configured; otherwise the bytes aren't retained and re-parse will
+                require re-upload.
+              </span>
             </div>
             {uploadError ? <p className="field-error">{uploadError}</p> : null}
             <div className="row">
@@ -123,31 +134,68 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
                   <th>Filename</th>
                   <th>Insurer template</th>
                   <th>Status</th>
+                  <th>Storage</th>
                   <th>Uploaded</th>
                   <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
-                {list.data.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.filename}</td>
-                    <td>{u.insurerTemplate ?? '—'}</td>
-                    <td>
-                      <span className={statusPill(u.parseStatus)}>{u.parseStatus}</span>
-                    </td>
-                    <td style={{ fontSize: 'var(--font-md, 12px)' }}>{formatDate(u.createdAt)}</td>
-                    <td>
-                      <div className="row-end">
-                        <Link
-                          href={`/admin/clients/${clientId}/imports/${u.id}`}
-                          className="btn btn-ghost btn-sm"
-                        >
-                          Review
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {list.data.map((u) => {
+                  const onSharePoint = u.storageKey.startsWith('sharepoint:');
+                  return (
+                    <tr key={u.id}>
+                      <td>{u.filename}</td>
+                      <td>{u.insurerTemplate ?? '—'}</td>
+                      <td>
+                        <span className={statusPill(u.parseStatus)}>{u.parseStatus}</span>
+                      </td>
+                      <td>
+                        <span className={onSharePoint ? 'pill pill-success' : 'pill pill-muted'}>
+                          {onSharePoint ? 'SharePoint' : 'Inline'}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 'var(--font-md, 12px)' }}>
+                        {formatDate(u.createdAt)}
+                      </td>
+                      <td>
+                        <div className="row-end">
+                          <Link
+                            href={`/admin/clients/${clientId}/imports/${u.id}`}
+                            className="btn btn-ghost btn-sm"
+                          >
+                            Review
+                          </Link>
+                          {onSharePoint ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => reparse.mutate({ id: u.id })}
+                              disabled={reparse.isPending}
+                            >
+                              {reparse.isPending ? 'Re-parsing…' : 'Re-parse'}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete ${u.filename}? This removes the SharePoint copy too.`,
+                                )
+                              ) {
+                                remove.mutate({ id: u.id });
+                              }
+                            }}
+                            disabled={remove.isPending}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
