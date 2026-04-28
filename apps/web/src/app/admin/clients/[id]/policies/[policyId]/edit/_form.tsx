@@ -11,6 +11,7 @@ import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { BenefitYearsSection } from './_benefit-years';
 
 // Local mirror of the entity shape we drive the form with. Keeps
 // rateOverrides as a string while editing so the textarea can hold
@@ -358,6 +359,8 @@ export function EditPolicyForm({
           </form>
         </div>
       </section>
+
+      <BenefitYearsSection policyId={policyId} />
     </>
   );
 }
