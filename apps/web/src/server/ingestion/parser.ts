@@ -34,6 +34,8 @@ export type ParsedProduct = {
 
 export type ParseResult = {
   status: 'PARSED' | 'FAILED' | 'NEEDS_REVIEW';
+  // Comma-separated list of detected insurer codes. Multi-insurer slips
+  // (STM-style) carry several; single-insurer slips carry one.
   detectedTemplate: string | null;
   products: ParsedProduct[];
   issues: ParseIssue[];
@@ -204,14 +206,17 @@ export async function parsePlacementSlip(
     }
   }
 
-  // Detect template from the first matching insurer with a sheet hit.
+  // Detect templates per insurer. Real-world placement slips routinely
+  // span multiple insurers in one workbook (e.g. STM has 4 GE products,
+  // 1 Zurich, 1 Chubb, 1 Allianz). Dispatch every (productType × insurer)
+  // candidate whose sheet exists in the workbook, not just the first.
   const groups = candidates.reduce<Record<string, typeof candidates>>((acc, c) => {
     acc[c.insurerCode] ??= [];
     acc[c.insurerCode]?.push(c);
     return acc;
   }, {});
 
-  let detectedInsurer: string | null = null;
+  const detectedInsurers: string[] = [];
   for (const insurerCode of Object.keys(groups)) {
     const list = groups[insurerCode];
     if (!list || list.length === 0) continue;
@@ -220,13 +225,10 @@ export async function parsePlacementSlip(
     const detected = detectTemplate(workbook, [
       { insurerCode: first.insurerCode, rules: first.rules },
     ]);
-    if (detected) {
-      detectedInsurer = insurerCode;
-      break;
-    }
+    if (detected) detectedInsurers.push(insurerCode);
   }
 
-  if (!detectedInsurer) {
+  if (detectedInsurers.length === 0) {
     return {
       status: 'NEEDS_REVIEW',
       detectedTemplate: null,
@@ -243,10 +245,17 @@ export async function parsePlacementSlip(
     };
   }
 
+  // Sheet-existence is the per-product gate. Without it, a Chubb-only
+  // workbook would still try to parse GE_LIFE candidates and emit
+  // false-positive MISSING_SHEET issues for every GE product type.
   const products: ParsedProduct[] = [];
-  const matchingCandidates = groups[detectedInsurer] ?? [];
-  for (const c of matchingCandidates) {
-    products.push(parseProduct(workbook, c.productTypeCode, c.insurerCode, c.rules, issues));
+  for (const insurerCode of detectedInsurers) {
+    const matchingCandidates = groups[insurerCode] ?? [];
+    for (const c of matchingCandidates) {
+      const productSheet = c.rules.plans_block?.sheet ?? c.rules.rates_block?.sheet;
+      if (productSheet && !workbook.getWorksheet(productSheet)) continue;
+      products.push(parseProduct(workbook, c.productTypeCode, c.insurerCode, c.rules, issues));
+    }
   }
 
   const status: ParseResult['status'] = issues.some((i) => i.severity === 'error')
@@ -257,7 +266,7 @@ export async function parsePlacementSlip(
 
   return {
     status,
-    detectedTemplate: detectedInsurer,
+    detectedTemplate: detectedInsurers.join(','),
     products,
     issues,
     raw: { sheets },
