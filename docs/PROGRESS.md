@@ -123,15 +123,16 @@ Phase 1 ships everything in v2 §8; Phase 2 picks up the deferrals in v2 §11 pl
 
 ### Carrying forward from Phase 1
 
-**Phase 1G fidelity — STM calibrated, Balance/CUBER pending.** STM's reference placement slip arrived 2026-04-28 and is fully calibrated (per-sheet coords for 4 insurers across 7 products; see `docs/STM_PLACEMENT_SLIP_LAYOUT.md`). Balance/CUBER (TM_LIFE) rules remain placeholder until those reference slips land. End-to-end STM parse blocked on three architectural items:
+**Phase 1G fidelity — STM calibrated end-to-end, Balance/CUBER pending.** STM's reference placement slip arrived 2026-04-28 and parses live via the upload route. Spot-check against the live `.xls` confirms 7 products extracted across 4 insurers (GE_LIFE: GTL/GHS/GMM/SP; ZURICH: GPA; CHUBB: GBT; ALLIANZ: WICI), all with correct policyholder, period, policy numbers, and plan rows. Balance/CUBER (TM_LIFE) rules remain placeholder until those reference slips land.
 
-| # | Item | Notes |
+| # | Item | Status |
 |---|---|---|
-| a | `.xls` support | Existing parser uses exceljs which only handles `.xlsx`. Real-world insurer slips commonly come in `.xls` (the STM file is one). Add SheetJS as a fallback, or replace exceljs with SheetJS entirely. |
-| b | Multi-block `rates_block` schema | Allianz's WICI sheet has one rate block per PolicyEntity (3 blocks for STM). Current `parsingRules.rates_block` is single-block — extend to an array. |
-| c | Benefit-group inference from plan eligibility text | Parser emits plan rows + names. The 6 compound JSONLogic predicates for STM (FW × HJG range × bargainable status) come from natural-language eligibility blurbs and need a separate inference pass — likely an LLM-assisted suggestion that the broker confirms in the review UI. |
+| a | `.xls` support | ✅ done. SheetJS (`xlsx@0.18.5`) confined to `apps/web/src/server/ingestion/xls-to-xlsx.ts`; magic-byte detection in upload route accepts both `.xls` (CFB / OLE2) and `.xlsx` (ZIP). 8 unit tests cover the round-trip. **Security caveat:** the npm-registry `xlsx@0.18.5` carries CVE-2023-30533 (prototype pollution) — patched versions only on the SheetJS CDN. Threat model is admin-only ingestion in Phase 1, mitigated by isolating SheetJS to a single read-then-rewrite call. **Phase 2 item:** migrate to the SheetJS CDN tarball (`pnpm add https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`) once a permission rule allows the install. |
+| b | Multi-block `rates_block` schema | pending — Allianz's WICI sheet has one rate block per PolicyEntity (3 blocks for STM). Current parser captures only the first; rest documented in STM layout reference. |
+| c | Benefit-group inference from plan eligibility text | pending — parser emits plan rows + category names. The 6 compound JSONLogic predicates for STM (FW × HJG range × bargainable status) come from natural-language eligibility blurbs and need a separate inference pass — likely an LLM-assisted suggestion that the broker confirms in the review UI. |
+| d | PolicyEntity extraction from sheet 1 | pending — STM's 3 entities (`G0005086`, `G0005088`, `G0005089`) are listed in the comments sheet rows 21-23. Parser doesn't have a "metadata sheet" concept; small extension to `parsingRules` would surface them. |
 
-**`placementSlips.applyToCatalogue` row mapping.** Currently the mutation flips status PARSED→APPLIED but doesn't create real `Product`/`Plan`/`PremiumRate` rows from the parsed payload. Once a real slip is mapped end-to-end, the row creation logic lands.
+**`placementSlips.applyToCatalogue` row mapping.** Currently the mutation flips status PARSED→APPLIED but doesn't create real `Product`/`Plan`/`PremiumRate` rows from the parsed payload. Items b/c/d above unblock this.
 
 ### Security / hardening — Phase 2A ✅
 
