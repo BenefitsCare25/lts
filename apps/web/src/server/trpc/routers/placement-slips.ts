@@ -85,6 +85,7 @@ export const placementSlipsRouter = router({
           // storageKey lets the UI tell SharePoint-backed uploads
           // (which can be re-parsed) from inline-fallback uploads.
           storageKey: true,
+          storageWebUrl: true,
         },
       });
     }),
@@ -225,6 +226,7 @@ export const placementSlipsRouter = router({
           uploadedBy: ctx.userId,
           filename: input.filename,
           storageKey,
+          storageWebUrl: webUrl,
           insurerTemplate: result.detectedTemplate,
           parseStatus: result.status,
           parseResult: result as unknown as Prisma.InputJsonValue,

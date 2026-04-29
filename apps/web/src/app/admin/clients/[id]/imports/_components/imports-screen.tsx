@@ -144,7 +144,20 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
                   const onSharePoint = u.storageKey.startsWith('sharepoint:');
                   return (
                     <tr key={u.id}>
-                      <td>{u.filename}</td>
+                      <td>
+                        {u.storageWebUrl ? (
+                          <a
+                            href={u.storageWebUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: 'underline', color: 'inherit' }}
+                          >
+                            {u.filename}
+                          </a>
+                        ) : (
+                          u.filename
+                        )}
+                      </td>
                       <td>{u.insurerTemplate ?? '—'}</td>
                       <td>
                         <span className={statusPill(u.parseStatus)}>{u.parseStatus}</span>
