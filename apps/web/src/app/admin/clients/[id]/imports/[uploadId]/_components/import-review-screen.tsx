@@ -88,9 +88,7 @@ export function ImportReviewScreen({
   const issues = (upload.data.issues as ParseIssue[] | null) ?? result.issues ?? [];
   const blockers = issues.filter((i) => i.severity === 'error' && !i.resolved);
   const canApply =
-    blockers.length === 0 &&
-    upload.data.parseStatus === 'PARSED' &&
-    Boolean(selectedBenefitYearId);
+    blockers.length === 0 && upload.data.parseStatus === 'PARSED' && Boolean(selectedBenefitYearId);
 
   const draftBenefitYears = (benefitYears.data ?? []).filter((by) => by.state === 'DRAFT');
 
@@ -264,9 +262,7 @@ export function ImportReviewScreen({
                 </div>
               ) : null}
 
-              {applyError ? (
-                <p className="field-error">{applyError}</p>
-              ) : null}
+              {applyError ? <p className="field-error">{applyError}</p> : null}
 
               <div className="row">
                 <button
@@ -290,9 +286,7 @@ export function ImportReviewScreen({
               ) : null}
             </div>
           ) : (
-            <p style={{ color: 'var(--color-good, #16a34a)' }}>
-              ✓ Already applied to catalogue.
-            </p>
+            <p style={{ color: 'var(--color-good, #16a34a)' }}>✓ Already applied to catalogue.</p>
           )}
 
           {applyResult ? (
@@ -324,7 +318,10 @@ export function ImportReviewScreen({
                   </p>
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                     {applyResult.skipped.map((s, i) => (
-                      <li key={i} style={{ fontSize: 'var(--font-md)', color: 'var(--color-warn)' }}>
+                      <li
+                        key={`${s.reason}:${s.detail}:${i}`}
+                        style={{ fontSize: 'var(--font-md)', color: 'var(--color-warn)' }}
+                      >
                         {s.reason}: {s.detail}
                       </li>
                     ))}
