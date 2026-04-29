@@ -26,8 +26,10 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
   const insurer = trpc.insurers.byId.useQuery({ id: insurerId });
   const update = trpc.insurers.update.useMutation({
     onSuccess: async () => {
-      await utils.insurers.list.invalidate();
-      await utils.insurers.byId.invalidate({ id: insurerId });
+      await Promise.all([
+        utils.insurers.list.invalidate(),
+        utils.insurers.byId.invalidate({ id: insurerId }),
+      ]);
       router.push('/admin/catalogue/insurers');
     },
     onError: (err) => setFormError(err.message),

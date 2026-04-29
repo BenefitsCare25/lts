@@ -95,6 +95,9 @@ param sharepointServiceAccountPassword string = ''
 @secure()
 param authSecret string = ''
 
+@description('Minimum container replicas. Set to 1 on staging to eliminate cold starts during active development.')
+param appMinReplicas int = 0
+
 // ---- Tags -------------------------------------------------------------------
 
 @description('Resource tags.')
@@ -240,6 +243,7 @@ module containerApp 'modules/container-app.bicep' = {
     sharepointServiceAccountUsername: sharepointServiceAccountUsername
     sharepointServiceAccountPassword: sharepointServiceAccountPassword
     authSecret: authSecret
+    minReplicas: appMinReplicas
     tags: tags
   }
 }

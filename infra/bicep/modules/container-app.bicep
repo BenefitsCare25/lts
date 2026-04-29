@@ -68,6 +68,9 @@ param sharepointServiceAccountUsername string = ''
 @secure()
 param sharepointServiceAccountPassword string = ''
 
+@description('Minimum number of replicas. Set to 1 to prevent cold starts; 0 allows scale-to-zero.')
+param minReplicas int = 0
+
 @description('Tags applied to the resource.')
 param tags object = {}
 
@@ -238,7 +241,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: minReplicas
         maxReplicas: 3
       }
     }
