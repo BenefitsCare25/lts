@@ -92,6 +92,9 @@ export async function createTenantContextFromSession(
   userId: string,
   tenantId: string,
 ): Promise<TenantContext> {
+  // If tenantId is missing from the session (old tokens, test callers),
+  // fall back to the DB lookup so the RLS GUC is always set correctly.
+  if (!tenantId) return requireTenantContext(userId);
   // set_config(key, value, is_local=false) persists for the connection,
   // which is sufficient for a request-scoped Prisma connection.
   await prisma.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, false)`;
