@@ -6,6 +6,7 @@
 
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
+import { useState } from 'react';
 
 type ParseIssue = {
   severity: 'error' | 'warning';
@@ -31,6 +32,15 @@ type ParseResult = {
   raw?: { sheets: string[] };
 };
 
+type ApplySummary = {
+  policyEntitiesUpserted: number;
+  productsUpserted: number;
+  plansCreated: number;
+  stacksOnResolved: number;
+  premiumRatesCreated: number;
+  skipped: { reason: string; detail: string }[];
+};
+
 export function ImportReviewScreen({
   clientId,
   uploadId,
@@ -42,6 +52,27 @@ export function ImportReviewScreen({
   const upload = trpc.placementSlips.byId.useQuery({ id: uploadId });
   const resolve = trpc.placementSlips.resolveIssue.useMutation({
     onSuccess: () => utils.placementSlips.byId.invalidate({ id: uploadId }),
+  });
+
+  const policies = trpc.policies.listByClient.useQuery({ clientId });
+
+  const [selectedPolicyId, setSelectedPolicyId] = useState('');
+  const [selectedBenefitYearId, setSelectedBenefitYearId] = useState('');
+  const [applyResult, setApplyResult] = useState<ApplySummary | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  const benefitYears = trpc.benefitYears.listByPolicy.useQuery(
+    { policyId: selectedPolicyId },
+    { enabled: Boolean(selectedPolicyId) },
+  );
+
+  const applyMutation = trpc.placementSlips.applyToCatalogue.useMutation({
+    onSuccess: (data) => {
+      setApplyResult(data.summary);
+      setApplyError(null);
+      utils.placementSlips.byId.invalidate({ id: uploadId });
+    },
+    onError: (err) => setApplyError(err.message),
   });
 
   if (upload.isLoading) return <p>Loading…</p>;
@@ -56,7 +87,19 @@ export function ImportReviewScreen({
   };
   const issues = (upload.data.issues as ParseIssue[] | null) ?? result.issues ?? [];
   const blockers = issues.filter((i) => i.severity === 'error' && !i.resolved);
-  const canApply = blockers.length === 0 && upload.data.parseStatus === 'PARSED';
+  const canApply =
+    blockers.length === 0 &&
+    upload.data.parseStatus === 'PARSED' &&
+    Boolean(selectedBenefitYearId);
+
+  const draftBenefitYears = (benefitYears.data ?? []).filter((by) => by.state === 'DRAFT');
+
+  const handleApply = () => {
+    if (!selectedBenefitYearId) return;
+    setApplyResult(null);
+    setApplyError(null);
+    applyMutation.mutate({ id: uploadId, benefitYearId: selectedBenefitYearId });
+  };
 
   return (
     <>
@@ -159,18 +202,136 @@ export function ImportReviewScreen({
           <h3 style={{ marginBottom: '0.5rem' }}>Apply</h3>
           <p className="field-help" style={{ marginBottom: '0.75rem' }}>
             Once every issue is resolved, applying creates real Product / Plan / PremiumRate rows
-            under a chosen benefit year. (Phase 1G ships the apply hook; the row-creation mapping
-            fills in once reference placement slips arrive for QA — see PROGRESS.)
+            under a chosen benefit year. Re-applying the same slip is idempotent.
           </p>
-          <button type="button" className="btn btn-primary" disabled={!canApply}>
-            {upload.data.parseStatus === 'APPLIED' ? 'Already applied' : 'Apply to catalogue'}
-          </button>
-          {!canApply ? (
-            <p className="field-help" style={{ marginTop: '0.5rem' }}>
-              {blockers.length > 0
-                ? `Resolve ${blockers.length} blocker issue${blockers.length === 1 ? '' : 's'} first.`
-                : `Status must be PARSED — currently ${upload.data.parseStatus}.`}
+
+          {upload.data.parseStatus !== 'APPLIED' ? (
+            <div className="form-grid" style={{ gap: '0.75rem' }}>
+              <div className="field">
+                <label className="field-label" htmlFor="apply-policy">
+                  Policy
+                </label>
+                <select
+                  id="apply-policy"
+                  className="input"
+                  value={selectedPolicyId}
+                  onChange={(e) => {
+                    setSelectedPolicyId(e.target.value);
+                    setSelectedBenefitYearId('');
+                  }}
+                  disabled={policies.isLoading}
+                >
+                  <option value="">— select policy —</option>
+                  {(policies.data ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedPolicyId ? (
+                <div className="field">
+                  <label className="field-label" htmlFor="apply-benefit-year">
+                    Benefit year (DRAFT only)
+                  </label>
+                  <select
+                    id="apply-benefit-year"
+                    className="input"
+                    value={selectedBenefitYearId}
+                    onChange={(e) => setSelectedBenefitYearId(e.target.value)}
+                    disabled={benefitYears.isLoading}
+                  >
+                    <option value="">— select benefit year —</option>
+                    {draftBenefitYears.map((by) => (
+                      <option key={by.id} value={by.id}>
+                        {new Date(by.startDate).toLocaleDateString()} →{' '}
+                        {new Date(by.endDate).toLocaleDateString()}
+                      </option>
+                    ))}
+                  </select>
+                  {draftBenefitYears.length === 0 && !benefitYears.isLoading ? (
+                    <span className="field-help">
+                      No DRAFT benefit years on this policy.{' '}
+                      <Link
+                        href={`/admin/clients/${clientId}/policies/${selectedPolicyId}/benefit-years/new`}
+                      >
+                        Create one
+                      </Link>
+                      .
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {applyError ? (
+                <p className="field-error">{applyError}</p>
+              ) : null}
+
+              <div className="row">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!canApply || applyMutation.isPending}
+                  onClick={handleApply}
+                >
+                  {applyMutation.isPending ? 'Applying…' : 'Apply to catalogue'}
+                </button>
+              </div>
+
+              {!canApply && !applyMutation.isPending ? (
+                <p className="field-help">
+                  {blockers.length > 0
+                    ? `Resolve ${blockers.length} blocker issue${blockers.length === 1 ? '' : 's'} first.`
+                    : !selectedBenefitYearId
+                      ? 'Select a policy and DRAFT benefit year above.'
+                      : `Status must be PARSED — currently ${upload.data.parseStatus}.`}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p style={{ color: 'var(--color-good, #16a34a)' }}>
+              ✓ Already applied to catalogue.
             </p>
+          )}
+
+          {applyResult ? (
+            <div
+              style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                background: 'var(--bg-subtle)',
+                borderRadius: '8px',
+              }}
+            >
+              <h4 style={{ marginBottom: '0.5rem' }}>Apply summary</h4>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, lineHeight: '1.7' }}>
+                <li>Policy entities upserted: {applyResult.policyEntitiesUpserted}</li>
+                <li>Products upserted: {applyResult.productsUpserted}</li>
+                <li>Plans created: {applyResult.plansCreated}</li>
+                <li>Premium rates created: {applyResult.premiumRatesCreated}</li>
+              </ul>
+              {applyResult.skipped.length > 0 ? (
+                <>
+                  <p
+                    style={{
+                      marginTop: '0.5rem',
+                      marginBottom: '0.25rem',
+                      color: 'var(--color-warn)',
+                    }}
+                  >
+                    Skipped ({applyResult.skipped.length}):
+                  </p>
+                  <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                    {applyResult.skipped.map((s, i) => (
+                      <li key={i} style={{ fontSize: 'var(--font-md)', color: 'var(--color-warn)' }}>
+                        {s.reason}: {s.detail}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </section>
