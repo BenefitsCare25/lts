@@ -14,7 +14,7 @@
 // =============================================================
 
 import { auditEvent, deriveEntity } from '@/server/audit';
-import { UserNotProvisionedError, requireTenantContext } from '@/server/db/tenant';
+import { createTenantContextFromSession } from '@/server/db/tenant';
 import { UserRole } from '@prisma/client';
 import { TRPCError, initTRPC } from '@trpc/server';
 import superjson from 'superjson';
@@ -46,15 +46,13 @@ const requireTenantMiddleware = t.middleware(async ({ ctx, next }) => {
   if (!ctx.session) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in required.' });
   }
-  try {
-    const tenantCtx = await requireTenantContext(ctx.session.user.id);
-    return next({ ctx: { ...ctx, ...tenantCtx } });
-  } catch (err) {
-    if (err instanceof UserNotProvisionedError) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: err.message });
-    }
-    throw err;
-  }
+  // tenantId is already in the signed JWT — use the fast path that
+  // skips the DB user lookup and only sets the RLS session variable.
+  const tenantCtx = await createTenantContextFromSession(
+    ctx.session.user.id,
+    ctx.session.user.tenantId,
+  );
+  return next({ ctx: { ...ctx, ...tenantCtx } });
 });
 
 // Logs every successful mutation through tenantProcedure. Queries
