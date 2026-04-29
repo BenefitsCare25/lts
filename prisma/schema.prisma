@@ -449,6 +449,7 @@ model PlacementSlipUpload {
   uploadedBy      String
   filename        String
   storageKey      String // Azure Blob key
+  storageWebUrl   String? // SharePoint/OneDrive web URL for the file
   insurerTemplate String? // detected template; null if unknown
   parseStatus     String // "PENDING" | "PARSED" | "FAILED" | "REVIEWED" | "APPLIED"
   parseResult     Json?
