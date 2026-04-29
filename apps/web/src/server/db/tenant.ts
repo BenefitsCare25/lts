@@ -85,24 +85,31 @@ export type TenantContext = {
   db: TenantDb;
 };
 
-// Resolves a fully-scoped TenantContext for a signed-in user.
-// Sets the Postgres RLS variable app.current_tenant_id so DB-layer
-// policies enforce isolation as a second line of defence.
+// Fast path used by the tRPC middleware: tenantId is already
+// verified inside the signed JWT, so we skip the DB user lookup
+// and only set the Postgres RLS session variable.
+export async function createTenantContextFromSession(
+  userId: string,
+  tenantId: string,
+): Promise<TenantContext> {
+  // set_config(key, value, is_local=false) persists for the connection,
+  // which is sufficient for a request-scoped Prisma connection.
+  await prisma.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, false)`;
+  return { tenantId, userId, db: createTenantClient(tenantId) };
+}
+
+// Full resolution path: looks up the user row to verify the account
+// still exists before issuing a TenantContext. Use this wherever a
+// JWT is not the source of truth (e.g. background jobs, seed scripts).
 export async function requireTenantContext(userId: string): Promise<TenantContext> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { id: true, tenantId: true },
   });
 
-  if (!user) {
-    throw new UserNotProvisionedError();
-  }
+  if (!user) throw new UserNotProvisionedError();
 
-  // set_config(key, value, is_local=false) persists for the connection,
-  // which is sufficient for a request-scoped Prisma connection.
-  // is_local=true would scope it to the current transaction only.
   await prisma.$executeRaw`SELECT set_config('app.current_tenant_id', ${user.tenantId}, false)`;
-
   return {
     tenantId: user.tenantId,
     userId: user.id,
