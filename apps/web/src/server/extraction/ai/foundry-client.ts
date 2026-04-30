@@ -23,8 +23,8 @@
 // only that the response is valid JSON of *some* shape.
 // =============================================================
 
-import { decryptSecret } from '@/server/security/secret-cipher';
 import type { TenantDb } from '@/server/db/tenant';
+import { decryptSecret } from '@/server/security/secret-cipher';
 import {
   isClaudeDeployment,
   normalizeFoundryEndpoint,
@@ -343,11 +343,7 @@ type OpenAiResponseShape = {
   };
 };
 
-function extractFromOpenAi(
-  raw: unknown,
-  model: string,
-  latencyMs: number,
-): FoundryCallResult {
+function extractFromOpenAi(raw: unknown, model: string, latencyMs: number): FoundryCallResult {
   const r = raw as OpenAiResponseShape;
   const choice = r.choices?.[0];
   const toolCall = choice?.message?.tool_calls?.[0];

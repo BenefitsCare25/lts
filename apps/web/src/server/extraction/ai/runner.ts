@@ -20,13 +20,13 @@ import type {
   FieldEnvelope,
   SourceRef,
 } from '@/server/extraction/heuristic-to-envelope';
+import { type CatalogueContext, loadCatalogueContext } from './catalogue-context';
 import {
   type FoundryProvider,
   callFoundry,
   decryptProviderKey,
   loadActiveProvider,
 } from './foundry-client';
-import { type CatalogueContext, loadCatalogueContext } from './catalogue-context';
 import {
   type AiOutput,
   type AiOutputBenefitYear,
@@ -37,6 +37,7 @@ import {
   formatAjvErrors,
   getOutputValidator,
 } from './output-schema';
+import { aiOutputSchema } from './output-schema';
 import {
   EXTRACTION_TOOL_DESCRIPTION,
   EXTRACTION_TOOL_NAME,
@@ -44,7 +45,6 @@ import {
   buildUserPrompt,
 } from './prompt';
 import { type WorkbookText, flattenWorkbookText, workbookToText } from './workbook-to-text';
-import { aiOutputSchema } from './output-schema';
 
 export const AI_EXTRACTOR_VERSION = 'ai-foundry-1.0';
 
@@ -382,10 +382,7 @@ function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedPro
       policyNumber: pickEnvelope(h.header.policyNumber, a.header.policyNumber),
       period: pickEnvelope(h.header.period, a.header.period),
       lastEntryAge: pickEnvelope(h.header.lastEntryAge, a.header.lastEntryAge),
-      administrationType: pickEnvelope(
-        h.header.administrationType,
-        a.header.administrationType,
-      ),
+      administrationType: pickEnvelope(h.header.administrationType, a.header.administrationType),
       currency: pickEnvelope(h.header.currency, a.header.currency),
     },
     policyholder: {
@@ -409,9 +406,8 @@ function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedPro
       freeText: pickEnvelope(h.eligibility.freeText, a.eligibility.freeText),
       // Categories: heuristic emits one per plan label; AI may emit
       // richer SI formulae. Prefer AI when it has higher confidence.
-      categories: a.eligibility.categories.length > 0
-        ? a.eligibility.categories
-        : h.eligibility.categories,
+      categories:
+        a.eligibility.categories.length > 0 ? a.eligibility.categories : h.eligibility.categories,
     },
     // Plans / rates / benefits: heuristic is the floor; AI fills gaps
     // and may add plans the heuristic didn't see. Match by raw code.
@@ -494,8 +490,7 @@ function mergeRates<
   },
 >(h: T[], a: T[]): T[] {
   const byKey = new Map<string, T>();
-  const k = (r: T) =>
-    `${r.planRawCode}::${r.coverTier ?? '_'}::${r.blockLabel ?? '_'}`;
+  const k = (r: T) => `${r.planRawCode}::${r.coverTier ?? '_'}::${r.blockLabel ?? '_'}`;
   for (const r of h) byKey.set(k(r), r);
   for (const r of a) {
     const existing = byKey.get(k(r));

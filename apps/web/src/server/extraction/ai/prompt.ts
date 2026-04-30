@@ -57,7 +57,9 @@ export function buildSystemPrompt(catalogue: CatalogueContext): string {
     '',
   );
   if (catalogue.pools.length > 0) {
-    lines.push('Pools (industry / captive arrangements) — `poolId` MUST match one of these or be null:');
+    lines.push(
+      'Pools (industry / captive arrangements) — `poolId` MUST match one of these or be null:',
+    );
     for (const p of catalogue.pools) lines.push(`- ${p.id}: ${p.name}`);
     lines.push('');
   }
@@ -69,7 +71,7 @@ export function buildSystemPrompt(catalogue: CatalogueContext): string {
   lines.push(
     'Employee schema — only these field paths are valid for eligibility predicates.',
     'When the slip references an attribute not in this list (e.g. "Hay Job Grade"), still extract',
-    'the eligibility free-text — the wizard\'s Schema Additions step will let the broker add the',
+    "the eligibility free-text — the wizard's Schema Additions step will let the broker add the",
     'missing field. Do NOT invent new field paths in extracted predicates:',
   );
   for (const f of catalogue.employeeSchema) {

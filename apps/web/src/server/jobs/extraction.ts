@@ -26,17 +26,14 @@
 // extraction"). Re-running is cheap and keeps the floor fresh.
 // =============================================================
 
-import type { Job } from 'bullmq';
 import { prisma } from '@/server/db/client';
 import { createTenantClient } from '@/server/db/tenant';
-import {
-  type ExtractionResult,
-  extractFromWorkbook,
-} from '@/server/extraction/extractor';
 import { runAiExtraction } from '@/server/extraction/ai/runner';
+import { type ExtractionResult, extractFromWorkbook } from '@/server/extraction/extractor';
 import { downloadFile } from '@/server/storage/sharepoint';
-import { getDefaultQueue } from './queues';
 import { Prisma } from '@prisma/client';
+import type { Job } from 'bullmq';
+import { getDefaultQueue } from './queues';
 
 export const AI_EXTRACTION_JOB = 'ai-extraction' as const;
 
@@ -143,8 +140,7 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
           {
             severity: 'warning',
             code: 'HEURISTIC_THREW',
-            message:
-              err instanceof Error ? err.message : 'Heuristic parser threw before AI ran.',
+            message: err instanceof Error ? err.message : 'Heuristic parser threw before AI ran.',
           },
         ],
       },

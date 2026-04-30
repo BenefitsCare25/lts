@@ -29,8 +29,8 @@ import {
   type SectionId,
   emptyDraftFormState,
 } from './sections/_registry';
-import { SECTION_COMPONENTS } from './sections/section-components';
 import { aiBundleFromDraft } from './sections/_types';
+import { SECTION_COMPONENTS } from './sections/section-components';
 
 type Props = { uploadId: string };
 
@@ -281,8 +281,7 @@ function renderAiBanner(
     return (
       <div className="card card-padded" style={{ borderColor: 'var(--color-error)' }}>
         <p className="mb-2">
-          <strong>AI extraction failed</strong> at stage{' '}
-          <code>{bundle.failure.stage}</code>.
+          <strong>AI extraction failed</strong> at stage <code>{bundle.failure.stage}</code>.
         </p>
         <p className="field-help mb-0">{bundle.failure.message}</p>
       </div>

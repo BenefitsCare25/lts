@@ -127,7 +127,10 @@ const proposedInsurersSchema = {
         description:
           'Insurer.code from the catalogue insurers list. Use the closest match; if no match exists, propose a new code in UPPER_SNAKE form.',
       },
-      rawLabel: { type: 'string', description: 'Verbatim insurer label as it appears on the slip.' },
+      rawLabel: {
+        type: 'string',
+        description: 'Verbatim insurer label as it appears on the slip.',
+      },
       productCount: { type: 'integer', minimum: 1 },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
     },

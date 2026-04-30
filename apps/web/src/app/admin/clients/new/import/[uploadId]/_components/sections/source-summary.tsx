@@ -117,7 +117,9 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
           ) : !aiConfigured ? (
             <p className="field-help mb-0">
               <strong>No AI provider configured for this tenant.</strong>{' '}
-              <Link href="/admin/settings/ai-provider">Set up your Azure AI Foundry credentials</Link>{' '}
+              <Link href="/admin/settings/ai-provider">
+                Set up your Azure AI Foundry credentials
+              </Link>{' '}
               to enable AI extraction.
             </p>
           ) : (
@@ -126,9 +128,7 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
                 {aiBundle.ai
                   ? `Last run: ${aiBundle.ai.model} · ${aiBundle.ai.sheetsCount} sheet${
                       aiBundle.ai.sheetsCount === 1 ? '' : 's'
-                    } in ${(aiBundle.ai.latencyMs / 1000).toFixed(1)}s · ${
-                      aiBundle.ai.inputTokens.toLocaleString()
-                    } input + ${aiBundle.ai.outputTokens.toLocaleString()} output tokens.`
+                    } in ${(aiBundle.ai.latencyMs / 1000).toFixed(1)}s · ${aiBundle.ai.inputTokens.toLocaleString()} input + ${aiBundle.ai.outputTokens.toLocaleString()} output tokens.`
                   : 'AI extraction reads the workbook with your tenant’s configured Claude/Foundry deployment and pre-fills the wizard’s sections (client details, policy entities, benefit year, products, plans, premium rates, eligibility). Heuristic-extracted cells with full confidence are preserved; the AI fills the rest.'}
               </p>
               {aiBundle.ai?.workbookTruncated ? (
@@ -145,11 +145,7 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
                   disabled={isRunning || isApplied || runExtraction.isPending}
                   onClick={() => runExtraction.mutate({ uploadId: upload.id })}
                 >
-                  {isRunning
-                    ? 'Extracting…'
-                    : runExtraction.isPending
-                      ? 'Queueing…'
-                      : buttonLabel}
+                  {isRunning ? 'Extracting…' : runExtraction.isPending ? 'Queueing…' : buttonLabel}
                 </button>
               </div>
             </>
