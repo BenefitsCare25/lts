@@ -1,47 +1,20 @@
-// =============================================================
-// /admin layout — sticky glass header + main content area.
-// The Auth.js middleware bounces unauthenticated requests to
-// /sign-in before they reach this layout; requireSession() is a
-// redundant defence-in-depth check.
-// =============================================================
-
-import { Breadcrumbs } from '@/components/ui';
+import { SectionRail } from '@/components/admin/section-rail';
+import { TopNav } from '@/components/admin/top-nav';
 import { requireSession } from '@/server/auth/session';
 import type { ReactNode } from 'react';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
+  // Defence-in-depth — middleware already bounces unauthenticated requests to /sign-in.
   const session = await requireSession();
 
   return (
-    <div className="app-shell">
+    <div className="admin-shell">
       <header className="app-header">
         <div className="flex items-center">
           <span className="app-header__brand">
             <a href="/admin">Insurance SaaS</a>
           </span>
-          <nav className="app-header__nav" aria-label="Admin">
-            <a className="nav-link" href="/admin/clients">
-              Clients
-            </a>
-            <a className="nav-link" href="/admin/catalogue/employee-schema">
-              Employee Schema
-            </a>
-            <a className="nav-link" href="/admin/catalogue/product-types">
-              Product Types
-            </a>
-            <a className="nav-link" href="/admin/catalogue/insurers">
-              Insurers
-            </a>
-            <a className="nav-link" href="/admin/catalogue/tpas">
-              TPAs
-            </a>
-            <a className="nav-link" href="/admin/catalogue/pools">
-              Pools
-            </a>
-            <a className="nav-link" href="/admin/settings/ai-provider">
-              AI Provider
-            </a>
-          </nav>
+          <TopNav />
         </div>
         <div className="app-header__user">
           <span>{session.user.email}</span>
@@ -50,8 +23,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </a>
         </div>
       </header>
-      <Breadcrumbs />
-      <main>{children}</main>
+      <div className="admin-body">
+        <aside className="admin-aside">
+          <SectionRail />
+        </aside>
+        <main className="admin-main">{children}</main>
+      </div>
     </div>
   );
 }

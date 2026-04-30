@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/.../products/[productId]/plans/new — create plan page (S22).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { PlanForm } from '../_components/plan-form';
 

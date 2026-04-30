@@ -1,5 +1,5 @@
 // =============================================================
-// Products router (S15 — Product selection, Screen 3).
+// Products router.
 //
 // A Product is an instance of a ProductType under a BenefitYear,
 // bound to one Insurer (and optionally a Pool + TPA). This story
@@ -203,7 +203,7 @@ export const productsRouter = router({
           insurerId: input.insurerId,
           poolId: input.poolId,
           tpaId: input.tpaId,
-          // Real product config arrives at S21 (Screen 5a).
+          // Real product config arrives at S21.
           // Empty object satisfies the JSON column for now.
           data: {},
         },
@@ -285,7 +285,7 @@ export const productsRouter = router({
   // S21: per-product Details sub-tab. Validates the submitted JSON
   // against the ProductType.schema via Ajv before persisting. Returns
   // a structured error list that the UI can surface inline. Schema
-  // can be edited in the catalogue admin (S12), so we recompile per
+  // can be edited in the catalogue admin, so we recompile per
   // request — Ajv caches by reference, so unchanged schemas hit the
   // compile cache.
   updateData: adminProcedure

@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/.../plans/[planId]/edit — edit plan page (S22).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { PlanForm } from '../../_components/plan-form';
 

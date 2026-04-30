@@ -1,18 +1,10 @@
-// =============================================================
-// BenefitGroupsScreen — Screen 4 (S18) predicate builder.
-//
-// The list shows existing groups under the policy. The form lets
-// the broker compose a predicate: pick a field from the tenant's
-// EmployeeSchema (only `selectableForPredicates` + `enabled`
-// fields), then an operator filtered by the field's data type from
-// the OperatorLibrary, then a value control whose shape switches
-// by data type (number with min/max, enum multiselect, boolean
-// toggle, date picker, free text). Multiple rows compose into an
-// AND/OR group; saved as JSONLogic.
-// =============================================================
+// BenefitGroupsScreen — predicate builder.
+// Composes a JSONLogic predicate from rows of (field, operator, value)
+// and persists it as a tenant-scoped BenefitGroup.
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import {
   type PredicateConnector,
   type PredicateRow,
@@ -22,37 +14,10 @@ import {
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-
-type EmployeeField = {
-  name: string;
-  label: string;
-  type: string;
-  required: boolean;
-  pii: boolean;
-  selectableForPredicates: boolean;
-  enabled?: boolean;
-  enumValues?: string[];
-  min?: number;
-  max?: number;
-  tier: string;
-};
-
-type OperatorRow = {
-  code: string;
-  label: string;
-  arity: 'single' | 'multi' | 'range';
-};
-
-type FormRow = {
-  field: string;
-  operator: string;
-  // String-encoded value(s); typed and parsed at submit time.
-  value: string;
-  // For "between" range; otherwise unused.
-  valueHi: string;
-  // For "in"/"notIn" multiselect; otherwise unused.
-  valueMulti: string[];
-};
+import { MatchPreview } from './match-preview';
+import { buildRow, uiRowToForm } from './predicate-builder';
+import { PredicateRowEditor } from './predicate-row-editor';
+import { type EmployeeField, type FormRow, type OperatorRow, emptyRow } from './types';
 
 type FormState = {
   name: string;
@@ -61,29 +26,12 @@ type FormState = {
   rows: FormRow[];
 };
 
-const emptyRow = (): FormRow => ({
-  field: '',
-  operator: '',
-  value: '',
-  valueHi: '',
-  valueMulti: [],
-});
-
 const emptyForm = (): FormState => ({
   name: '',
   description: '',
   connector: 'and',
   rows: [emptyRow()],
 });
-
-// Cast a string input to the JS value the field type expects.
-const coerce = (raw: string, type: string): unknown => {
-  if (type === 'integer') return Number.parseInt(raw, 10);
-  if (type === 'number') return Number.parseFloat(raw);
-  if (type === 'boolean') return raw === 'true';
-  // string, enum, date — kept as string (date stays as YYYY-MM-DD ISO).
-  return raw;
-};
 
 export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
   const utils = trpc.useUtils();
@@ -117,9 +65,9 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // S20 — overlap-warning state. Set by checkOverlap during submit
-  // when another group's predicate intersects ours; cleared once the
-  // user acknowledges or fixes the predicate.
+  // S20 — overlap-warning state. Set by checkOverlap during submit when
+  // another group's predicate intersects ours; cleared once the user
+  // acknowledges or fixes the predicate.
   const [overlapWarning, setOverlapWarning] = useState<{
     overlaps: { id: string; name: string; intersection: number }[];
     noEmployeesYet: boolean;
@@ -136,8 +84,8 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
     });
   }, [schema.data]);
 
-  // OperatorLibrary returns one row per data type with an operators
-  // array. Index by data type so we can pull the right list per row.
+  // OperatorLibrary returns one row per data type with an operators array.
+  // Index by data type so we can pull the right list per row.
   const operatorsByType = useMemo<Record<string, OperatorRow[]>>(() => {
     if (!operators.data) return {};
     const map: Record<string, OperatorRow[]> = {};
@@ -153,11 +101,11 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
     return m;
   }, [selectableFields]);
 
-  // S19 — derive a JSONLogic preview from the current form. Returns
-  // null when the form isn't yet a valid predicate (no rows, missing
-  // fields/operators, type mismatches). Re-runs when fields or
-  // operators change too, so toggling a STANDARD field off and back
-  // on refreshes the preview.
+  // S19 — derive a JSONLogic preview from the current form. Returns null
+  // when the form isn't yet a valid predicate (no rows, missing
+  // fields/operators, type mismatches). Re-runs when fields or operators
+  // change too, so toggling a STANDARD field off and back on refreshes
+  // the preview.
   const previewPredicate = useMemo<unknown | null>(() => {
     if (form.rows.length === 0) return null;
     const rows: PredicateRow[] = [];
@@ -178,9 +126,9 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
     }
   }, [form, fieldByName, operatorsByType]);
 
-  // Debounce preview changes by 500ms — avoids hammering the server
-  // while the user is mid-keystroke. Only the *value* changes are
-  // debounced; field/operator changes still go through this gate.
+  // Debounce preview changes by 500ms — avoids hammering the server while
+  // the user is mid-keystroke. Only the *value* changes are debounced;
+  // field/operator changes still go through this gate.
   const [debouncedPredicate, setDebouncedPredicate] = useState<unknown | null>(null);
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedPredicate(previewPredicate), 500);
@@ -219,9 +167,9 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
     setFormError(null);
   };
 
-  // Populate the form from an existing group's stored predicate.
-  // Falls back to a single empty row if the predicate doesn't
-  // round-trip (e.g. hand-edited deeper nesting).
+  // Populate the form from an existing group's stored predicate. Falls
+  // back to a single empty row if the predicate doesn't round-trip
+  // (e.g. hand-edited deeper nesting).
   const startEdit = (group: {
     id: string;
     name: string;
@@ -306,7 +254,6 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
       return;
     }
 
-    // S20 — check for overlaps with other groups on the same policy.
     setCheckingOverlap(true);
     try {
       const result = await utils.benefitGroups.checkOverlap.fetch({
@@ -347,19 +294,10 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
   const fieldsLoading = schema.isLoading || operators.isLoading;
 
   return (
-    <>
-      <section className="section">
-        <h1>Benefit groups</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          Each benefit group is a JSONLogic predicate that classifies employees into a cohort (e.g.
-          "Senior management born before 1970", "Foreign workers on Work Permit"). Groups drive the
-          eligibility matrix on per-product configuration (Screen 5c).
-        </p>
-      </section>
-
+    <ScreenShell title="Benefit groups">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit group' : 'Add group'}</h3>
+          <h3 className="mb-4">{editingId ? 'Edit group' : 'Add group'}</h3>
           {fieldsLoading ? (
             <p>Loading employee schema…</p>
           ) : selectableFields.length === 0 ? (
@@ -419,7 +357,7 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
                 </div>
               ) : null}
 
-              <fieldset className="fieldset" style={{ gridColumn: '1 / -1' }}>
+              <fieldset className="fieldset field-span-full">
                 <legend>Conditions</legend>
                 {form.rows.map((row, idx) => (
                   <PredicateRowEditor
@@ -440,7 +378,7 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
 
               {formError ? <p className="field-error">{formError}</p> : null}
 
-              <div className="card card-padded" style={{ background: 'var(--bg-soft, #f8fafc)' }}>
+              <div className="card card-padded panel-soft">
                 <strong>Live match preview</strong>{' '}
                 <MatchPreview
                   ready={previewPredicate !== null}
@@ -453,9 +391,9 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
               </div>
 
               {overlapWarning ? (
-                <div className="card card-padded" style={{ background: 'var(--bg-soft, #fef3c7)' }}>
+                <div className="card card-padded panel-warn">
                   <strong>⚠️ Predicate overlaps with existing groups</strong>
-                  <ul style={{ marginTop: '0.5rem', paddingLeft: '1.25rem' }}>
+                  <ul className="mt-2 panel-warn__list">
                     {overlapWarning.overlaps.map((o) => (
                       <li key={o.id}>
                         <strong>{o.name}</strong> — {o.intersection} shared employee
@@ -463,7 +401,7 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
                       </li>
                     ))}
                   </ul>
-                  <p className="field-help" style={{ marginTop: '0.5rem' }}>
+                  <p className="field-help mt-2">
                     {overlapWarning.noEmployeesYet
                       ? 'No employees yet — overlap counts will only be accurate after seeding.'
                       : "Employees in two groups will inherit eligibility from both. If that's intentional, save anyway."}
@@ -507,7 +445,7 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing groups</h3>
+        <h3 className="mb-3">Existing groups</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -529,9 +467,7 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
                     <td>{g.name}</td>
                     <td>{g.description ?? '—'}</td>
                     <td>
-                      <code style={{ fontSize: 'var(--font-md, 12px)' }}>
-                        {JSON.stringify(g.predicate)}
-                      </code>
+                      <code className="text-mono-xs">{JSON.stringify(g.predicate)}</code>
                     </td>
                     <td>
                       <div className="row-end">
@@ -562,377 +498,11 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No benefit groups yet for this policy.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No benefit groups yet for this policy.</p>
           </div>
         )}
       </section>
-    </>
-  );
-}
-
-// One predicate row: field dropdown → operator dropdown → value control.
-function PredicateRowEditor({
-  index,
-  row,
-  selectableFields,
-  operatorsByType,
-  onChange,
-  onRemove,
-  canRemove,
-}: {
-  index: number;
-  row: FormRow;
-  selectableFields: EmployeeField[];
-  operatorsByType: Record<string, OperatorRow[]>;
-  onChange: (patch: Partial<FormRow>) => void;
-  onRemove: () => void;
-  canRemove: boolean;
-}) {
-  const field = useMemo(
-    () => selectableFields.find((f) => f.name === row.field) ?? null,
-    [selectableFields, row.field],
-  );
-  const ops = field ? (operatorsByType[field.type] ?? []) : [];
-  const op = useMemo(() => ops.find((o) => o.code === row.operator) ?? null, [ops, row.operator]);
-  const arity = op?.arity ?? 'single';
-
-  // Reset operator + value when the user picks a different field. Done
-  // here in the change handler (not via useEffect) so we don't need
-  // to chase deps across an event-driven reset.
-  const onFieldChange = (nextFieldName: string) => {
-    onChange({ field: nextFieldName, operator: '', value: '', valueHi: '', valueMulti: [] });
-  };
-
-  return (
-    <div className="card card-padded" style={{ marginBottom: '0.75rem' }}>
-      <div className="form-grid">
-        <div className="field">
-          <label className="field-label" htmlFor={`row-${index}-field`}>
-            Field
-          </label>
-          <select
-            id={`row-${index}-field`}
-            className="input"
-            required
-            value={row.field}
-            onChange={(e) => onFieldChange(e.target.value)}
-          >
-            <option value="">— Select field —</option>
-            {selectableFields.map((f) => (
-              <option key={f.name} value={f.name}>
-                {f.label} ({f.type})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label className="field-label" htmlFor={`row-${index}-op`}>
-            Operator
-          </label>
-          <select
-            id={`row-${index}-op`}
-            className="input"
-            required
-            value={row.operator}
-            onChange={(e) =>
-              onChange({ operator: e.target.value, value: '', valueHi: '', valueMulti: [] })
-            }
-            disabled={!field}
-          >
-            <option value="">{field ? '— Select operator —' : '— Pick a field first —'}</option>
-            {ops.map((o) => (
-              <option key={o.code} value={o.code}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field" style={{ gridColumn: 'span 2' }}>
-          <label className="field-label" htmlFor={`row-${index}-val`}>
-            Value
-          </label>
-          <ValueControl
-            id={`row-${index}-val`}
-            field={field}
-            arity={arity}
-            row={row}
-            onChange={onChange}
-          />
-        </div>
-
-        {canRemove ? (
-          <div className="row" style={{ gridColumn: '1 / -1' }}>
-            <button type="button" className="btn btn-danger btn-sm" onClick={onRemove}>
-              Remove condition
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ValueControl({
-  id,
-  field,
-  arity,
-  row,
-  onChange,
-}: {
-  id: string;
-  field: EmployeeField | null;
-  arity: 'single' | 'multi' | 'range';
-  row: FormRow;
-  onChange: (patch: Partial<FormRow>) => void;
-}) {
-  if (!field) {
-    return <input id={id} className="input" disabled placeholder="Pick a field first" />;
-  }
-
-  // Range (between): two inputs of the field's type
-  if (arity === 'range') {
-    return (
-      <div className="row">
-        <input
-          id={id}
-          className="input"
-          type={field.type === 'date' ? 'date' : 'number'}
-          required
-          {...(field.type === 'integer' || field.type === 'number'
-            ? { min: field.min, max: field.max, step: field.type === 'integer' ? 1 : 'any' }
-            : {})}
-          value={row.value}
-          onChange={(e) => onChange({ value: e.target.value })}
-          placeholder="From"
-        />
-        <span>→</span>
-        <input
-          className="input"
-          type={field.type === 'date' ? 'date' : 'number'}
-          required
-          {...(field.type === 'integer' || field.type === 'number'
-            ? { min: field.min, max: field.max, step: field.type === 'integer' ? 1 : 'any' }
-            : {})}
-          value={row.valueHi}
-          onChange={(e) => onChange({ valueHi: e.target.value })}
-          placeholder="To"
-        />
-      </div>
-    );
-  }
-
-  // Multi (in / notIn): checkbox group for enums; comma-separated string otherwise
-  if (arity === 'multi') {
-    if (field.type === 'enum' && field.enumValues) {
-      return (
-        <div className="chip-group">
-          {field.enumValues.map((v) => {
-            const checked = row.valueMulti.includes(v);
-            return (
-              <label key={v} className="chip">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() =>
-                    onChange({
-                      valueMulti: checked
-                        ? row.valueMulti.filter((x) => x !== v)
-                        : [...row.valueMulti, v],
-                    })
-                  }
-                />
-                {v}
-              </label>
-            );
-          })}
-        </div>
-      );
-    }
-    return (
-      <input
-        id={id}
-        className="input"
-        type="text"
-        required
-        value={row.value}
-        onChange={(e) => onChange({ value: e.target.value })}
-        placeholder="Comma-separated values"
-      />
-    );
-  }
-
-  // Single value — by data type
-  if (field.type === 'enum' && field.enumValues) {
-    return (
-      <select
-        id={id}
-        className="input"
-        required
-        value={row.value}
-        onChange={(e) => onChange({ value: e.target.value })}
-      >
-        <option value="">— Select —</option>
-        {field.enumValues.map((v) => (
-          <option key={v} value={v}>
-            {v}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  if (field.type === 'boolean') {
-    return (
-      <select
-        id={id}
-        className="input"
-        required
-        value={row.value}
-        onChange={(e) => onChange({ value: e.target.value })}
-      >
-        <option value="">— Select —</option>
-        <option value="true">True</option>
-        <option value="false">False</option>
-      </select>
-    );
-  }
-  if (field.type === 'date') {
-    return (
-      <input
-        id={id}
-        className="input"
-        type="date"
-        required
-        value={row.value}
-        onChange={(e) => onChange({ value: e.target.value })}
-      />
-    );
-  }
-  if (field.type === 'integer' || field.type === 'number') {
-    return (
-      <input
-        id={id}
-        className="input"
-        type="number"
-        required
-        min={field.min}
-        max={field.max}
-        step={field.type === 'integer' ? 1 : 'any'}
-        value={row.value}
-        onChange={(e) => onChange({ value: e.target.value })}
-      />
-    );
-  }
-  // string
-  return (
-    <input
-      id={id}
-      className="input"
-      type="text"
-      required
-      value={row.value}
-      onChange={(e) => onChange({ value: e.target.value })}
-    />
-  );
-}
-
-// Convert a UI form row into a typed PredicateRow ready for JSONLogic
-// translation, or return an error string for inline display.
-function buildRow(row: FormRow, field: EmployeeField, op: OperatorRow): PredicateRow | string {
-  if (op.arity === 'range') {
-    if (!row.value || !row.valueHi) return 'Range operator needs both lower and upper values.';
-    return {
-      field: row.field,
-      operator: row.operator,
-      value: [coerce(row.value, field.type), coerce(row.valueHi, field.type)],
-    };
-  }
-  if (op.arity === 'multi') {
-    let values: unknown[];
-    if (field.type === 'enum') {
-      if (row.valueMulti.length === 0) return 'Pick at least one value.';
-      values = row.valueMulti;
-    } else {
-      values = row.value
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0)
-        .map((s) => coerce(s, field.type));
-      if (values.length === 0) return 'Provide at least one value.';
-    }
-    return { field: row.field, operator: row.operator, value: values };
-  }
-  // single
-  if (row.value === '') return 'Value is required.';
-  return { field: row.field, operator: row.operator, value: coerce(row.value, field.type) };
-}
-
-function uiRowToForm(row: PredicateRow): FormRow {
-  // Arity is implicit in the value shape when round-tripping
-  if (Array.isArray(row.value) && row.operator === 'between' && row.value.length === 2) {
-    return {
-      field: row.field,
-      operator: row.operator,
-      value: String(row.value[0]),
-      valueHi: String(row.value[1]),
-      valueMulti: [],
-    };
-  }
-  if (Array.isArray(row.value)) {
-    return {
-      field: row.field,
-      operator: row.operator,
-      value: row.value.join(', '),
-      valueHi: '',
-      valueMulti: row.value.map(String),
-    };
-  }
-  return {
-    field: row.field,
-    operator: row.operator,
-    value: row.value === null || row.value === undefined ? '' : String(row.value),
-    valueHi: '',
-    valueMulti: [],
-  };
-}
-
-// S19 — inline match-count display. Four states:
-//   - not ready: predicate is incomplete (waiting for a valid form)
-//   - debouncing: form changed but the 500ms gate hasn't elapsed
-//   - loading: query in flight
-//   - resolved: shows matched / total
-function MatchPreview({
-  ready,
-  pending,
-  loading,
-  error,
-  matched,
-  total,
-}: {
-  ready: boolean;
-  pending: boolean;
-  loading: boolean;
-  error: string | null;
-  matched: number | null;
-  total: number | null;
-}) {
-  if (!ready) return <span className="field-help">Build a complete condition to see matches.</span>;
-  if (pending) return <span className="field-help">Waiting for typing to settle…</span>;
-  if (loading) return <span className="field-help">Counting…</span>;
-  if (error) return <span className="field-error">Preview failed: {error}</span>;
-  if (matched === null || total === null) return null;
-  if (total === 0) {
-    return (
-      <span className="field-help">
-        No employees on this client yet — add employees to see live counts.
-      </span>
-    );
-  }
-  return (
-    <span>
-      Matches <strong>{matched}</strong> of {total} employee{total === 1 ? '' : 's'}.
-    </span>
+    </ScreenShell>
   );
 }

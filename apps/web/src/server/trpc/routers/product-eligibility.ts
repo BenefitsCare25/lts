@@ -1,5 +1,5 @@
 // =============================================================
-// Product eligibility router (S23 — Eligibility matrix, Screen 5c).
+// Product eligibility router.
 //
 // One row per (Product, BenefitGroup) saying "members of this group
 // on this product default to plan X". Absence of a row = ineligible

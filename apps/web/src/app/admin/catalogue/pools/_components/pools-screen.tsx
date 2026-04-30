@@ -1,9 +1,10 @@
 // =============================================================
-// Pools list + inline create form (Screen 0d — S10).
+// Pools list + inline create form.
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -57,20 +58,10 @@ export function PoolsScreen() {
   };
 
   return (
-    <>
-      <section className="section">
-        <p className="eyebrow">Catalogue · Screen 0d</p>
-        <h1>Pool Registry</h1>
-        <p style={{ maxWidth: '52ch' }}>
-          Captive and risk-sharing arrangements where multiple insurers share cover under one
-          umbrella. Used by Screen 3 to surface "via pool" alongside a direct insurer when
-          configuring policy products.
-        </p>
-      </section>
-
+    <ScreenShell title="Pools">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>Add pool</h3>
+          <h3 className="mb-4">New pool</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="pool-name">
@@ -122,7 +113,7 @@ export function PoolsScreen() {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing pools</h3>
+        <h3 className="mb-3">Existing pools</h3>
         {pools.isLoading ? (
           <p>Loading…</p>
         ) : pools.error ? (
@@ -183,11 +174,11 @@ export function PoolsScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No pools yet.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No pools yet.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

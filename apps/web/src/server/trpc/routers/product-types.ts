@@ -5,7 +5,7 @@
 // downstream form (`schema` for product-instance fields, `planSchema`
 // for plan rows). `premiumStrategy` picks one of five code-side
 // strategy modules. `parsingRules` and `displayTemplate` are
-// optional JSONB blobs consumed by the Excel parser (S29-S32) and
+// optional JSONB blobs consumed by the Excel parser and
 // the employee portal (Phase 2) respectively.
 //
 // Editing here bumps `version`. Phase 1 doesn't yet snapshot prior

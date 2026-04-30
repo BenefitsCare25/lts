@@ -1,5 +1,5 @@
 // =============================================================
-// Benefit groups router (S18 — Predicate builder, Screen 4).
+// Benefit groups router.
 //
 // A BenefitGroup attaches a JSONLogic predicate to a Policy. The
 // predicate evaluates against an Employee's `data` JSONB and decides

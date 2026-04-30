@@ -1,5 +1,5 @@
 // =============================================================
-// ProductPlansTab — Screen 5b (S22) plans table.
+// ProductPlansTab — Screen 5b plans table.
 //
 // Shows existing plans on the product. "Add plan" deep-links to a
 // per-plan editor (separate page) where the schedule sub-form is
@@ -117,8 +117,8 @@ export function ProductPlansTab({
           </table>
         </div>
       ) : (
-        <div className="card card-padded" style={{ textAlign: 'center' }}>
-          <p style={{ marginBottom: 0 }}>
+        <div className="card card-padded text-center">
+          <p className="mb-0">
             {editable
               ? 'No plans yet — click "Add plan" to create the first.'
               : 'No plans defined.'}

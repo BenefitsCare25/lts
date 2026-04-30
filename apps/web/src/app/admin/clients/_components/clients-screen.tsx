@@ -9,6 +9,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -93,20 +94,10 @@ export function ClientsScreen() {
   const countryName = (code: string) => countries.data?.find((c) => c.code === code)?.name ?? code;
 
   return (
-    <>
-      <section className="section">
-        <p className="eyebrow">Onboarding · Screen 1</p>
-        <h1>Clients</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          Each client is a legal entity (a company, society, or other registered organisation) for
-          whom this brokerage administers benefits. Adding a client unlocks the policy and
-          benefit-year flow that follows.
-        </p>
-      </section>
-
+    <ScreenShell title="Clients">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>Add client</h3>
+          <h3 className="mb-4">New client</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="cli-legal">
@@ -183,9 +174,7 @@ export function ClientsScreen() {
                 {uenLooksValid === false ? (
                   <>
                     {' '}
-                    <strong style={{ color: 'var(--color-error, #b91c1c)' }}>
-                      Does not match expected format.
-                    </strong>
+                    <strong className="text-error">Does not match expected format.</strong>
                   </>
                 ) : null}
               </span>
@@ -273,7 +262,7 @@ export function ClientsScreen() {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing clients</h3>
+        <h3 className="mb-3">Existing clients</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -367,11 +356,11 @@ export function ClientsScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No clients yet. Add your first one above.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No clients yet. Add your first one above.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

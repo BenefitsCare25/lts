@@ -1,5 +1,5 @@
 // =============================================================
-// Policies router (S14 — Policy + PolicyEntity, Screen 2).
+// Policies router.
 //
 // Policy is reached through Client, not directly tenant-scoped,
 // so every operation begins by asserting the client belongs to

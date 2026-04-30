@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/clients — list + inline create form (Screen 1, S13).
-//
-// Server component shell so the route is auth-gated by the
 // (admin) layout. ClientsScreen does the data fetch + form.
 // =============================================================
 

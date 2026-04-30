@@ -16,7 +16,7 @@
 //
 // Once PUBLISHED, dates and configuration are immutable per v2
 // plan §2.4 — the year carries its data forward into next year's
-// DRAFT via the publish workflow (S28).
+// DRAFT via the publish workflow.
 // =============================================================
 
 import { prisma } from '@/server/db/client';

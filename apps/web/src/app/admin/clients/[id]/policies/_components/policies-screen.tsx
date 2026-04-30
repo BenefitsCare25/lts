@@ -1,5 +1,5 @@
 // =============================================================
-// Policies list + inline create form for one client (S14, Screen 2).
+// Policies list + inline create form for one client.
 //
 // Create takes only a policy name — entities are managed on the
 // edit page where the rate-overrides JSON gets the room it needs.
@@ -7,13 +7,13 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
 
 export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
   const utils = trpc.useUtils();
-  const client = trpc.clients.byId.useQuery({ id: clientId });
   const list = trpc.policies.listByClient.useQuery({ clientId });
 
   const create = trpc.policies.create.useMutation({
@@ -42,21 +42,10 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
   };
 
   return (
-    <>
-      <section className="section">
-        {client.data ? <p className="eyebrow mb-2">{client.data.legalName}</p> : null}
-        <h1>Policies</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          One client can hold multiple policies (e.g. a master employee benefits policy plus a
-          standalone travel policy). Each policy carries one or more entities — usually a single
-          row, but multi-entity groups (like [REDACTED]' three legal entities under one
-          master policy) belong here too.
-        </p>
-      </section>
-
+    <ScreenShell title="Policies">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>Add policy</h3>
+          <h3 className="mb-4">New policy</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="pol-name">
@@ -93,7 +82,7 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing policies</h3>
+        <h3 className="mb-3">Existing policies</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -145,11 +134,11 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No policies yet for this client.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No policies yet for this client.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

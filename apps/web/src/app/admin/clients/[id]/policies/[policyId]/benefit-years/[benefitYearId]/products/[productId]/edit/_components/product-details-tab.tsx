@@ -1,5 +1,5 @@
 // =============================================================
-// ProductDetailsTab — Screen 5a (S21).
+// ProductDetailsTab — Screen 5a.
 //
 // Renders an @rjsf/core form from `ProductType.schema`, prefilled
 // from `Product.data`. Submit posts to `products.updateData`,
@@ -49,7 +49,7 @@ export function ProductDetailsTab({
   return (
     <section className="section">
       <div className="card card-padded">
-        <h3 style={{ marginBottom: '0.5rem' }}>Details</h3>
+        <h3 className="mb-2">Details</h3>
         <p className="field-help" style={{ marginBottom: '1rem' }}>
           Fields below are generated from the {product.data.productType.code} schema in the product
           catalogue. Edits here apply to this benefit year only — to change the schema for every
@@ -84,11 +84,7 @@ export function ProductDetailsTab({
           showErrorList="bottom"
         >
           {saveError ? <p className="field-error">{saveError}</p> : null}
-          {saved ? (
-            <p className="field-help" style={{ color: 'var(--color-good, #16a34a)' }}>
-              ✓ Saved.
-            </p>
-          ) : null}
+          {saved ? <p className="field-help text-good">✓ Saved.</p> : null}
           {editable ? (
             <div className="row" style={{ marginTop: '1rem' }}>
               <button type="submit" className="btn btn-primary" disabled={updateData.isPending}>

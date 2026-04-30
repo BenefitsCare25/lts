@@ -1,5 +1,5 @@
 // =============================================================
-// Plans router (S22 — Plans sub-tab, Screen 5b).
+// Plans router.
 //
 // Each Plan belongs to one Product (instance of a ProductType under
 // a BenefitYear). Schema validation: the full plan record (code +

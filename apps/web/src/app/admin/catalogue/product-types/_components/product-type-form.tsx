@@ -206,7 +206,7 @@ export function ProductTypeForm({ initial }: Props) {
             <JsonTextarea
               id="pt-parsing"
               label="Parsing rules"
-              helpText="Optional. Excel parser hints per insurer template (S29-S32). Leave blank if none."
+              helpText="Optional. Excel parser hints per insurer template. Leave blank if none."
               initial={parsingRules.value}
               nullable
               onValueChange={(value, valid) => setParsingRules({ value, valid })}

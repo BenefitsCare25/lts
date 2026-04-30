@@ -1,8 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/policies/[policyId]/benefit-years/
-//   [benefitYearId]/review — Screen 6 (S26 + S27 + S28).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { ReviewScreen } from './_components/review-screen';
 

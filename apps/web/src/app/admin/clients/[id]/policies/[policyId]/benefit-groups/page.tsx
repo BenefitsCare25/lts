@@ -1,8 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/policies/[policyId]/benefit-groups
-// Screen 4 (S18) — Benefit groups list + predicate builder.
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { BenefitGroupsScreen } from './_components/benefit-groups-screen';
 

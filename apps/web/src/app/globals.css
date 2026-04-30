@@ -25,11 +25,10 @@
   --text-3xl: 2.5rem;
 
   /* ── Surfaces ─────────────────────────────────────── */
-  --bg-page: #f5f5f7;
-  --bg-page-tint-1: 220, 235, 255;
-  --bg-page-tint-2: 255, 220, 245;
-  --bg-elevated: rgba(255, 255, 255, 0.72);
-  --bg-elevated-strong: rgba(255, 255, 255, 0.88);
+  --bg-page: #fafafa;
+  --bg-rail: #f6f6f8;
+  --bg-elevated: #ffffff;
+  --bg-elevated-strong: #ffffff;
   --bg-overlay: rgba(28, 28, 30, 0.4);
   --bg-hover: rgba(0, 0, 0, 0.04);
   --bg-active: rgba(0, 0, 0, 0.07);
@@ -71,10 +70,10 @@
   --shadow-focus: 0 0 0 4px rgba(0, 122, 255, 0.18);
 
   /* ── Radius ───────────────────────────────────────── */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-pill: 9999px;
 
   /* ── Glass blur ───────────────────────────────────── */
@@ -83,7 +82,8 @@
 
   /* ── Layout ───────────────────────────────────────── */
   --max-content-width: 1100px;
-  --header-height: 56px;
+  --header-height: 52px;
+  --rail-width: 232px;
 
   /* ── Spacing scale (consumed by utility classes) ─── */
   --space-1: 0.25rem;
@@ -113,31 +113,13 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--text-primary);
   background: var(--bg-page);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.01em;
-}
-
-/*
- * Aurora background — soft pastel radial gradients give the glass
- * surfaces something to refract. Pure decoration; non-interactive.
- */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: radial-gradient(
-      60% 60% at 15% 10%,
-      rgba(var(--bg-page-tint-1), 0.55),
-      transparent 60%
-    ), radial-gradient(60% 60% at 90% 10%, rgba(var(--bg-page-tint-2), 0.45), transparent 60%),
-    radial-gradient(70% 70% at 50% 100%, rgba(160, 220, 255, 0.4), transparent 65%);
-  pointer-events: none;
+  letter-spacing: -0.005em;
 }
 
 /* ── Typography ─────────────────────────────────────── */
@@ -149,23 +131,22 @@ h4,
 h5,
 h6 {
   margin: 0 0 0.5em;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   font-weight: 600;
 }
 h1 {
-  font-size: var(--text-3xl);
-  letter-spacing: -0.03em;
-  font-weight: 700;
+  font-size: var(--text-xl);
+  font-weight: 600;
 }
 h2 {
-  font-size: var(--text-2xl);
+  font-size: var(--text-lg);
 }
 h3 {
-  font-size: var(--text-xl);
+  font-size: var(--text-md);
 }
 h4 {
-  font-size: var(--text-lg);
+  font-size: var(--text-base);
 }
 
 p {
@@ -198,48 +179,113 @@ small {
 /* ── Layout containers ─────────────────────────────── */
 
 main {
-  max-width: var(--max-content-width);
-  margin: 0 auto;
+  /* Sign-in shell still uses bare <main>; admin pages use .admin-main. */
   padding: 2rem 1.5rem 4rem;
 }
 
-.app-shell {
+.app-shell,
+.admin-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* ── Glass surface ─────────────────────────────────── */
-
-.glass {
-  background: var(--bg-elevated);
-  -webkit-backdrop-filter: var(--blur-glass);
-  backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-glass);
-  box-shadow: var(--shadow-md);
-  border-radius: var(--radius-lg);
+.admin-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
+.admin-aside {
+  width: var(--rail-width);
+  flex-shrink: 0;
+  background: var(--bg-rail);
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 0.75rem;
+}
+
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  padding: 1.5rem 2rem 3rem;
+}
+
+/* ── Section rail ─────────────────────────────────── */
+
+.admin-rail {
+  display: flex;
+  flex-direction: column;
+}
+.admin-rail__heading {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin: 0 0 0.5rem 0.75rem;
+}
+.admin-rail__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0.25rem 0 0.75rem 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-rail__back {
+  display: inline-block;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-decoration: none;
+  margin: 0 0 0.25rem 0.75rem;
+}
+.admin-rail__back:hover {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.admin-rail__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.admin-rail__link {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.admin-rail__link:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.admin-rail__link[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Surfaces (flat, enterprise) ──────────────────── */
+
+.glass,
 .glass-strong {
-  background: var(--bg-elevated-strong);
-  -webkit-backdrop-filter: var(--blur-glass);
-  backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-glass);
-  box-shadow: var(--shadow-lg);
-  border-radius: var(--radius-xl);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 .card {
   background: var(--bg-elevated);
-  -webkit-backdrop-filter: var(--blur-glass);
-  backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-glass);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  padding: 1.25rem;
 }
 .card-padded {
-  padding: 1.75rem 2rem;
+  padding: 1.25rem 1.5rem;
 }
 
 /* ── Header (sticky glass nav) ─────────────────────── */
@@ -252,10 +298,8 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: var(--blur-glass);
-  backdrop-filter: var(--blur-glass);
+  padding: 0 1.25rem;
+  background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
 }
 
@@ -503,9 +547,6 @@ main {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  -webkit-backdrop-filter: var(--blur-light);
-  backdrop-filter: var(--blur-light);
-  box-shadow: var(--shadow-sm);
 }
 .table {
   width: 100%;
@@ -514,19 +555,19 @@ main {
 }
 .table th {
   text-align: left;
-  padding: 0.75rem 1rem;
-  background: rgba(255, 255, 255, 0.5);
+  padding: 0.55rem 0.85rem;
+  background: var(--bg-rail);
   border-bottom: 1px solid var(--border);
   font-weight: 600;
   color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 .table td {
-  padding: 0.75rem 1rem;
+  padding: 0.55rem 0.85rem;
   border-bottom: 1px solid var(--border);
-  vertical-align: top;
+  vertical-align: middle;
   color: var(--text-primary);
 }
 .table tbody tr:last-child td {
@@ -584,7 +625,7 @@ main {
 /* ── Layout helpers ────────────────────────────────── */
 
 .section + .section {
-  margin-top: 2.5rem;
+  margin-top: 1.75rem;
 }
 .stack-3 > * + * {
   margin-top: 0.75rem;
@@ -612,6 +653,13 @@ main {
   display: grid;
   gap: 1rem;
   max-width: 36rem;
+}
+
+.field-span-2 {
+  grid-column: span 2;
+}
+.field-span-full {
+  grid-column: 1 / -1;
 }
 
 .eyebrow {
@@ -663,6 +711,21 @@ main {
   gap: var(--space-6);
 }
 
+.m-0 {
+  margin: 0;
+}
+.mb-0 {
+  margin-bottom: 0;
+}
+.mt-0 {
+  margin-top: 0;
+}
+.ml-2 {
+  margin-left: var(--space-2);
+}
+.ml-3 {
+  margin-left: var(--space-3);
+}
 .mb-1 {
   margin-bottom: var(--space-1);
 }
@@ -742,6 +805,35 @@ main {
 .justify-end {
   justify-content: flex-end;
 }
+.text-center {
+  text-align: center;
+}
+.text-mono-xs {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+.text-good {
+  color: var(--color-success);
+}
+.text-warn {
+  color: var(--color-warning);
+}
+.text-error {
+  color: var(--color-danger);
+}
+
+/* Subtle inline panels — info/warn variants of `.card`. */
+.panel-soft {
+  background: var(--bg-rail);
+}
+.panel-warn {
+  background: rgba(255, 159, 10, 0.12);
+  border-color: rgba(255, 159, 10, 0.35);
+}
+.panel-warn__list {
+  padding-left: 1.25rem;
+  margin: 0;
+}
 
 /* =============================================================
  * Screen shell
@@ -753,58 +845,26 @@ main {
 
 .screen-shell-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 .screen-shell-head__title h1 {
   margin: 0;
 }
 .screen-shell-head__title p {
-  margin: var(--space-2) 0 0;
-  color: var(--text-secondary);
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
 }
 .screen-shell-head__actions {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
-}
-
-/* =============================================================
- * Breadcrumbs
- *
- * Auto-generated from the URL via <Breadcrumbs>. Sits beneath
- * the sticky header, flush-left within the main container.
- * ============================================================= */
-
-.breadcrumbs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  padding: var(--space-3) 1.5rem var(--space-2);
-  max-width: var(--max-content-width);
-  margin: 0 auto;
-}
-.breadcrumbs a {
-  color: var(--text-tertiary);
-  text-decoration: none;
-}
-.breadcrumbs a:hover {
-  color: var(--text-secondary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.breadcrumbs__sep {
-  color: var(--text-quaternary);
-  user-select: none;
-}
-.breadcrumbs__current {
-  color: var(--text-secondary);
-  font-weight: 500;
 }
 
 /* =============================================================

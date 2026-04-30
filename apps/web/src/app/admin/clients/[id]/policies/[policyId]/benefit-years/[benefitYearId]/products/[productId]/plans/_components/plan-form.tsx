@@ -1,5 +1,5 @@
 // =============================================================
-// PlanForm — shared between new + edit plan pages (S22).
+// PlanForm — shared between new + edit plan pages.
 //
 // Layout:
 //   1. Metadata (hand-rolled): code, name, coverBasis (from
@@ -13,6 +13,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Form from '@rjsf/core';
 import type { RJSFSchema } from '@rjsf/utils';
@@ -46,7 +47,7 @@ const emptyForm = (defaultCoverBasis: string): FormState => ({
 });
 
 // Extracts the allowed coverBasis values from the planSchema. The
-// catalogue seed (S16) narrows this per product type; the predicate
+// catalogue seed narrows this per product type; the predicate
 // shape is `{ enum: [...] }` either at the property level or inside
 // allOf branches. We only need the simple top-level enum case here.
 function extractCoverBasisEnum(planSchema: unknown): string[] {
@@ -188,12 +189,10 @@ export function PlanForm({
   const productHref = `/admin/clients/${clientId}/policies/${policyId}/benefit-years/${benefitYearId}/products/${productId}/edit`;
 
   return (
-    <>
-      <section className="section">
-        <p className="eyebrow mb-2">{product.data.productType.code} plans</p>
-        <h1>{mode === 'create' ? 'Add plan' : `Edit ${form.code}`}</h1>
-      </section>
-
+    <ScreenShell
+      title={mode === 'create' ? 'New plan' : `Edit ${form.code}`}
+      context={`${product.data.productType.code} plans`}
+    >
       <section className="section">
         <div className="card card-padded">
           <form onSubmit={submit} className="form-grid">
@@ -326,9 +325,9 @@ export function PlanForm({
               />
             </div>
 
-            <fieldset className="fieldset" style={{ gridColumn: '1 / -1' }}>
+            <fieldset className="fieldset field-span-full">
               <legend>Benefit schedule</legend>
-              <p className="field-help" style={{ marginBottom: '0.75rem' }}>
+              <p className="field-help mb-3">
                 Fields below are generated from the {product.data.productType.code} plan schema. Any
                 keyword (description, default, min/max) defined in the catalogue is rendered
                 automatically.
@@ -376,6 +375,6 @@ export function PlanForm({
           </form>
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }

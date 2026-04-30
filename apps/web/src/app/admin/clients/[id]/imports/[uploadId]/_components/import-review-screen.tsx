@@ -1,9 +1,10 @@
 // =============================================================
-// ImportReviewScreen — parse review with issue resolution (S32).
+// ImportReviewScreen — parse review with issue resolution.
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -100,20 +101,20 @@ export function ImportReviewScreen({
   };
 
   return (
-    <>
-      <section className="section">
-        <h1>{upload.data.filename}</h1>
-        <p className="field-help">
+    <ScreenShell
+      title={upload.data.filename}
+      context={
+        <>
           Status <strong>{upload.data.parseStatus}</strong>
           {upload.data.insurerTemplate ? ` · template ${upload.data.insurerTemplate}` : ''}
-        </p>
-      </section>
-
+        </>
+      }
+    >
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.5rem' }}>Issues</h3>
+          <h3 className="mb-2">Issues</h3>
           {issues.length === 0 ? (
-            <p style={{ color: 'var(--color-good, #16a34a)' }}>✓ No issues — parse succeeded.</p>
+            <p className="text-good">✓ No issues — parse succeeded.</p>
           ) : (
             <ul>
               {issues.map((issue, idx) => (
@@ -141,7 +142,7 @@ export function ImportReviewScreen({
                       Mark resolved
                     </button>
                   ) : (
-                    <span style={{ marginLeft: '0.5rem' }}>(resolved)</span>
+                    <span className="ml-2">(resolved)</span>
                   )}
                 </li>
               ))}
@@ -151,9 +152,7 @@ export function ImportReviewScreen({
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>
-          Parsed products ({result.products?.length ?? 0})
-        </h3>
+        <h3 className="mb-3">Parsed products ({result.products?.length ?? 0})</h3>
         {result.products && result.products.length > 0 ? (
           <div className="form-grid">
             {result.products.map((p) => (
@@ -185,7 +184,7 @@ export function ImportReviewScreen({
           </div>
         ) : (
           <div className="card card-padded">
-            <p style={{ marginBottom: 0 }}>
+            <p className="mb-0">
               No products parsed from this slip. Resolve template-detection issues first.
             </p>
           </div>
@@ -194,8 +193,8 @@ export function ImportReviewScreen({
 
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.5rem' }}>Apply</h3>
-          <p className="field-help" style={{ marginBottom: '0.75rem' }}>
+          <h3 className="mb-2">Apply</h3>
+          <p className="field-help mb-3">
             Once every issue is resolved, applying creates real Product / Plan / PremiumRate rows
             under a chosen benefit year. Re-applying the same slip is idempotent.
           </p>
@@ -283,7 +282,7 @@ export function ImportReviewScreen({
               ) : null}
             </div>
           ) : (
-            <p style={{ color: 'var(--color-good, #16a34a)' }}>✓ Already applied to catalogue.</p>
+            <p className="text-good">✓ Already applied to catalogue.</p>
           )}
 
           {applyResult ? (
@@ -329,6 +328,6 @@ export function ImportReviewScreen({
           ) : null}
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }

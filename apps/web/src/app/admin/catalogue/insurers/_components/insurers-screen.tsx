@@ -1,5 +1,5 @@
 // =============================================================
-// Insurers list + inline create form (Screen 0b — S8).
+// Insurers list + inline create form.
 //
 // Pattern is reused by the next registry stories (TPA / Pool /
 // Product Catalogue). The form helpers live in this file rather
@@ -9,6 +9,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { PRODUCT_TYPE_CODES, type ProductTypeCode } from '@insurance-saas/shared-types';
 import Link from 'next/link';
@@ -70,19 +71,10 @@ export function InsurersScreen() {
   };
 
   return (
-    <>
-      <section className="section">
-        <p className="eyebrow">Catalogue · Screen 0b</p>
-        <h1>Insurer Registry</h1>
-        <p style={{ maxWidth: '52ch' }}>
-          Insurers known to this tenant. Used by Screen 3 (product selection) to filter the insurer
-          dropdown by product type, and by the parser registry to route placement slips.
-        </p>
-      </section>
-
+    <ScreenShell title="Insurers">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>Add insurer</h3>
+          <h3 className="mb-4">New insurer</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="ins-name">
@@ -178,7 +170,7 @@ export function InsurersScreen() {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing insurers</h3>
+        <h3 className="mb-3">Existing insurers</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -236,11 +228,11 @@ export function InsurersScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No insurers yet.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No insurers yet.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

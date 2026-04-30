@@ -1,5 +1,5 @@
 // =============================================================
-// Review router (S26 + S27 — Screen 6 summary + validation engine).
+// Review router.
 //
 // `summary` returns the full read-only view of one BenefitYear:
 // client + entities + products + plans + groups + eligibility +
