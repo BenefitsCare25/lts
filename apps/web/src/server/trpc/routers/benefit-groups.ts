@@ -265,16 +265,20 @@ export const benefitGroupsRouter = router({
     }),
 
   // S20: overlap detection. For each existing group on the policy
-  // (excluding `excludeId` when editing), evaluate both predicates
-  // against every employee and return groups with non-zero intersection.
-  // Advisory only — the save mutation doesn't re-check; the UI is
-  // expected to surface the warning and require user acknowledgment.
+  // (excluding `excludeId` when editing), report groups that match
+  // any of the same employees the candidate predicate would match.
   //
-  // When no employees exist, intersection counts are unknown — we still
-  // return overlaps with `intersection: 0` and a `noEmployeesYet` flag
-  // so the UI can warn the user that the check is best-effort. The
-  // alternative (silently passing every save) is worse because the
-  // overlap might really exist; the user just hasn't loaded employees.
+  // Performance. The naïve O(employees × otherGroups × 2) approach
+  // blew up on STM-class clients (~3k employees × 8 groups = 48k
+  // JSONLogic evaluations per keystroke). We now evaluate each
+  // predicate exactly once against the employee set, building a
+  // `Set<employeeId>` per predicate, and intersect. Cost drops to
+  // O(employees × (1 + otherGroups)) — half the eval work, and
+  // intersections are O(min(|A|, |B|)) lookups.
+  //
+  // When no employees exist, intersection counts are unknown — we
+  // surface `noEmployeesYet` and report no overlaps; the UI warns
+  // the user that the check is best-effort.
   checkOverlap: tenantProcedure
     .input(
       z.object({
@@ -302,26 +306,57 @@ export const benefitGroupsRouter = router({
         }),
         prisma.employee.findMany({
           where: { clientId: policy.clientId },
-          select: { data: true },
+          select: { id: true, data: true },
         }),
       ]);
 
+      if (employees.length === 0) {
+        return {
+          overlaps: [] as { id: string; name: string; intersection: number }[],
+          otherGroupCount: otherGroups.length,
+          employeeCount: 0,
+          noEmployeesYet: true,
+        };
+      }
+
+      // Pre-compute the candidate's matching employee set once.
       const candidate = input.predicate as jsonLogic.RulesLogic;
+      const candidateMatches = new Set<string>();
+      for (const e of employees) {
+        try {
+          if (jsonLogic.apply(candidate, e.data)) {
+            candidateMatches.add(e.id);
+          }
+        } catch {
+          // Malformed predicates surface as compile errors via Zod
+          // before reaching here; per-row failures are non-fatal.
+        }
+      }
+
       const overlaps: { id: string; name: string; intersection: number }[] = [];
 
+      // For each other group, evaluate its predicate once and intersect
+      // with the candidate set. Iterate the smaller set for the lookup.
       for (const other of otherGroups) {
-        let count = 0;
+        const otherPredicate = other.predicate as jsonLogic.RulesLogic;
+        const otherMatches = new Set<string>();
         for (const e of employees) {
           try {
-            if (
-              jsonLogic.apply(candidate, e.data) &&
-              jsonLogic.apply(other.predicate as jsonLogic.RulesLogic, e.data)
-            ) {
-              count += 1;
+            if (jsonLogic.apply(otherPredicate, e.data)) {
+              otherMatches.add(e.id);
             }
           } catch {
             // ignore per-row eval failures
           }
+        }
+        // Intersect the smaller against the larger for O(min) work.
+        const [small, large] =
+          candidateMatches.size <= otherMatches.size
+            ? [candidateMatches, otherMatches]
+            : [otherMatches, candidateMatches];
+        let count = 0;
+        for (const id of small) {
+          if (large.has(id)) count += 1;
         }
         if (count > 0) {
           overlaps.push({ id: other.id, name: other.name, intersection: count });
@@ -332,7 +367,7 @@ export const benefitGroupsRouter = router({
         overlaps,
         otherGroupCount: otherGroups.length,
         employeeCount: employees.length,
-        noEmployeesYet: employees.length === 0,
+        noEmployeesYet: false,
       };
     }),
 });

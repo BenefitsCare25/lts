@@ -60,6 +60,11 @@ const requireTenantMiddleware = t.middleware(async ({ ctx, next }) => {
 // the request-level error handler — so the audit trail captures
 // only persisted state changes. Per-mutation `auditEvent()` calls
 // inside handlers can layer richer before/after snapshots on top.
+//
+// Fire-and-forget: the audit write doesn't block the user-facing
+// response. `auditEvent` already swallows errors (see audit.ts), so
+// dropping the await keeps latency on the hot path off the audit
+// log's connection round-trip without changing failure semantics.
 const auditMutationsMiddleware = t.middleware(async ({ ctx, next, type, path, input }) => {
   const result = await next();
   if (type !== 'mutation' || !result.ok) return result;
@@ -72,7 +77,8 @@ const auditMutationsMiddleware = t.middleware(async ({ ctx, next, type, path, in
   if (!tenantCtx.db || !tenantCtx.userId) return result;
 
   const { entityType, entityId } = deriveEntity(path, input);
-  await auditEvent({
+  // void: dispatch and forget. auditEvent self-swallows errors.
+  void auditEvent({
     db: tenantCtx.db,
     userId: tenantCtx.userId,
     action: path,

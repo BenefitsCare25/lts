@@ -14,7 +14,9 @@
 // when Azure AD env vars are missing (local dev without ROPC).
 // =============================================================
 
+import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
+import type { TenantDb } from '@/server/db/tenant';
 import { type ParseResult, type ParsingRules, parsePlacementSlip } from '@/server/ingestion/parser';
 import {
   deleteFile as deleteFromSharePoint,
@@ -29,9 +31,15 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
 
-async function assertClient(tenantId: string, clientId: string): Promise<void> {
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, tenantId },
+// Use the tenant-scoped client (`ctx.db`) for all TENANT_MODELS lookups
+// — the Prisma extension in db/tenant.ts auto-injects the tenantId
+// filter so a regression here can't cross tenants. The bare `prisma`
+// import is reserved for non-tenant-scoped models (PlacementSlipUpload,
+// Plan, PremiumRate, etc., which gate via their parent Client lookup).
+
+async function assertClient(db: TenantDb, clientId: string): Promise<void> {
+  const client = await db.client.findFirst({
+    where: { id: clientId },
     select: { id: true },
   });
   if (!client) {
@@ -41,18 +49,17 @@ async function assertClient(tenantId: string, clientId: string): Promise<void> {
 
 // PlacementSlipUpload has no `client` relation in the schema (just a
 // String FK on `clientId`), so tenant-gating happens in two steps.
-async function loadUploadForTenant(tenantId: string, uploadId: string) {
+async function loadUploadForTenant(db: TenantDb, uploadId: string) {
   const upload = await prisma.placementSlipUpload.findUnique({ where: { id: uploadId } });
   if (!upload) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Upload not found.' });
   }
-  await assertClient(tenantId, upload.clientId);
+  await assertClient(db, upload.clientId);
   return upload;
 }
 
-async function loadCatalogueParsingRules(tenantId: string) {
-  const types = await prisma.productType.findMany({
-    where: { tenantId },
+async function loadCatalogueParsingRules(db: TenantDb) {
+  const types = await db.productType.findMany({
     select: { code: true, parsingRules: true },
   });
   return types
@@ -70,7 +77,7 @@ export const placementSlipsRouter = router({
   listByClient: tenantProcedure
     .input(z.object({ clientId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      await assertClient(ctx.tenantId, input.clientId);
+      await assertClient(ctx.db, input.clientId);
       return prisma.placementSlipUpload.findMany({
         where: { clientId: input.clientId },
         orderBy: { createdAt: 'desc' },
@@ -91,7 +98,7 @@ export const placementSlipsRouter = router({
     }),
 
   byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
-    const upload = await loadUploadForTenant(ctx.tenantId, input.id);
+    const upload = await loadUploadForTenant(ctx.db, input.id);
     return upload;
   }),
 
@@ -106,7 +113,7 @@ export const placementSlipsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await assertClient(ctx.tenantId, input.clientId);
+      await assertClient(ctx.db, input.clientId);
 
       const buffer = Buffer.from(input.contentBase64, 'base64');
       if (buffer.length === 0) {
@@ -146,7 +153,7 @@ export const placementSlipsRouter = router({
         });
       }
 
-      const catalogueRules = await loadCatalogueParsingRules(ctx.tenantId);
+      const catalogueRules = await loadCatalogueParsingRules(ctx.db);
       let result: ParseResult;
       try {
         result = await parsePlacementSlip(buffer, catalogueRules);
@@ -173,6 +180,8 @@ export const placementSlipsRouter = router({
       let storageKey = '';
       let webUrl: string | null = null;
       if (isSharePointConfigured()) {
+        // Tenant is not in TENANT_MODELS (it IS the tenant), so we must
+        // look it up via the bare client with an explicit id filter.
         const tenant = await prisma.tenant.findUnique({
           where: { id: ctx.tenantId },
           select: { slug: true },
@@ -250,7 +259,7 @@ export const placementSlipsRouter = router({
   reparse: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       if (!upload.storageKey.startsWith('sharepoint:')) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -260,7 +269,7 @@ export const placementSlipsRouter = router({
       }
       const path = upload.storageKey.replace(/^sharepoint:/, '');
       const buffer = await downloadFromSharePoint(path);
-      const catalogueRules = await loadCatalogueParsingRules(ctx.tenantId);
+      const catalogueRules = await loadCatalogueParsingRules(ctx.db);
       const result = await parsePlacementSlip(buffer, catalogueRules);
       return prisma.placementSlipUpload.update({
         where: { id: input.id },
@@ -283,7 +292,7 @@ export const placementSlipsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       const issues = (upload.issues as { resolved?: boolean }[] | null) ?? [];
       const target = issues[input.issueIndex];
       if (!target) {
@@ -323,7 +332,7 @@ export const placementSlipsRouter = router({
   applyToCatalogue: adminProcedure
     .input(z.object({ id: z.string().min(1), benefitYearId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       if (upload.parseStatus !== 'PARSED') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -360,54 +369,27 @@ export const placementSlipsRouter = router({
         });
       }
 
-      // ── PolicyEntities ────────────────────────────────────────
-      // Upsert keyed by (policyId, policyNumber). The unique index in
-      // the Prisma schema (`@@unique([policyId, policyNumber])`) makes
-      // this idempotent.
-      let policyEntitiesUpserted = 0;
-      for (const entity of parseResult.policyEntities ?? []) {
-        await prisma.policyEntity.upsert({
-          where: {
-            policyId_policyNumber: {
-              policyId: benefitYear.policy.id,
-              policyNumber: entity.policyNumber,
-            },
-          },
-          update: {
-            legalName: entity.legalName,
-            isMaster: entity.isMaster,
-          },
-          create: {
-            policyId: benefitYear.policy.id,
-            policyNumber: entity.policyNumber,
-            legalName: entity.legalName,
-            isMaster: entity.isMaster,
-          },
-        });
-        policyEntitiesUpserted += 1;
-      }
-
-      // ── Products + Plans ─────────────────────────────────────
-      // Resolve insurer + product type once, upsert Product, then
-      // create plans. stacksOn resolution happens in a second pass
-      // after all plans exist.
+      // Pre-resolve catalogue rows used inside the transaction. The
+      // tenant-scoped extension (`ctx.db`) auto-injects tenantId on
+      // these reads; doing them upfront keeps the transaction body
+      // focused on writes and means a missing-FK diagnostic surfaces
+      // before we open a transaction.
       const insurerCache = new Map<string, string>(); // code → id
       const productTypeCache = new Map<
         string,
-        { id: string; planSchema: unknown; premiumStrategy: string }
+        {
+          id: string;
+          planSchema: unknown;
+          premiumStrategy: string;
+          parsingRules: unknown;
+        }
       >();
-
-      let productsUpserted = 0;
-      let plansCreated = 0;
-      let stacksOnResolved = 0;
       const skipped: { reason: string; detail: string }[] = [];
 
       for (const parsed of parseResult.products) {
-        // Resolve Insurer (e.g. "GE_LIFE" → tenant's insurer with that code).
-        let insurerId = insurerCache.get(parsed.templateInsurerCode);
-        if (!insurerId) {
-          const insurer = await prisma.insurer.findFirst({
-            where: { tenantId: ctx.tenantId, code: parsed.templateInsurerCode },
+        if (!insurerCache.has(parsed.templateInsurerCode)) {
+          const insurer = await ctx.db.insurer.findFirst({
+            where: { code: parsed.templateInsurerCode },
             select: { id: true },
           });
           if (!insurer) {
@@ -417,16 +399,12 @@ export const placementSlipsRouter = router({
             });
             continue;
           }
-          insurerId = insurer.id;
-          insurerCache.set(parsed.templateInsurerCode, insurerId);
+          insurerCache.set(parsed.templateInsurerCode, insurer.id);
         }
-
-        // Resolve ProductType.
-        let productType = productTypeCache.get(parsed.productTypeCode);
-        if (!productType) {
-          const pt = await prisma.productType.findFirst({
-            where: { tenantId: ctx.tenantId, code: parsed.productTypeCode },
-            select: { id: true, planSchema: true, premiumStrategy: true },
+        if (!productTypeCache.has(parsed.productTypeCode)) {
+          const pt = await ctx.db.productType.findFirst({
+            where: { code: parsed.productTypeCode },
+            select: { id: true, planSchema: true, premiumStrategy: true, parsingRules: true },
           });
           if (!pt) {
             skipped.push({
@@ -435,262 +413,333 @@ export const placementSlipsRouter = router({
             });
             continue;
           }
-          productType = pt;
-          productTypeCache.set(parsed.productTypeCode, productType);
+          productTypeCache.set(parsed.productTypeCode, pt);
         }
+      }
 
-        // Pool resolution from parsed pool_name (best-effort).
-        const poolName = String(parsed.fields.pool_name ?? '').trim();
-        let poolId: string | null = null;
-        if (poolName && poolName !== 'NA' && poolName !== 'N.A') {
-          const pool = await prisma.pool.findFirst({
-            where: { tenantId: ctx.tenantId, name: poolName },
-            select: { id: true },
-          });
-          poolId = pool?.id ?? null;
-        }
+      // ── Atomic write — H1 ─────────────────────────────────────
+      // Wrap every write in a single $transaction so a mid-flight
+      // failure rolls back PolicyEntity / Product / Plan / PremiumRate
+      // changes together. Without this, a crash between Plan upsert
+      // and PremiumRate.createMany leaves the catalogue half-written.
+      // The 60s timeout covers a worst-case STM-class slip (7 products,
+      // ~30 plans, 60+ rate rows) on a cold connection pool; smaller
+      // slips finish in <1s.
+      const txResult = await prisma.$transaction(
+        async (tx) => {
+          let policyEntitiesUpserted = 0;
+          let productsUpserted = 0;
+          let plansCreated = 0;
+          let stacksOnResolved = 0;
+          let premiumRatesCreated = 0;
 
-        // Product.data: minimum viable shape that passes ProductType.schema.
-        // Real fields fill in from parsed.fields where keys align.
-        const policyNumber =
-          String(parsed.fields.policy_numbers_csv ?? parsed.fields.policy_number ?? '')
-            .split(',')[0]
-            ?.trim() ?? '';
-        const productData: Record<string, unknown> = {
-          insurer: parsed.templateInsurerCode,
-          policy_number: policyNumber || 'PENDING',
-          eligibility_text: parsed.fields.eligibility_text ?? undefined,
-          benefit_period: parsed.fields.period_of_insurance ?? undefined,
-        };
-
-        // Upsert Product on (benefitYearId, productTypeId).
-        const existing = await prisma.product.findFirst({
-          where: { benefitYearId: input.benefitYearId, productTypeId: productType.id },
-          select: { id: true },
-        });
-        const product = existing
-          ? await prisma.product.update({
-              where: { id: existing.id },
-              data: { insurerId, poolId, data: productData as Prisma.InputJsonValue },
-            })
-          : await prisma.product.create({
-              data: {
-                benefitYearId: input.benefitYearId,
-                productTypeId: productType.id,
-                insurerId,
-                poolId,
-                data: productData as Prisma.InputJsonValue,
+          // ── PolicyEntities ─────────────────────────────────────
+          for (const entity of parseResult.policyEntities ?? []) {
+            await tx.policyEntity.upsert({
+              where: {
+                policyId_policyNumber: {
+                  policyId: benefitYear.policy.id,
+                  policyNumber: entity.policyNumber,
+                },
+              },
+              update: {
+                legalName: entity.legalName,
+                isMaster: entity.isMaster,
+              },
+              create: {
+                policyId: benefitYear.policy.id,
+                policyNumber: entity.policyNumber,
+                legalName: entity.legalName,
+                isMaster: entity.isMaster,
               },
             });
-        productsUpserted += 1;
+            policyEntitiesUpserted += 1;
+          }
 
-        // Plans — derive a short code from the parsed label.
-        // "Plan A: …"      → "PA"
-        // "1"              → "P1"
-        // anything else    → "P<idx>"
-        const coverBasisByStrategy: Record<string, string> = {
-          per_individual_salary_multiple: 'salary_multiple',
-          per_individual_fixed_sum: 'fixed_amount',
-          per_group_cover_tier: 'per_cover_tier',
-          per_headcount_flat: 'fixed_amount',
-          per_individual_earnings: 'fixed_amount',
-        };
-        const coverBasis = coverBasisByStrategy[productType.premiumStrategy] ?? 'fixed_amount';
+          // ── Products + Plans ───────────────────────────────────
+          for (const parsed of parseResult.products) {
+            const insurerId = insurerCache.get(parsed.templateInsurerCode);
+            const productType = productTypeCache.get(parsed.productTypeCode);
+            if (!insurerId || !productType) continue; // already in skipped[]
 
-        // labelToCode is local so re-apply produces stable codes.
-        const labelToCode = new Map<string, string>();
-        for (let i = 0; i < parsed.plans.length; i++) {
-          const plan = parsed.plans[i];
-          if (!plan) continue;
-          const planMatch = plan.code.match(/^Plan\s+([A-Z0-9]+)/i);
-          const numberMatch = plan.code.match(/^(\d+)\b/);
-          const code = planMatch
-            ? `P${planMatch[1]?.toUpperCase()}`
-            : numberMatch
-              ? `P${numberMatch[1]}`
-              : `P${i + 1}`;
-          labelToCode.set(plan.code, code);
+            // Pool resolution from parsed pool_name (best-effort). Pool
+            // is a TENANT_MODEL — `ctx.db` auto-scopes it; the read is
+            // outside the tx but reads inside Prisma's pool are fine.
+            const poolName = String(parsed.fields.pool_name ?? '').trim();
+            let poolId: string | null = null;
+            if (poolName && poolName !== 'NA' && poolName !== 'N.A') {
+              const pool = await tx.pool.findFirst({
+                where: { name: poolName },
+                select: { id: true },
+              });
+              poolId = pool?.id ?? null;
+            }
 
-          // schedule = {} works for products whose planSchema has no
-          // required fields. Where required fields exist, the broker
-          // fills them in via the per-product UI. The Ajv-strict
-          // path is in the per-plan tRPC update; the seed createMany
-          // bypass here is intentional and surfaced in skipped[].
-          await prisma.plan.upsert({
-            where: { productId_code: { productId: product.id, code } },
-            update: { name: plan.code, coverBasis },
-            create: {
-              productId: product.id,
-              code,
-              name: plan.code,
-              coverBasis,
-              schedule: {} as Prisma.InputJsonValue,
-            },
-          });
-          plansCreated += 1;
-        }
+            // Product.data: minimum viable shape that passes
+            // ProductType.schema. Real fields fill in from
+            // parsed.fields where keys align.
+            const policyNumber =
+              String(parsed.fields.policy_numbers_csv ?? parsed.fields.policy_number ?? '')
+                .split(',')[0]
+                ?.trim() ?? '';
+            const productData: Record<string, unknown> = {
+              insurer: parsed.templateInsurerCode,
+              policy_number: policyNumber || 'PENDING',
+              eligibility_text: parsed.fields.eligibility_text ?? undefined,
+              benefit_period: parsed.fields.period_of_insurance ?? undefined,
+            };
 
-        // Second pass: resolve stacksOn now that all plans for this
-        // product exist. "additional above Plan A" → match the plan
-        // labelled "Plan A:…" → use its derived code as stacksOn FK.
-        for (const plan of parsed.plans) {
-          if (!plan.stacksOnLabel) continue;
-          const baseLabelMatch = parsed.plans.find((p) =>
-            p.code.toLowerCase().startsWith(plan.stacksOnLabel?.toLowerCase() ?? '__never__'),
-          );
-          if (!baseLabelMatch) continue;
-          const childCode = labelToCode.get(plan.code);
-          const baseCode = labelToCode.get(baseLabelMatch.code);
-          if (!childCode || !baseCode) continue;
-          const baseRow = await prisma.plan.findUnique({
-            where: { productId_code: { productId: product.id, code: baseCode } },
-            select: { id: true },
-          });
-          if (!baseRow) continue;
-          await prisma.plan.update({
-            where: { productId_code: { productId: product.id, code: childCode } },
-            data: { stacksOn: baseRow.id },
-          });
-          stacksOnResolved += 1;
-        }
-      }
+            // Upsert Product on (benefitYearId, productTypeId).
+            const existing = await tx.product.findFirst({
+              where: { benefitYearId: input.benefitYearId, productTypeId: productType.id },
+              select: { id: true },
+            });
+            const product = existing
+              ? await tx.product.update({
+                  where: { id: existing.id },
+                  data: { insurerId, poolId, data: productData as Prisma.InputJsonValue },
+                })
+              : await tx.product.create({
+                  data: {
+                    benefitYearId: input.benefitYearId,
+                    productTypeId: productType.id,
+                    insurerId,
+                    poolId,
+                    data: productData as Prisma.InputJsonValue,
+                  },
+                });
+            productsUpserted += 1;
 
-      // ── PremiumRate creation ─────────────────────────────────
-      // Walk each parsed product's rate rows per its rate_column_map
-      // and emit PremiumRate rows. Idempotent via deleteMany on the
-      // product before recreating — re-applying the same payload
-      // produces the same set, no dupes.
-      let premiumRatesCreated = 0;
-      for (const parsed of parseResult.products) {
-        const insurerId = insurerCache.get(parsed.templateInsurerCode);
-        const productType = productTypeCache.get(parsed.productTypeCode);
-        if (!insurerId || !productType) continue;
-        const product = await prisma.product.findFirst({
-          where: { benefitYearId: input.benefitYearId, productTypeId: productType.id },
-          select: { id: true },
-        });
-        if (!product) continue;
+            // ── H2: Validate Plan.schedule against planSchema ──
+            // Compile once per product type (cached across products
+            // sharing a type within this apply call). Surface any
+            // required-field violations in skipped[] with an
+            // actionable message rather than silently writing
+            // schedule={} that fails review.validate later.
+            const compiled = safeCompile(
+              productType.planSchema,
+              `product-type:${productType.id}::planSchema-applyToCatalogue`,
+            );
 
-        // Find the rate_column_map for this product's matching rule.
-        // Pull from the catalogue rather than the parsed payload — the
-        // parser's `rates` rows don't carry the column map themselves.
-        const productTypeRow = await prisma.productType.findUnique({
-          where: { id: productType.id },
-          select: { parsingRules: true },
-        });
-        const templates =
-          (productTypeRow?.parsingRules as { templates?: Record<string, ParsingRules> } | null)
-            ?.templates ?? {};
-        const rules = templates[parsed.templateInsurerCode];
-        const map = rules?.rate_column_map;
-        if (!map) {
-          skipped.push({
-            reason: 'NO_RATE_COLUMN_MAP',
-            detail: `${parsed.productTypeCode} via ${parsed.templateInsurerCode}: parsingRules has no rate_column_map; rates can be entered via the Premium tab.`,
-          });
-          continue;
-        }
+            // Plans — derive a short code from the parsed label.
+            const coverBasisByStrategy: Record<string, string> = {
+              per_individual_salary_multiple: 'salary_multiple',
+              per_individual_fixed_sum: 'fixed_amount',
+              per_group_cover_tier: 'per_cover_tier',
+              per_headcount_flat: 'fixed_amount',
+              per_individual_earnings: 'fixed_amount',
+            };
+            const coverBasis = coverBasisByStrategy[productType.premiumStrategy] ?? 'fixed_amount';
 
-        // Look up plans by the same code-derivation logic the apply
-        // step used so we can resolve a rate's plan label → planId.
-        const allPlans = await prisma.plan.findMany({
-          where: { productId: product.id },
-          select: { id: true, code: true, name: true },
-        });
-        const planByLabel = new Map<string, string>();
-        for (const p of allPlans) {
-          // Match by name (full label) and by code; let either
-          // resolve a rate row's plan reference.
-          planByLabel.set(p.name.toLowerCase(), p.id);
-          planByLabel.set(p.code.toLowerCase(), p.id);
-        }
+            const labelToCode = new Map<string, string>();
+            for (let i = 0; i < parsed.plans.length; i++) {
+              const plan = parsed.plans[i];
+              if (!plan) continue;
+              const planMatch = plan.code.match(/^Plan\s+([A-Z0-9]+)/i);
+              const numberMatch = plan.code.match(/^(\d+)\b/);
+              const code = planMatch
+                ? `P${planMatch[1]?.toUpperCase()}`
+                : numberMatch
+                  ? `P${numberMatch[1]}`
+                  : `P${i + 1}`;
+              labelToCode.set(plan.code, code);
 
-        const colIndex = (letter: string) => letter.toUpperCase().charCodeAt(0) - 64;
-        const planMatchKey = `col${colIndex(map.planMatch)}`;
+              // Validate the placeholder candidate against planSchema
+              // so a broker knows up front when they'll need to fill
+              // schedule via the Plans tab before publish.
+              if (compiled.ok) {
+                const candidate = {
+                  code,
+                  name: plan.code,
+                  coverBasis,
+                  stacksOn: null,
+                  selectionMode: 'single',
+                  schedule: {},
+                  effectiveFrom: null,
+                  effectiveTo: null,
+                };
+                if (!compiled.validate(candidate)) {
+                  const fields = (compiled.validate.errors ?? [])
+                    .map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`.trim())
+                    .filter((m) => m.length > 0)
+                    .slice(0, 5)
+                    .join(', ');
+                  skipped.push({
+                    reason: 'PLAN_SCHEDULE_NEEDS_BROKER_INPUT',
+                    detail: `${parsed.productTypeCode} plan ${code}: required fields not on the slip — fill in via the Plans tab before publishing (${fields}).`,
+                  });
+                }
+              }
 
-        // Wipe + rebuild so re-apply is deterministic.
-        await prisma.premiumRate.deleteMany({ where: { productId: product.id } });
+              await tx.plan.upsert({
+                where: { productId_code: { productId: product.id, code } },
+                update: { name: plan.code, coverBasis },
+                create: {
+                  productId: product.id,
+                  code,
+                  name: plan.code,
+                  coverBasis,
+                  schedule: {} as Prisma.InputJsonValue,
+                },
+              });
+              plansCreated += 1;
+            }
 
-        const ratesToCreate: {
-          productId: string;
-          planId: string;
-          coverTier: string | null;
-          ratePerThousand: number | null;
-          fixedAmount: number | null;
-        }[] = [];
+            // Second pass: resolve stacksOn now that all plans exist.
+            for (const plan of parsed.plans) {
+              if (!plan.stacksOnLabel) continue;
+              const baseLabelMatch = parsed.plans.find((p) =>
+                p.code.toLowerCase().startsWith(plan.stacksOnLabel?.toLowerCase() ?? '__never__'),
+              );
+              if (!baseLabelMatch) continue;
+              const childCode = labelToCode.get(plan.code);
+              const baseCode = labelToCode.get(baseLabelMatch.code);
+              if (!childCode || !baseCode) continue;
+              const baseRow = await tx.plan.findUnique({
+                where: { productId_code: { productId: product.id, code: baseCode } },
+                select: { id: true },
+              });
+              if (!baseRow) continue;
+              await tx.plan.update({
+                where: { productId_code: { productId: product.id, code: childCode } },
+                data: { stacksOn: baseRow.id },
+              });
+              stacksOnResolved += 1;
+            }
 
-        for (const rateRow of parsed.rates) {
-          const rawLabel = rateRow[planMatchKey];
-          if (!rawLabel) continue;
-          const labelStr = String(rawLabel).trim().toLowerCase();
-          // Match "Plan A: …" → "plan a:" or just "1" → "1".
-          let planId: string | undefined;
-          for (const [k, v] of planByLabel) {
-            if (k.startsWith(labelStr) || labelStr.startsWith(k)) {
-              planId = v;
-              break;
+            // ── PremiumRate creation (per product) ─────────────
+            // Pull rate_column_map from the cached parsingRules
+            // captured upfront — re-fetching ProductType in this
+            // loop is a wasted round-trip (perf H1).
+            const templates =
+              (productType.parsingRules as { templates?: Record<string, ParsingRules> } | null)
+                ?.templates ?? {};
+            const rules = templates[parsed.templateInsurerCode];
+            const map = rules?.rate_column_map;
+            if (!map) {
+              skipped.push({
+                reason: 'NO_RATE_COLUMN_MAP',
+                detail: `${parsed.productTypeCode} via ${parsed.templateInsurerCode}: parsingRules has no rate_column_map; rates can be entered via the Premium tab.`,
+              });
+              continue;
+            }
+
+            const allPlans = await tx.plan.findMany({
+              where: { productId: product.id },
+              select: { id: true, code: true, name: true },
+            });
+            const planByLabel = new Map<string, string>();
+            for (const p of allPlans) {
+              planByLabel.set(p.name.toLowerCase(), p.id);
+              planByLabel.set(p.code.toLowerCase(), p.id);
+            }
+
+            const colIndex = (letter: string) => letter.toUpperCase().charCodeAt(0) - 64;
+            const planMatchKey = `col${colIndex(map.planMatch)}`;
+
+            // Wipe + rebuild so re-apply is deterministic.
+            await tx.premiumRate.deleteMany({ where: { productId: product.id } });
+
+            const ratesToCreate: {
+              productId: string;
+              planId: string;
+              coverTier: string | null;
+              ratePerThousand: number | null;
+              fixedAmount: number | null;
+            }[] = [];
+
+            for (const rateRow of parsed.rates) {
+              const rawLabel = rateRow[planMatchKey];
+              if (!rawLabel) continue;
+              const labelStr = String(rawLabel).trim().toLowerCase();
+              let planId: string | undefined;
+              for (const [k, v] of planByLabel) {
+                if (k.startsWith(labelStr) || labelStr.startsWith(k)) {
+                  planId = v;
+                  break;
+                }
+              }
+              if (!planId) continue;
+
+              if (map.tiers && map.tiers.length > 0) {
+                for (const t of map.tiers) {
+                  const cell = rateRow[`col${colIndex(t.rateColumn)}`];
+                  const num =
+                    typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
+                  if (!Number.isFinite(num) || num <= 0) continue;
+                  ratesToCreate.push({
+                    productId: product.id,
+                    planId,
+                    coverTier: t.tier,
+                    ratePerThousand: null,
+                    fixedAmount: num,
+                  });
+                }
+              } else if (map.ratePerThousand) {
+                const cell = rateRow[`col${colIndex(map.ratePerThousand)}`];
+                const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
+                if (Number.isFinite(num) && num > 0) {
+                  ratesToCreate.push({
+                    productId: product.id,
+                    planId,
+                    coverTier: null,
+                    ratePerThousand: num,
+                    fixedAmount: null,
+                  });
+                }
+              } else if (map.fixedAmount) {
+                const cell = rateRow[`col${colIndex(map.fixedAmount)}`];
+                const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
+                if (Number.isFinite(num) && num > 0) {
+                  ratesToCreate.push({
+                    productId: product.id,
+                    planId,
+                    coverTier: null,
+                    ratePerThousand: null,
+                    fixedAmount: num,
+                  });
+                }
+              }
+            }
+
+            if (ratesToCreate.length > 0) {
+              await tx.premiumRate.createMany({ data: ratesToCreate });
+              premiumRatesCreated += ratesToCreate.length;
             }
           }
-          if (!planId) continue;
 
-          if (map.tiers && map.tiers.length > 0) {
-            // per_cover_tier: one PremiumRate per (plan, tier).
-            for (const t of map.tiers) {
-              const cell = rateRow[`col${colIndex(t.rateColumn)}`];
-              const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-              if (!Number.isFinite(num) || num <= 0) continue;
-              ratesToCreate.push({
-                productId: product.id,
-                planId,
-                coverTier: t.tier,
-                ratePerThousand: null,
-                fixedAmount: num,
-              });
-            }
-          } else if (map.ratePerThousand) {
-            const cell = rateRow[`col${colIndex(map.ratePerThousand)}`];
-            const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-            if (Number.isFinite(num) && num > 0) {
-              ratesToCreate.push({
-                productId: product.id,
-                planId,
-                coverTier: null,
-                ratePerThousand: num,
-                fixedAmount: null,
-              });
-            }
-          } else if (map.fixedAmount) {
-            const cell = rateRow[`col${colIndex(map.fixedAmount)}`];
-            const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-            if (Number.isFinite(num) && num > 0) {
-              ratesToCreate.push({
-                productId: product.id,
-                planId,
-                coverTier: null,
-                ratePerThousand: null,
-                fixedAmount: num,
-              });
-            }
+          if ((parseResult.benefitGroups?.length ?? 0) > 0) {
+            skipped.push({
+              reason: 'BENEFIT_GROUPS_DEFERRED',
+              detail: `${parseResult.benefitGroups.length} predicate suggestions surfaced — confirm in the Benefit Groups screen, not auto-saved.`,
+            });
           }
-        }
 
-        if (ratesToCreate.length > 0) {
-          await prisma.premiumRate.createMany({ data: ratesToCreate });
-          premiumRatesCreated += ratesToCreate.length;
-        }
-      }
+          const updated = await tx.placementSlipUpload.update({
+            where: { id: input.id },
+            data: { parseStatus: 'APPLIED' },
+          });
 
-      if ((parseResult.benefitGroups?.length ?? 0) > 0) {
-        skipped.push({
-          reason: 'BENEFIT_GROUPS_DEFERRED',
-          detail: `${parseResult.benefitGroups.length} predicate suggestions surfaced — confirm in the Benefit Groups screen, not auto-saved.`,
-        });
-      }
+          return {
+            updated,
+            policyEntitiesUpserted,
+            productsUpserted,
+            plansCreated,
+            stacksOnResolved,
+            premiumRatesCreated,
+          };
+        },
+        { maxWait: 5_000, timeout: 60_000 },
+      );
 
-      const updated = await prisma.placementSlipUpload.update({
-        where: { id: input.id },
-        data: { parseStatus: 'APPLIED' },
-      });
+      const {
+        updated,
+        policyEntitiesUpserted,
+        productsUpserted,
+        plansCreated,
+        stacksOnResolved,
+        premiumRatesCreated,
+      } = txResult;
 
       return {
         upload: updated,
@@ -710,7 +759,7 @@ export const placementSlipsRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       if (upload.storageKey.startsWith('sharepoint:') && isSharePointConfigured()) {
         const path = upload.storageKey.replace(/^sharepoint:/, '');
         try {

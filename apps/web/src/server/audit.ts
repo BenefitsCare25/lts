@@ -35,6 +35,10 @@ const SENSITIVE_KEYS = new Set([
   'token',
   'secret',
   'apiKey',
+  // BYOK ciphertext from secret-cipher.ts. Not directly sensitive
+  // (decrypt requires APP_SECRET_KEY), but redacted for defence in
+  // depth — log analytics shouldn't hold encrypted credentials.
+  'encryptedKey',
   'contentBase64', // file uploads
 ]);
 

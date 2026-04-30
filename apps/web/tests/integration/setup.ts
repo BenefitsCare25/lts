@@ -7,10 +7,21 @@
 //
 // CI sets INTEGRATION_DATABASE_URL via the postgres service container.
 //
+// Two roles are exercised:
+//   - INTEGRATION_DATABASE_URL — the migration/seed role (typically
+//     the postgres superuser). Used by `truncateAll()`, `seedTwoTenants()`,
+//     and any direct DB assertion that must NOT be filtered by RLS.
+//   - INTEGRATION_DATABASE_URL_APP — an `app_user` (non-superuser)
+//     connection. When set, `rlsAppPrisma` is constructed against it
+//     and exposed to the cross-tenant suite so RLS policies actually
+//     apply (superusers bypass RLS even with FORCE ROW LEVEL SECURITY).
+//     If this is unset, RLS-as-app-user assertions are silently
+//     skipped — the middleware-only assertions still run.
+//
 // Migrations are expected to have run before the test process starts
-// (CI runs `prisma migrate deploy` in a separate step). Each test
-// file that uses `truncateAll()` is responsible for re-seeding what
-// it needs.
+// (CI runs `prisma migrate deploy` in a separate step). The
+// 20260430120000 migration creates the `app_user` role with grants.
+// Set the password and update INTEGRATION_DATABASE_URL_APP to match.
 // =============================================================
 
 import type { Session, SessionUser } from '@/server/auth/session';
@@ -18,8 +29,10 @@ import { appRouter } from '@/server/trpc/router';
 import { PrismaClient } from '@prisma/client';
 
 const INTEGRATION_DATABASE_URL = process.env.INTEGRATION_DATABASE_URL;
+const INTEGRATION_DATABASE_URL_APP = process.env.INTEGRATION_DATABASE_URL_APP;
 
 export const integrationEnabled = Boolean(INTEGRATION_DATABASE_URL);
+export const rlsAppRoleEnabled = Boolean(INTEGRATION_DATABASE_URL_APP);
 
 // Lazily construct a Prisma client pointed at the test DB.
 // Defining `datasourceUrl` overrides DATABASE_URL for this client only,
@@ -28,6 +41,13 @@ export const integrationEnabled = Boolean(INTEGRATION_DATABASE_URL);
 const testPrisma = new PrismaClient(
   INTEGRATION_DATABASE_URL ? { datasourceUrl: INTEGRATION_DATABASE_URL } : undefined,
 );
+
+// Separate Prisma client connected as `app_user` (non-superuser).
+// Only this client honours RLS; testPrisma above bypasses RLS because
+// it's connected as the migration/seed role.
+const rlsAppPrisma = INTEGRATION_DATABASE_URL_APP
+  ? new PrismaClient({ datasourceUrl: INTEGRATION_DATABASE_URL_APP })
+  : null;
 
 // Truncate every table in dependency order. Postgres-specific.
 // CASCADE is implicit per RESTART IDENTITY CASCADE; we still order the
@@ -193,4 +213,4 @@ export function callerFor(userId: string) {
   return appRouter.createCaller({ session });
 }
 
-export { testPrisma };
+export { rlsAppPrisma, testPrisma };

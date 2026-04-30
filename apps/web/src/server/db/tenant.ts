@@ -19,7 +19,7 @@
 
 import { prisma } from './client';
 
-// The 8 models that carry a direct tenantId column.
+// The 10 models that carry a direct tenantId column.
 // Models accessed only via relations (Policy → Client, Employee → Client,
 // etc.) are isolated at the app layer by navigating through their
 // tenant-scoped parent, and at the DB layer by RLS on that parent.
@@ -32,6 +32,10 @@ const TENANT_MODELS = new Set([
   'ProductType',
   'Client',
   'AuditLog',
+  // BYOK encrypted credentials per tenant — must auto-scope.
+  'TenantAiProvider',
+  // AI extraction drafts carry a direct tenantId.
+  'ExtractionDraft',
 ]);
 
 export class UserNotProvisionedError extends Error {

@@ -39,7 +39,7 @@
     "react-hook-form": "^7.54.0",
     "sonner": "^1.7.0",
     "superjson": "^2.2.1",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.23.8"
   },
   "devDependencies": {
