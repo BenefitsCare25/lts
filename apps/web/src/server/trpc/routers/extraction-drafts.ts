@@ -16,7 +16,9 @@
 // =============================================================
 
 import { prisma } from '@/server/db/client';
-import { ClientStatus, type Prisma } from '@prisma/client';
+import { enqueueAiExtraction } from '@/server/jobs/extraction';
+import { isRedisConfigured } from '@/server/jobs/redis';
+import { ClientStatus, Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
@@ -146,6 +148,112 @@ export const extractionDraftsRouter = router({
           extractedProducts: input.extractedProducts as unknown as Prisma.InputJsonValue,
         },
       });
+    }),
+
+  // Kick off AI extraction for an existing upload. The draft transitions
+  // to EXTRACTING immediately; a BullMQ worker picks it up off the
+  // request hot-path. The wizard polls byUploadId every 2s while the
+  // status is EXTRACTING and renders the result when it flips to READY
+  // (or the failure when it flips to FAILED).
+  //
+  // Idempotent: re-running while a job is already in-flight is a no-op
+  // (BullMQ refuses duplicate job IDs). Re-running on a READY draft
+  // re-enqueues — useful when the broker tweaks the catalogue (adds a
+  // missing insurer / product type) and wants the AI to reconsider.
+  runAiExtraction: adminProcedure
+    .input(z.object({ uploadId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      // Confirm the upload + draft exist for this tenant. ctx.db is
+      // tenant-scoped, so an upload from another tenant is invisible.
+      const upload = await ctx.db.placementSlipUpload.findFirst({
+        where: { id: input.uploadId },
+      });
+      if (!upload) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Upload not found.' });
+      }
+      if (!upload.storageKey.startsWith('sharepoint:')) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message:
+            'AI extraction needs the source workbook from SharePoint, but this upload was stored inline (the SharePoint integration was unavailable when the file was uploaded). Re-upload the slip to enable AI extraction.',
+        });
+      }
+      const draft = await ctx.db.extractionDraft.findFirst({
+        where: { uploadId: input.uploadId },
+      });
+      if (!draft) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Extraction draft not found.' });
+      }
+      if (draft.status === 'APPLIED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Draft has already been applied — cannot re-extract.',
+        });
+      }
+
+      // Hard fail if no provider configured. Surfacing this here rather
+      // than letting the worker do it gives the broker a synchronous
+      // error and a clear "configure here →" target.
+      const provider = await ctx.db.tenantAiProvider.findFirst({
+        where: { active: true },
+      });
+      if (!provider) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message:
+            'No active AI provider configured for this tenant. Configure your Azure AI Foundry credentials at /admin/settings/ai-provider before running AI extraction.',
+        });
+      }
+
+      // Likewise, no Redis means no worker — the user would otherwise
+      // see a draft stuck in EXTRACTING forever. Blocking here is much
+      // friendlier.
+      if (!isRedisConfigured()) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message:
+            'Background job runtime is not configured (REDIS_URL missing). AI extraction requires a running worker — contact your administrator.',
+        });
+      }
+
+      // Flip to EXTRACTING with a fresh progress hint. We deliberately
+      // overwrite the existing extractedProducts only when status is
+      // READY/FAILED — re-running on EXTRACTING leaves the in-flight
+      // worker's progress alone (BullMQ jobId guard makes the enqueue
+      // a no-op below).
+      const previousProgress =
+        draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
+          ? (draft.progress as Record<string, unknown>)
+          : {};
+      // Don't carry forward stale failure / ai blocks into a fresh
+      // run — strip them rather than re-spreading and overwriting,
+      // since spreading `undefined` values still includes the key.
+      const { failure: _f, ai: _a, ...carriedProgress } = previousProgress;
+      void _f;
+      void _a;
+      await ctx.db.extractionDraft.update({
+        where: { id: draft.id },
+        data: {
+          status: 'EXTRACTING',
+          progress: {
+            ...carriedProgress,
+            stage: 'QUEUED',
+            aiStartedAt: new Date().toISOString(),
+            aiStartedByUserId: ctx.userId,
+          } as unknown as Prisma.InputJsonValue,
+          // Validation issues attach to the eventual AI run; clear so
+          // a stale failure doesn't shadow a successful re-run.
+          validationIssues: Prisma.DbNull,
+        },
+      });
+
+      const jobId = await enqueueAiExtraction({
+        uploadId: input.uploadId,
+        tenantId: ctx.tenantId,
+        enqueuedByUserId: ctx.userId,
+      });
+
+      return { ok: true, jobId };
     }),
 
   // Discard a draft without applying. The upload row is kept (audit
