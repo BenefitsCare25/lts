@@ -14,11 +14,12 @@ import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useMemo } from 'react';
-import { extractedProductsFromDraft } from './_types';
+import { aiBundleFromDraft, extractedProductsFromDraft } from './_types';
 
 type Props = {
   draft: {
     extractedProducts: unknown;
+    progress: unknown;
     upload: { parseResult: unknown };
   };
 };
@@ -48,9 +49,11 @@ export function InsurersPoolSection({ draft }: Props) {
     });
   }, [extracted, insurersQuery.data]);
 
-  // Pool detection — read from the first product's heuristic fields.
-  // This is workbook-level info, repeated across every GE product;
-  // taking it from the first match is fine.
+  const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
+
+  // Pool detection — heuristic fields are the floor; AI fills when no
+  // template matched. Workbook-level info repeated across every product
+  // sheet, so taking the first non-empty match is fine.
   const poolName = useMemo(() => {
     const result =
       (draft.upload.parseResult as null | {
@@ -60,13 +63,19 @@ export function InsurersPoolSection({ draft }: Props) {
       const name = String(p.fields?.pool_name ?? '').trim();
       if (name && name !== 'NA' && name !== 'N.A') return name;
     }
-    return null;
-  }, [draft.upload.parseResult]);
+    return aiBundle.proposedPool?.name ?? null;
+  }, [draft.upload.parseResult, aiBundle.proposedPool]);
 
   const poolMatch = useMemo(() => {
     if (!poolName) return null;
+    // Prefer the AI's poolId when it resolved against the registry,
+    // otherwise fall back to a name-equality scan against the registry
+    // (heuristic case, no AI run yet).
+    if (aiBundle.proposedPool?.poolId) {
+      return poolsQuery.data?.find((p) => p.id === aiBundle.proposedPool?.poolId) ?? null;
+    }
     return poolsQuery.data?.find((p) => p.name.toLowerCase() === poolName.toLowerCase()) ?? null;
-  }, [poolName, poolsQuery.data]);
+  }, [poolName, poolsQuery.data, aiBundle.proposedPool]);
 
   return (
     <>
