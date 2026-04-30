@@ -44,10 +44,7 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href="/admin/clients">← Clients</Link>
-          {client.data ? <> · {client.data.legalName}</> : null}
-        </p>
+        {client.data ? <p className="eyebrow mb-2">{client.data.legalName}</p> : null}
         <h1>Policies</h1>
         <p style={{ maxWidth: '60ch' }}>
           One client can hold multiple policies (e.g. a master employee benefits policy plus a

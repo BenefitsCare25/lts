@@ -110,10 +110,9 @@ export function ProductsScreen({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/policies/${policyId}/edit`}>← Policy</Link>
-          {benefitYearState ? <> · Benefit year ({benefitYearState})</> : null}
-        </p>
+        {benefitYearState ? (
+          <p className="eyebrow mb-2">Benefit year ({benefitYearState})</p>
+        ) : null}
         <h1>Products</h1>
         <p style={{ maxWidth: '60ch' }}>
           Pick the product types this benefit year covers. The insurer dropdown filters by which

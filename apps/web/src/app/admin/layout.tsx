@@ -5,6 +5,7 @@
 // redundant defence-in-depth check.
 // =============================================================
 
+import { Breadcrumbs } from '@/components/ui';
 import { requireSession } from '@/server/auth/session';
 import type { ReactNode } from 'react';
 
@@ -14,7 +15,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="flex items-center">
           <span className="app-header__brand">
             <a href="/admin">Insurance SaaS</a>
           </span>
@@ -37,6 +38,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
             <a className="nav-link" href="/admin/catalogue/pools">
               Pools
             </a>
+            <a className="nav-link" href="/admin/settings/ai-provider">
+              AI Provider
+            </a>
           </nav>
         </div>
         <div className="app-header__user">
@@ -46,6 +50,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
           </a>
         </div>
       </header>
+      <Breadcrumbs />
       <main>{children}</main>
     </div>
   );

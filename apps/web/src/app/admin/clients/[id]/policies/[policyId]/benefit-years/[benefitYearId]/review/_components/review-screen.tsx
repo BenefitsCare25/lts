@@ -58,9 +58,6 @@ export function ReviewScreen({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/policies/${policyId}/edit`}>← Policy</Link>
-        </p>
         <h1>Review &amp; publish</h1>
         <p className="field-help">
           {summary.data.client.legalName} · {summary.data.policy.name} · benefit year{' '}

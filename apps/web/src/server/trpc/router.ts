@@ -25,6 +25,7 @@ import { productTypesRouter } from './routers/product-types';
 import { productsRouter } from './routers/products';
 import { referenceDataRouter } from './routers/reference-data';
 import { reviewRouter } from './routers/review';
+import { tenantAiProviderRouter } from './routers/tenant-ai-provider';
 import { tpasRouter } from './routers/tpas';
 
 export const appRouter = router({
@@ -47,6 +48,7 @@ export const appRouter = router({
   claimsFeed: claimsFeedRouter,
   review: reviewRouter,
   referenceData: referenceDataRouter,
+  tenantAiProvider: tenantAiProviderRouter,
 });
 
 export type AppRouter = typeof appRouter;

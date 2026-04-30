@@ -84,6 +84,24 @@
   /* ── Layout ───────────────────────────────────────── */
   --max-content-width: 1100px;
   --header-height: 56px;
+
+  /* ── Spacing scale (consumed by utility classes) ─── */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  /* ── Extraction confidence ────────────────────────── */
+  /* High = field accepted as-is. Warn = needs broker eyeball.
+     Low = must be edited or explicitly accepted before Apply. */
+  --confidence-high: var(--color-success);
+  --confidence-high-soft: rgba(48, 209, 88, 0.14);
+  --confidence-warn: var(--color-warning);
+  --confidence-warn-soft: rgba(255, 159, 10, 0.16);
+  --confidence-low: var(--color-danger);
+  --confidence-low-soft: rgba(255, 59, 48, 0.14);
 }
 
 * {
@@ -615,4 +633,165 @@ main {
 .signin-card {
   width: min(420px, 100%);
   padding: 2.25rem 2rem;
+}
+
+/* =============================================================
+ * Spacing utilities
+ *
+ * Mapped to the --space-* token scale. These exist so screens
+ * stop reaching for inline `style={{ marginBottom: '0.5rem' }}`
+ * which bypasses the design system. Any new component should
+ * use these classes (or a layout primitive that wraps them).
+ * ============================================================= */
+
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+.gap-5 { gap: var(--space-5); }
+.gap-6 { gap: var(--space-6); }
+
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mb-5 { margin-bottom: var(--space-5); }
+.mb-6 { margin-bottom: var(--space-6); }
+
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mt-5 { margin-top: var(--space-5); }
+.mt-6 { margin-top: var(--space-6); }
+
+.p-1 { padding: var(--space-1); }
+.p-2 { padding: var(--space-2); }
+.p-3 { padding: var(--space-3); }
+.p-4 { padding: var(--space-4); }
+.p-5 { padding: var(--space-5); }
+.p-6 { padding: var(--space-6); }
+
+.flex { display: flex; }
+.flex-1 { flex: 1; }
+.flex-col { display: flex; flex-direction: column; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.justify-end { justify-content: flex-end; }
+
+/* =============================================================
+ * Screen shell
+ *
+ * Standard page-header bar consumed by <ScreenShell>. Eyebrow
+ * (optional small uppercase label) sits above the title; actions
+ * dock right. Replaces ad-hoc per-screen layouts.
+ * ============================================================= */
+
+.screen-shell-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+.screen-shell-head__title h1 {
+  margin: 0;
+}
+.screen-shell-head__title p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+}
+.screen-shell-head__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* =============================================================
+ * Breadcrumbs
+ *
+ * Auto-generated from the URL via <Breadcrumbs>. Sits beneath
+ * the sticky header, flush-left within the main container.
+ * ============================================================= */
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  padding: var(--space-3) 1.5rem var(--space-2);
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+}
+.breadcrumbs a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+}
+.breadcrumbs a:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.breadcrumbs__sep {
+  color: var(--text-quaternary);
+  user-select: none;
+}
+.breadcrumbs__current {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* =============================================================
+ * Confidence badge
+ *
+ * Used in the placement-slip review screen. Three states track
+ * the threshold model in the AI extraction layer. The dot is a
+ * compact decoration; full pill includes the percentage.
+ * ============================================================= */
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.confidence-badge--high {
+  background: var(--confidence-high-soft);
+  color: #1f8d3c;
+}
+.confidence-badge--warn {
+  background: var(--confidence-warn-soft);
+  color: #a86200;
+}
+.confidence-badge--low {
+  background: var(--confidence-low-soft);
+  color: var(--confidence-low);
+}
+.confidence-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Field-level confidence highlight — applied to .input/.select/.textarea
+   when the wrapping <Field> sees confidence < threshold. */
+.field--confidence-warn .input,
+.field--confidence-warn .select,
+.field--confidence-warn .textarea {
+  border-color: var(--confidence-warn);
+  background: var(--confidence-warn-soft);
+}
+.field--confidence-low .input,
+.field--confidence-low .select,
+.field--confidence-low .textarea {
+  border-color: var(--confidence-low);
+  background: var(--confidence-low-soft);
 }

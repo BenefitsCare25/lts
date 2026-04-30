@@ -74,9 +74,6 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/edit`}>← Client</Link>
-        </p>
         <h1>Imports</h1>
         <p style={{ maxWidth: '60ch' }}>
           Upload an insurer placement slip and the parser will detect the template, extract product

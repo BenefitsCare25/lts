@@ -85,13 +85,7 @@ const coerce = (raw: string, type: string): unknown => {
   return raw;
 };
 
-export function BenefitGroupsScreen({
-  clientId,
-  policyId,
-}: {
-  clientId: string;
-  policyId: string;
-}) {
+export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
   const utils = trpc.useUtils();
   const list = trpc.benefitGroups.listByPolicy.useQuery({ policyId });
   const schema = trpc.employeeSchema.get.useQuery();
@@ -355,9 +349,6 @@ export function BenefitGroupsScreen({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/policies/${policyId}/edit`}>← Policy</Link>
-        </p>
         <h1>Benefit groups</h1>
         <p style={{ maxWidth: '60ch' }}>
           Each benefit group is a JSONLogic predicate that classifies employees into a cohort (e.g.

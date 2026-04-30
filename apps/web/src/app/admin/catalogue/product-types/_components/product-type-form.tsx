@@ -119,9 +119,6 @@ export function ProductTypeForm({ initial }: Props) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href="/admin/catalogue/product-types">← Product types</Link>
-        </p>
         <h1>{isEdit ? `Edit ${initial.code}` : 'New product type'}</h1>
         {isEdit ? (
           <p className="field-help">

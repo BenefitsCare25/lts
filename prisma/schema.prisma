@@ -36,13 +36,15 @@ model Tenant {
   slug      String   @unique
   createdAt DateTime @default(now())
 
-  users           User[]
-  clients         Client[]
-  employeeSchemas EmployeeSchema[]
-  productTypes    ProductType[]
-  insurers        Insurer[]
-  tpas            TPA[]
-  pools           Pool[]
+  users            User[]
+  clients          Client[]
+  employeeSchemas  EmployeeSchema[]
+  productTypes     ProductType[]
+  insurers         Insurer[]
+  tpas             TPA[]
+  pools            Pool[]
+  extractionDrafts ExtractionDraft[]
+  aiProvider       TenantAiProvider?
 }
 
 model User {
@@ -127,6 +129,36 @@ model EmployeeSchema {
 model OperatorLibrary {
   dataType  String @id // "string" | "integer" | "number" | "boolean" | "date" | "enum"
   operators Json
+}
+
+// Per-tenant AI provider configuration (BYOK — bring-your-own-key).
+// Each tenant supplies their own Azure AI Foundry credentials via the
+// settings UI; the AI extraction layer uses these instead of a shared
+// platform key. One row per tenant.
+//
+// `encryptedKey` is AES-256-GCM ciphertext encoded as
+// "v1.<base64(iv ‖ ciphertext ‖ authTag)>" — see
+// apps/web/src/server/security/secret-cipher.ts. The plaintext key is
+// never stored, never logged, and never returned by any API. The UI
+// shows only the last 4 chars (`keyLastFour`) for confirmation.
+//
+// `provider` reserves room for future providers (anthropic_direct,
+// openai_direct) but Phase 1 only ships azure_ai_foundry.
+model TenantAiProvider {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  provider       String   @default("azure_ai_foundry")
+  endpoint       String // e.g. "https://my-resource.services.ai.azure.com"
+  deploymentName String // model deployment name in the Foundry resource
+  apiVersion     String   @default("2024-08-01-preview")
+  encryptedKey   String
+  keyLastFour    String   @db.VarChar(4)
+  active         Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+  updatedById    String?
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 }
 
 model Insurer {
@@ -456,5 +488,48 @@ model PlacementSlipUpload {
   issues          Json? // resolved/unresolved issues
   createdAt       DateTime @default(now())
 
+  extractionDraft ExtractionDraft?
+
   @@index([clientId])
+}
+
+// ================================================================
+// AI extraction (replaces heuristic parser as primary path)
+// ================================================================
+//
+// One ExtractionDraft per upload. Lifecycle:
+//   QUEUED → EXTRACTING → READY → APPLIED
+//                       ↘ FAILED
+//                       ↘ DISCARDED (user abandons)
+//
+// `extractedProducts` is `ExtractedProduct[]` validated against
+// packages/catalogue-schemas/extracted-product.json. Every leaf is
+// `{ value, raw, confidence, sourceRef }` so the review UI can
+// surface confidence per field and link back to the source slip.
+//
+// `progress` shape:
+//   { totalProducts, completed,
+//     perProduct: { [code]: { stage, error? } } }
+//
+// `validationIssues` is keyed by product index → Ajv ErrorObject[].
+// We attach instead of blocking so the broker can fix-and-apply.
+//
+// RLS policy mirrors other tenant-scoped tables (Story S3 pattern).
+model ExtractionDraft {
+  id                String    @id @default(cuid())
+  tenantId          String
+  uploadId          String    @unique
+  status            String // "QUEUED" | "EXTRACTING" | "READY" | "APPLIED" | "DISCARDED" | "FAILED"
+  progress          Json
+  extractedProducts Json
+  validationIssues  Json?
+  appliedAt         DateTime?
+  appliedById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id])
+  upload PlacementSlipUpload @relation(fields: [uploadId], references: [id])
+
+  @@index([tenantId, status])
 }

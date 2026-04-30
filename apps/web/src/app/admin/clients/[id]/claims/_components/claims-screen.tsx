@@ -5,7 +5,6 @@
 'use client';
 
 import { trpc } from '@/lib/trpc/client';
-import Link from 'next/link';
 import { useState } from 'react';
 
 function readFileAsBase64(file: File): Promise<string> {
@@ -63,9 +62,6 @@ export function ClaimsScreen({ clientId }: { clientId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/edit`}>← Client</Link>
-        </p>
         <h1>Claims feed</h1>
         <p style={{ maxWidth: '60ch' }}>
           Upload a TPA claims feed CSV. The router dispatches to the right parser based on the

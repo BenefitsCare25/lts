@@ -82,9 +82,6 @@ export function EditTpaForm({ tpaId }: { tpaId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href="/admin/catalogue/tpas">← TPAs</Link>
-        </p>
         <h1>Edit TPA</h1>
       </section>
 

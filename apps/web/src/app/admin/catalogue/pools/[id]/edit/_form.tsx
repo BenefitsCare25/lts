@@ -65,9 +65,6 @@ export function EditPoolForm({ poolId }: { poolId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href="/admin/catalogue/pools">← Pools</Link>
-        </p>
         <h1>Edit pool</h1>
       </section>
 

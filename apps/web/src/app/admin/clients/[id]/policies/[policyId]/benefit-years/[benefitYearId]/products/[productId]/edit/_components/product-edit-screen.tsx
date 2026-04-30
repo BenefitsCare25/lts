@@ -11,7 +11,6 @@
 'use client';
 
 import { trpc } from '@/lib/trpc/client';
-import Link from 'next/link';
 import { useState } from 'react';
 import { ProductDetailsTab } from './product-details-tab';
 import { ProductEligibilityTab } from './product-eligibility-tab';
@@ -50,13 +49,6 @@ export function ProductEditScreen({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link
-            href={`/admin/clients/${clientId}/policies/${policyId}/benefit-years/${benefitYearId}/products`}
-          >
-            ← Products
-          </Link>
-        </p>
         <h1>
           <code>{product.data.productType.code}</code> · {product.data.productType.name}
         </h1>

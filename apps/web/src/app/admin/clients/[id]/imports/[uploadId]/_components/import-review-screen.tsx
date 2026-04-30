@@ -102,9 +102,6 @@ export function ImportReviewScreen({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/imports`}>← Imports</Link>
-        </p>
         <h1>{upload.data.filename}</h1>
         <p className="field-help">
           Status <strong>{upload.data.parseStatus}</strong>

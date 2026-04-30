@@ -2,7 +2,9 @@
   "name": "@insurance-saas/catalogue-schemas",
   "version": "0.0.0",
   "private": true,
-  "description": "Phase 1 placeholder. Seed JSON Schemas for GHS, GTL, GPA land in Story S8.",
-  "main": "./index.json",
+  "description": "Shared JSON Schemas: ProductType seed schemas + the AI ExtractedProduct contract.",
+  "exports": {
+    "./extracted-product.json": "./extracted-product.json"
+  },
   "files": ["*.json"]
 }

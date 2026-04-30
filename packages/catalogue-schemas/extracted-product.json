@@ -1,0 +1,251 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://insurance-saas/schemas/extracted-product.json",
+  "title": "ExtractedProduct",
+  "description": "AI-extracted placement-slip data for one (ProductType x Insurer) instance. Every field carries provenance + confidence so the review UI can highlight uncertainty.",
+  "type": "object",
+  "required": [
+    "productTypeCode",
+    "insurerCode",
+    "header",
+    "policyholder",
+    "eligibility",
+    "plans",
+    "premiumRates",
+    "benefits",
+    "extractionMeta"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "productTypeCode": {
+      "type": "string",
+      "description": "Catalogue ProductType.code, e.g. GTL, GHS, GPA"
+    },
+    "insurerCode": {
+      "type": "string",
+      "description": "Insurer.code, e.g. GE_LIFE, TM_LIFE, ZURICH"
+    },
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policyNumber", "period"],
+      "properties": {
+        "policyNumber": { "$ref": "#/definitions/StringField" },
+        "period": { "$ref": "#/definitions/PeriodField" },
+        "lastEntryAge": { "$ref": "#/definitions/NumberField" },
+        "administrationType": { "$ref": "#/definitions/StringField" },
+        "currency": { "$ref": "#/definitions/StringField" }
+      }
+    },
+    "policyholder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legalName"],
+      "properties": {
+        "legalName": { "$ref": "#/definitions/StringField" },
+        "uen": { "$ref": "#/definitions/StringField" },
+        "address": { "$ref": "#/definitions/StringField" },
+        "businessDescription": { "$ref": "#/definitions/StringField" },
+        "insuredEntities": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/PolicyEntityField" }
+        }
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "freeText": { "$ref": "#/definitions/StringField" },
+        "categories": {
+          "type": "array",
+          "description": "Basis-of-cover rows: employee categories with headcounts and SI basis",
+          "items": { "$ref": "#/definitions/CategoryField" }
+        }
+      }
+    },
+    "plans": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/PlanField" }
+    },
+    "premiumRates": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/PremiumRateField" }
+    },
+    "benefits": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/BenefitField" }
+    },
+    "extractionMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overallConfidence", "extractorVersion"],
+      "properties": {
+        "overallConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "extractorVersion": { "type": "string" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "definitions": {
+    "SourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Pointer back to the source workbook for evidence-on-hover in the review UI",
+      "properties": {
+        "sheet": { "type": "string" },
+        "cell": { "type": "string", "description": "A1-notation single cell, e.g. C12" },
+        "range": { "type": "string", "description": "A1-notation range, e.g. B22:H22" }
+      }
+    },
+    "FieldEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confidence"],
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRef": { "$ref": "#/definitions/SourceRef" },
+        "raw": {
+          "description": "Verbatim text from the slip (preserved for audit even after normalization)"
+        }
+      }
+    },
+    "StringField": {
+      "allOf": [
+        { "$ref": "#/definitions/FieldEnvelope" },
+        {
+          "type": "object",
+          "required": ["value"],
+          "properties": { "value": { "type": ["string", "null"] } }
+        }
+      ]
+    },
+    "NumberField": {
+      "allOf": [
+        { "$ref": "#/definitions/FieldEnvelope" },
+        {
+          "type": "object",
+          "required": ["value"],
+          "properties": { "value": { "type": ["number", "null"] } }
+        }
+      ]
+    },
+    "PeriodField": {
+      "allOf": [
+        { "$ref": "#/definitions/FieldEnvelope" },
+        {
+          "type": "object",
+          "required": ["value"],
+          "properties": {
+            "value": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["from", "to"],
+              "properties": {
+                "from": { "type": "string", "format": "date" },
+                "to": { "type": "string", "format": "date" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "PolicyEntityField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legalName", "confidence"],
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRef": { "$ref": "#/definitions/SourceRef" },
+        "legalName": { "type": "string" },
+        "policyNumber": { "type": ["string", "null"] },
+        "address": { "type": ["string", "null"] },
+        "isMaster": { "type": "boolean" }
+      }
+    },
+    "CategoryField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "confidence"],
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRef": { "$ref": "#/definitions/SourceRef" },
+        "category": { "type": "string", "description": "raw label, e.g. 'Executive', 'Hay Job Grade B3'" },
+        "headcount": { "type": ["integer", "null"] },
+        "sumInsuredFormula": { "type": ["string", "null"], "description": "raw formula text, e.g. '24 x LDBMS'" },
+        "participation": { "type": ["string", "null"] }
+      }
+    },
+    "PlanField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rawCode", "rawName", "code", "name", "coverBasis", "confidence"],
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRef": { "$ref": "#/definitions/SourceRef" },
+        "rawCode": { "type": "string" },
+        "rawName": { "type": "string" },
+        "code": { "type": "string", "description": "Canonical code emitted by normalizer; falls back to rawCode if no mapping" },
+        "name": { "type": "string", "description": "Canonical/display name" },
+        "coverBasis": {
+          "type": "string",
+          "enum": ["per_cover_tier", "salary_multiple", "fixed_amount", "per_region"]
+        },
+        "stacksOnRawCode": { "type": ["string", "null"] },
+        "selectionMode": { "type": "string", "enum": ["broker_default", "employee_flex"] },
+        "schedule": { "type": "object", "description": "Plan-schedule fields keyed per ProductType.planSchema; values may themselves be FieldEnvelopes" }
+      }
+    },
+    "PremiumRateField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planRawCode", "confidence"],
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRef": { "$ref": "#/definitions/SourceRef" },
+        "planRawCode": { "type": "string" },
+        "coverTier": { "type": ["string", "null"], "description": "EO|ES|EC|EF or insurer-specific tier code; null when basis is not per_cover_tier" },
+        "ratePerThousand": { "type": ["number", "null"] },
+        "fixedAmount": { "type": ["number", "null"] },
+        "ageBand": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "from": { "type": "integer" },
+            "to": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "BenefitField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rawName", "name", "confidence"],
+      "properties": {
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sourceRef": { "$ref": "#/definitions/SourceRef" },
+        "rawName": { "type": "string", "description": "Verbatim from slip, e.g. 'Hospital R&B' or 'Daily Room Allowance'" },
+        "name": { "type": "string", "description": "Canonical name from normalization map; falls back to rawName" },
+        "description": { "type": ["string", "null"] },
+        "limits": {
+          "type": "array",
+          "description": "Per-plan sub-limits. planRawCode keys back into the plans[] array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["planRawCode"],
+            "properties": {
+              "planRawCode": { "type": "string" },
+              "amount": { "type": ["number", "null"] },
+              "unit": { "type": ["string", "null"], "description": "e.g. 'per disability', 'per year', 'per day'" },
+              "rawText": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "deductible": { "type": ["number", "null"] },
+        "coInsurancePct": { "type": ["number", "null"] },
+        "waitingPeriodDays": { "type": ["integer", "null"] }
+      }
+    }
+  }
+}

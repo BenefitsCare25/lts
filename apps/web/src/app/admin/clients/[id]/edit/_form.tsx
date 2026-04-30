@@ -104,9 +104,6 @@ export function EditClientForm({ clientId }: { clientId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href="/admin/clients">← Clients</Link>
-        </p>
         <h1>Edit client</h1>
       </section>
 
