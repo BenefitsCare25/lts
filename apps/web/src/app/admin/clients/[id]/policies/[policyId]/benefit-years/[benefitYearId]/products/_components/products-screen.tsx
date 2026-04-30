@@ -1,5 +1,5 @@
 // =============================================================
-// ProductsScreen — Screen 3 (S15) product picker for one BenefitYear.
+// ProductsScreen — Screen 3 product picker for one BenefitYear.
 //
 // Add form: pick ProductType first, then the Insurer dropdown
 // auto-filters to insurers whose `productsSupported` array
@@ -10,6 +10,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -108,23 +109,14 @@ export function ProductsScreen({
   const editable = benefitYearState === 'DRAFT';
 
   return (
-    <>
-      <section className="section">
-        {benefitYearState ? (
-          <p className="eyebrow mb-2">Benefit year ({benefitYearState})</p>
-        ) : null}
-        <h1>Products</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          Pick the product types this benefit year covers. The insurer dropdown filters by which
-          insurers support the chosen product type — set up new pairings in the insurer registry
-          first if your insurer is missing.
-        </p>
-      </section>
-
+    <ScreenShell
+      title="Products"
+      context={benefitYearState ? `Benefit year · ${benefitYearState}` : undefined}
+    >
       {editable ? (
         <section className="section">
           <div className="card card-padded">
-            <h3 style={{ marginBottom: '1rem' }}>Add product</h3>
+            <h3 className="mb-4">Add product</h3>
             <form onSubmit={submit} className="form-grid">
               <div className="field">
                 <label className="field-label" htmlFor="prd-type">
@@ -240,7 +232,7 @@ export function ProductsScreen({
       ) : (
         <section className="section">
           <div className="card card-padded">
-            <p style={{ marginBottom: 0 }}>
+            <p className="mb-0">
               {benefitYearState === 'PUBLISHED'
                 ? 'This benefit year is published — products are locked. Add a new draft year to make changes.'
                 : 'This benefit year is archived — read-only.'}
@@ -250,7 +242,7 @@ export function ProductsScreen({
       )}
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Selected products</h3>
+        <h3 className="mb-3">Selected products</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -314,8 +306,8 @@ export function ProductsScreen({
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>
+          <div className="card card-padded text-center">
+            <p className="mb-0">
               {editable
                 ? 'No products yet — pick one from the catalogue above.'
                 : 'No products in this benefit year.'}
@@ -323,6 +315,6 @@ export function ProductsScreen({
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

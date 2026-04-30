@@ -1,9 +1,10 @@
 // =============================================================
-// ReviewScreen — Screen 6 read-only summary + validation gate (S26-S28).
+// ReviewScreen — Screen 6 read-only summary + validation gate.
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -56,28 +57,27 @@ export function ReviewScreen({
   const editable = summary.data.state === 'DRAFT';
 
   return (
-    <>
-      <section className="section">
-        <h1>Review &amp; publish</h1>
-        <p className="field-help">
-          {summary.data.client.legalName} · {summary.data.policy.name} · benefit year{' '}
-          {formatDate(summary.data.startDate)} → {formatDate(summary.data.endDate)} ·{' '}
-          <strong>{summary.data.state}</strong>
-        </p>
-      </section>
-
+    <ScreenShell
+      title="Review & publish"
+      context={
+        <>
+          {summary.data.policy.name} · {formatDate(summary.data.startDate)} →{' '}
+          {formatDate(summary.data.endDate)} · <strong>{summary.data.state}</strong>
+        </>
+      }
+    >
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.5rem' }}>Validation</h3>
+          <h3 className="mb-2">Validation</h3>
           {validation.data.issues.length === 0 ? (
-            <p style={{ color: 'var(--color-good, #16a34a)' }}>✓ Clean — 0 blockers, 0 warnings.</p>
+            <p className="text-good">✓ Clean — 0 blockers, 0 warnings.</p>
           ) : (
             <>
               <p>
                 {validation.data.blockers} blocker{validation.data.blockers === 1 ? '' : 's'} ·{' '}
                 {validation.data.warnings} warning{validation.data.warnings === 1 ? '' : 's'}
               </p>
-              <ul style={{ marginTop: '0.5rem' }}>
+              <ul className="mt-2">
                 {validation.data.issues.map((i, idx) => (
                   <li
                     key={`${i.code}-${idx}`}
@@ -99,7 +99,7 @@ export function ReviewScreen({
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Products ({summary.data.products.length})</h3>
+        <h3 className="mb-3">Products ({summary.data.products.length})</h3>
         <div className="form-grid">
           {summary.data.products.map((p) => (
             <div key={p.id} className="card card-padded">
@@ -107,7 +107,7 @@ export function ReviewScreen({
                 className="row"
                 style={{ justifyContent: 'space-between', marginBottom: '0.5rem' }}
               >
-                <h4 style={{ margin: 0 }}>
+                <h4 className="m-0">
                   <code>{p.productType.code}</code> · {p.productType.name}
                 </h4>
                 <Link href={productHref(p.id)} className="btn btn-ghost btn-sm">
@@ -142,9 +142,7 @@ export function ReviewScreen({
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>
-          Benefit groups ({summary.data.policy.benefitGroups.length})
-        </h3>
+        <h3 className="mb-3">Benefit groups ({summary.data.policy.benefitGroups.length})</h3>
         {summary.data.policy.benefitGroups.length === 0 ? (
           <p className="field-help">None defined.</p>
         ) : (
@@ -160,9 +158,7 @@ export function ReviewScreen({
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>
-          Entities ({summary.data.policy.entities.length})
-        </h3>
+        <h3 className="mb-3">Entities ({summary.data.policy.entities.length})</h3>
         {summary.data.policy.entities.length === 0 ? (
           <p className="field-error">No entities defined.</p>
         ) : (
@@ -180,8 +176,8 @@ export function ReviewScreen({
       {editable ? (
         <section className="section">
           <div className="card card-padded">
-            <h3 style={{ marginBottom: '0.5rem' }}>Publish</h3>
-            <p className="field-help" style={{ marginBottom: '0.75rem' }}>
+            <h3 className="mb-2">Publish</h3>
+            <p className="field-help mb-3">
               Once published, this benefit year is locked. Plans, products, and entities can no
               longer be edited. To change the configuration after publish, archive the year and
               create a new draft.
@@ -238,7 +234,7 @@ export function ReviewScreen({
       ) : (
         <section className="section">
           <div className="card card-padded">
-            <p style={{ marginBottom: 0 }}>
+            <p className="mb-0">
               <strong>Locked.</strong> This benefit year is {summary.data.state.toLowerCase()}.
               {summary.data.publishedAt
                 ? ` Published on ${formatDate(summary.data.publishedAt)}.`
@@ -247,6 +243,6 @@ export function ReviewScreen({
           </div>
         </section>
       )}
-    </>
+    </ScreenShell>
   );
 }

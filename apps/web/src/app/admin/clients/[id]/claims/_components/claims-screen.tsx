@@ -1,9 +1,10 @@
 // =============================================================
-// ClaimsScreen — TPA claims feed ingestion + match results (S35).
+// ClaimsScreen — TPA claims feed ingestion + match results.
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { useState } from 'react';
 
@@ -60,19 +61,10 @@ export function ClaimsScreen({ clientId }: { clientId: string }) {
     ) ?? [];
 
   return (
-    <>
-      <section className="section">
-        <h1>Claims feed</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          Upload a TPA claims feed CSV. The router dispatches to the right parser based on the
-          insurer's <code>claimFeedProtocol</code>; matched claims are paired to existing employee
-          enrollments, and unmatched ones are flagged for review.
-        </p>
-      </section>
-
+    <ScreenShell title="Claims">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.5rem' }}>Upload feed</h3>
+          <h3 className="mb-2">Upload feed</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="claim-insurer">
@@ -128,19 +120,14 @@ export function ClaimsScreen({ clientId }: { clientId: string }) {
       {result ? (
         <section className="section">
           <div className="card card-padded">
-            <h3 style={{ marginBottom: '0.5rem' }}>Result</h3>
+            <h3 className="mb-2">Result</h3>
             <p>
               Protocol <code>{result.protocol}</code> · {result.totalRows} rows ·{' '}
-              <strong style={{ color: 'var(--color-good, #16a34a)' }}>
-                {result.matched} matched
-              </strong>{' '}
-              ·{' '}
-              <strong style={{ color: 'var(--color-error, #b91c1c)' }}>
-                {result.unmatched} unmatched
-              </strong>
+              <strong className="text-good">{result.matched} matched</strong> ·{' '}
+              <strong className="text-error">{result.unmatched} unmatched</strong>
             </p>
             {result.unmatchedClaims.length > 0 ? (
-              <details style={{ marginTop: '0.75rem' }}>
+              <details className="mt-3">
                 <summary>Unmatched claims (first 100)</summary>
                 <ul>
                   {result.unmatchedClaims.map((c, idx) => (
@@ -154,6 +141,6 @@ export function ClaimsScreen({ clientId }: { clientId: string }) {
           </div>
         </section>
       ) : null}
-    </>
+    </ScreenShell>
   );
 }

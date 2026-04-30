@@ -1,5 +1,5 @@
 // =============================================================
-// Employee Schema editor (Screen 0a — S11).
+// Employee Schema editor.
 //
 // One screen, three sections:
 //   • Built-in fields — read-only, never removable.
@@ -12,6 +12,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import {
   type CustomFieldInput,
@@ -119,33 +120,23 @@ export function EmployeeSchemaScreen() {
   const isNumeric = form.type === 'integer' || form.type === 'number';
 
   return (
-    <>
+    <ScreenShell
+      title="Employee Schema"
+      context={
+        <>
+          Schema version <code>v{schema.data.version}</code>
+        </>
+      }
+    >
       <section className="section">
-        <p className="eyebrow">Catalogue · Screen 0a</p>
-        <h1>Employee Schema</h1>
-        <p style={{ maxWidth: '52ch' }}>
-          Field catalogue used by every employee record, predicate, and CSV import in this tenant.
-          Built-ins are immutable. Standard extensions toggle on / off without losing the
-          definition. Custom fields are tenant-specific.
-        </p>
-        <p className="field-help">
-          Schema version: <code>v{schema.data.version}</code>
-        </p>
-      </section>
-
-      <section className="section">
-        <h3 style={{ marginBottom: '0.5rem' }}>Built-in fields</h3>
-        <p className="field-help" style={{ marginTop: 0 }}>
-          Always present. Cannot be disabled or removed.
-        </p>
+        <h3 className="mb-2">Built-in fields</h3>
+        <p className="field-help mt-0">Always present. Cannot be disabled or removed.</p>
         <FieldTable rows={builtins} />
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.5rem' }}>Standard extensions</h3>
-        <p className="field-help" style={{ marginTop: 0 }}>
-          Toggle on or off without losing the definition.
-        </p>
+        <h3 className="mb-2">Standard extensions</h3>
+        <p className="field-help mt-0">Toggle on or off without losing the definition.</p>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -187,15 +178,15 @@ export function EmployeeSchemaScreen() {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.5rem' }}>Custom fields</h3>
-        <p className="field-help" style={{ marginTop: 0 }}>
+        <h3 className="mb-2">Custom fields</h3>
+        <p className="field-help mt-0">
           Tenant-specific fields. Names must start with <code>employee.</code> and use lowercase
           letters, digits, underscores.
         </p>
 
         {customs.length === 0 ? (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No custom fields yet.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No custom fields yet.</p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -220,7 +211,7 @@ export function EmployeeSchemaScreen() {
                     <td>{field.type}</td>
                     <td>{fieldFormatHint(field) || '—'}</td>
                     <td>
-                      <div className="row" style={{ gap: '0.25rem' }}>
+                      <div className="row gap-1">
                         {field.required ? <span className="pill pill-accent">required</span> : null}
                         {field.pii ? <span className="pill pill-accent">PII</span> : null}
                         {field.selectableForPredicates ? (
@@ -254,7 +245,7 @@ export function EmployeeSchemaScreen() {
 
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>Add custom field</h3>
+          <h3 className="mb-4">Add custom field</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="ef-name">
@@ -361,7 +352,7 @@ export function EmployeeSchemaScreen() {
               </div>
             ) : null}
 
-            <div className="row" style={{ gap: '1rem' }}>
+            <div className="row gap-4">
               <label className="toggle">
                 <input
                   type="checkbox"
@@ -398,7 +389,7 @@ export function EmployeeSchemaScreen() {
           </form>
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }
 
@@ -425,7 +416,7 @@ function FieldTable({ rows }: { rows: EmployeeField[] }) {
               <td>{field.type}</td>
               <td>{fieldFormatHint(field) || '—'}</td>
               <td>
-                <div className="row" style={{ gap: '0.25rem' }}>
+                <div className="row gap-1">
                   {field.required ? <span className="pill pill-accent">required</span> : null}
                   {field.pii ? <span className="pill pill-accent">PII</span> : null}
                   {field.computed ? <span className="pill pill-muted">computed</span> : null}

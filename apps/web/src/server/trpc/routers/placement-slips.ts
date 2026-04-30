@@ -513,7 +513,7 @@ export const placementSlipsRouter = router({
 
           // schedule = {} works for products whose planSchema has no
           // required fields. Where required fields exist, the broker
-          // fills them in via the per-product UI (S22). The Ajv-strict
+          // fills them in via the per-product UI. The Ajv-strict
           // path is in the per-plan tRPC update; the seed createMany
           // bypass here is intentional and surfaced in skipped[].
           await prisma.plan.upsert({

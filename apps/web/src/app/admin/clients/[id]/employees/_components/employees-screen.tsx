@@ -1,9 +1,10 @@
 // =============================================================
-// EmployeesScreen — list + add form + CSV import (S33-S34).
+// EmployeesScreen — list + add form + CSV import.
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Form from '@rjsf/core';
 import type { RJSFSchema } from '@rjsf/utils';
@@ -113,18 +114,10 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
   };
 
   return (
-    <>
-      <section className="section">
-        <h1>Employees</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          Add employees one at a time using the auto-generated form below, or bulk-import via CSV.
-          Saved employees are automatically matched against benefit groups via JSONLogic.
-        </p>
-      </section>
-
+    <ScreenShell title="Employees">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.5rem' }}>Add employee</h3>
+          <h3 className="mb-2">New employee</h3>
           {schemaQ.isLoading ? (
             <p>Loading schema…</p>
           ) : schemaQ.error ? (
@@ -169,8 +162,8 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
 
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.5rem' }}>CSV import</h3>
-          <p className="field-help" style={{ marginBottom: '0.75rem' }}>
+          <h3 className="mb-2">CSV import</h3>
+          <p className="field-help mb-3">
             CSV header row maps to employee schema fields by exact name (e.g.{' '}
             <code>employee.full_name</code>, <code>employee.hire_date</code>). Rows that fail
             validation are reported back without creating partial records.
@@ -212,7 +205,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
             </div>
           </form>
           {importResult ? (
-            <div style={{ marginTop: '1rem' }}>
+            <div className="mt-4">
               <p>
                 <strong>{importResult.createdCount}</strong> created,{' '}
                 <strong>{importResult.failures.length}</strong> failed.
@@ -220,7 +213,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
               {importResult.failures.length > 0 ? (
                 <ul>
                   {importResult.failures.map((f) => (
-                    <li key={f.rowIndex} style={{ color: 'var(--color-error, #b91c1c)' }}>
+                    <li key={f.rowIndex} className="text-error">
                       Row {f.rowIndex + 2}: {f.reason}
                     </li>
                   ))}
@@ -232,7 +225,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing employees ({list.data?.length ?? 0})</h3>
+        <h3 className="mb-3">Existing employees ({list.data?.length ?? 0})</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -282,11 +275,11 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No employees yet.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No employees yet.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

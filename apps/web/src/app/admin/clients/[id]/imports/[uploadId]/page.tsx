@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/imports/[uploadId] — parse review (S32).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { ImportReviewScreen } from './_components/import-review-screen';
 

@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/imports — placement-slip uploads list (S29).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { ImportsScreen } from './_components/imports-screen';
 

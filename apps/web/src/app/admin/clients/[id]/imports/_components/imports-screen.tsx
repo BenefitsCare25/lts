@@ -1,9 +1,10 @@
 // =============================================================
-// ImportsScreen — placement-slip upload + history (S29).
+// ImportsScreen — placement-slip upload + history.
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -72,18 +73,10 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
   };
 
   return (
-    <>
-      <section className="section">
-        <h1>Imports</h1>
-        <p style={{ maxWidth: '60ch' }}>
-          Upload an insurer placement slip and the parser will detect the template, extract product
-          instances, plans, and rates. Review the parse result before applying it to the catalogue.
-        </p>
-      </section>
-
+    <ScreenShell title="Imports">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '0.75rem' }}>Upload placement slip</h3>
+          <h3 className="mb-3">Upload placement slip</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="slip-file">
@@ -118,7 +111,7 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Past uploads</h3>
+        <h3 className="mb-3">Past uploads</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -210,11 +203,11 @@ export function ImportsScreen({ clientId }: { clientId: string }) {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No uploads yet.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No uploads yet.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

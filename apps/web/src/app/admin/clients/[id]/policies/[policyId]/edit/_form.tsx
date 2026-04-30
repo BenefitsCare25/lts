@@ -7,6 +7,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -176,15 +177,7 @@ export function EditPolicyForm({
   };
 
   return (
-    <>
-      <section className="section">
-        {policy.data?.client ? (
-          <p className="eyebrow mb-2">{policy.data.client.legalName}</p>
-        ) : null}
-        <h1>Edit policy</h1>
-        <p className="field-help">Saved version: v{policy.data.versionId}</p>
-      </section>
-
+    <ScreenShell title="Edit policy" context={`Saved version v${policy.data.versionId}`}>
       <section className="section">
         <div className="card card-padded">
           <form onSubmit={submit} className="form-grid">
@@ -205,9 +198,9 @@ export function EditPolicyForm({
               />
             </div>
 
-            <fieldset className="fieldset" style={{ gridColumn: '1 / -1' }}>
+            <fieldset className="fieldset field-span-full">
               <legend>Entities</legend>
-              <p className="field-help" style={{ marginBottom: '0.75rem' }}>
+              <p className="field-help mb-3">
                 Each entity carries its own insurer-issued policy number and may override premium
                 rates per product. Mark exactly one entity as the master policyholder.
               </p>
@@ -294,7 +287,7 @@ export function EditPolicyForm({
                         Master policyholder
                       </label>
 
-                      <div className="field" style={{ gridColumn: '1 / -1' }}>
+                      <div className="field field-span-full">
                         <label className="field-label" htmlFor={`pe-rate-${idx}`}>
                           Rate overrides (JSON){' '}
                           <span className="field-help-inline">
@@ -322,7 +315,7 @@ export function EditPolicyForm({
                         )}
                       </div>
 
-                      <div className="row" style={{ gridColumn: '1 / -1' }}>
+                      <div className="row field-span-full">
                         <button
                           type="button"
                           className="btn btn-danger btn-sm"
@@ -362,18 +355,14 @@ export function EditPolicyForm({
       <BenefitYearsSection clientId={clientId} policyId={policyId} />
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Benefit groups</h3>
-        <p style={{ marginBottom: '1rem', maxWidth: '60ch' }}>
-          Predicate-based cohorts (e.g. "Senior Management", "Foreign Workers WP/SP HJG 08-10") that
-          drive the eligibility matrix on each product.
-        </p>
+        <h3 className="mb-3">Benefit groups</h3>
         <Link
           href={`/admin/clients/${clientId}/policies/${policyId}/benefit-groups`}
-          className="btn btn-primary"
+          className="btn"
         >
-          Manage benefit groups →
+          Manage benefit groups
         </Link>
       </section>
-    </>
+    </ScreenShell>
   );
 }

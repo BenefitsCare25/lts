@@ -180,9 +180,7 @@ export function EditClientForm({ clientId }: { clientId: string }) {
                 {uenLooksValid === false ? (
                   <>
                     {' '}
-                    <strong style={{ color: 'var(--color-error, #b91c1c)' }}>
-                      Does not match expected format.
-                    </strong>
+                    <strong className="text-error">Does not match expected format.</strong>
                   </>
                 ) : null}
               </span>

@@ -1,7 +1,6 @@
 // Barrel re-export for the centralised UI primitive layer.
 // Keep this file lean — only re-export, no logic.
 
-export { Breadcrumbs } from './breadcrumbs';
 export { Card } from './card';
 export {
   ConfidenceBadge,

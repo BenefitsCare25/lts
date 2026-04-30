@@ -126,11 +126,7 @@ export function AiProviderScreen() {
     : null;
 
   return (
-    <ScreenShell
-      eyebrow="Settings"
-      title="AI Provider"
-      description="Connect this tenant to Azure AI Foundry. The placement-slip extraction layer uses the configured deployment to read insurer slips and produce structured JSON. Your key is encrypted at rest and never leaves this server in plain text."
-    >
+    <ScreenShell title="AI Provider">
       {masked.isLoading ? (
         <p>Loading…</p>
       ) : masked.error ? (

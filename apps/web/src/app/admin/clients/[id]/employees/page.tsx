@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/employees — Employee CRUD + CSV import (S33-S34).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { EmployeesScreen } from './_components/employees-screen';
 

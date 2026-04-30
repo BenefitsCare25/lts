@@ -1,8 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/policies — list of policies under one
-// client + inline create form (Screen 2 entry point, S14).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { ClientPoliciesScreen } from './_components/policies-screen';
 

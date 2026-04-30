@@ -1,5 +1,5 @@
 // =============================================================
-// ProductEligibilityTab — Screen 5c (S23) eligibility list.
+// ProductEligibilityTab — Screen 5c eligibility list.
 //
 // Lists every benefit group on the policy with a per-row dropdown
 // to pick a default plan (or "ineligible"). Save bulk-replaces all
@@ -82,7 +82,7 @@ export function ProductEligibilityTab({
     return (
       <section className="section">
         <div className="card card-padded">
-          <p style={{ marginBottom: 0 }}>
+          <p className="mb-0">
             No plans defined on this product yet — add a plan in the Plans tab first.
           </p>
         </div>
@@ -107,7 +107,7 @@ export function ProductEligibilityTab({
   return (
     <section className="section">
       <div className="card card-padded">
-        <h3 style={{ marginBottom: '0.5rem' }}>Eligibility</h3>
+        <h3 className="mb-2">Eligibility</h3>
         <p className="field-help" style={{ marginBottom: '1rem' }}>
           Pick the default plan each benefit group lands on for this product. Choose{' '}
           <em>Ineligible</em> when a group should not receive this product at all. Groups left
@@ -158,11 +158,7 @@ export function ProductEligibilityTab({
           </div>
 
           {saveError ? <p className="field-error">{saveError}</p> : null}
-          {saved ? (
-            <p className="field-help" style={{ color: 'var(--color-good, #16a34a)' }}>
-              ✓ Saved.
-            </p>
-          ) : null}
+          {saved ? <p className="field-help text-good">✓ Saved.</p> : null}
 
           {editable ? (
             <div className="row">

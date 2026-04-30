@@ -2,14 +2,15 @@
 // ProductEditScreen — sub-tab host for one product instance.
 //
 // Tabs:
-//   Details (S21)     — form rendered from ProductType.schema via @rjsf/core
-//   Plans (S22)       — repeating row table from planSchema; placeholder for now
-//   Eligibility (S23) — groups × plans matrix; placeholder for now
-//   Premium (S24)     — strategy-specific calc inputs; placeholder for now
+//   Details     — form rendered from ProductType.schema via @rjsf/core
+//   Plans       — repeating row table from planSchema; placeholder for now
+//   Eligibility — groups × plans matrix; placeholder for now
+//   Premium     — strategy-specific calc inputs; placeholder for now
 // =============================================================
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { useState } from 'react';
 import { ProductDetailsTab } from './product-details-tab';
@@ -47,17 +48,19 @@ export function ProductEditScreen({
   const editable = product.data.benefitYear.state === 'DRAFT';
 
   return (
-    <>
-      <section className="section">
-        <h1>
+    <ScreenShell
+      title={
+        <>
           <code>{product.data.productType.code}</code> · {product.data.productType.name}
-        </h1>
-        <p className="field-help">
+        </>
+      }
+      context={
+        <>
           {product.data.insurer ? `${product.data.insurer.name} · ` : ''}
           Benefit year {product.data.benefitYear.state} · v{product.data.versionId}
-        </p>
-      </section>
-
+        </>
+      }
+    >
       <section className="section">
         <div className="row" style={{ borderBottom: '1px solid var(--border)' }}>
           {TABS.map((t) => (
@@ -90,6 +93,6 @@ export function ProductEditScreen({
       ) : tab === 'premium' ? (
         <ProductPremiumTab productId={productId} />
       ) : null}
-    </>
+    </ScreenShell>
   );
 }

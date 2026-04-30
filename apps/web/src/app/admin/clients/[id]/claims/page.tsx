@@ -1,7 +1,3 @@
-// =============================================================
-// /admin/clients/[id]/claims — TPA claims feed ingestion (S35).
-// =============================================================
-
 import { requireSession } from '@/server/auth/session';
 import { ClaimsScreen } from './_components/claims-screen';
 

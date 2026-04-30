@@ -1,5 +1,5 @@
 // =============================================================
-// ProductPremiumTab — Screen 5d (S24).
+// ProductPremiumTab — Screen 5d.
 //
 // Strategy-aware rate editor + live preview. The strategy code on
 // ProductType drives which rate inputs render and which headcount
@@ -207,7 +207,7 @@ export function ProductPremiumTab({ productId }: { productId: string }) {
     return (
       <section className="section">
         <div className="card card-padded">
-          <p style={{ marginBottom: 0 }}>
+          <p className="mb-0">
             No plans defined yet — add one in the Plans tab before configuring premium.
           </p>
         </div>
@@ -280,9 +280,9 @@ export function ProductPremiumTab({ productId }: { productId: string }) {
         ) : null}
       </div>
 
-      <div className="card card-padded" style={{ marginTop: '1rem' }}>
+      <div className="card card-padded mt-4">
         <h3 style={{ marginBottom: '0.25rem' }}>Live preview</h3>
-        <p className="field-help" style={{ marginBottom: '0.75rem' }}>
+        <p className="field-help mb-3">
           Headcount estimates below are dry-run inputs only — they're not stored. Real headcount
           comes from employee data once Phase 1H lands.
         </p>

@@ -1,5 +1,5 @@
 // =============================================================
-// Premium rates router (S24 — Screen 5d).
+// Premium rates router.
 //
 // Stores PremiumRate rows per (product, plan, group?, coverTier?).
 // listForProduct / setForProduct (bulk replace) plus an `estimate`

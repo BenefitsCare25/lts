@@ -1,5 +1,5 @@
 // =============================================================
-// Clients router (S13 — Client CRUD, Screen 1).
+// Clients router.
 //
 // Fields per v2 §6.1: legalName, tradingName, uen,
 // countryOfIncorporation, address, industry, primaryContactName,

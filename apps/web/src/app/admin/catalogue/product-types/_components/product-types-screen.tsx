@@ -1,5 +1,5 @@
 // =============================================================
-// Product Catalogue editor (Screen 0e — S12).
+// Product Catalogue editor.
 //
 // "The most powerful screen" per v2 §5.5: edits here propagate to
 // every client's product configuration on the next benefit year.
@@ -10,6 +10,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 
@@ -22,31 +23,15 @@ export function ProductTypesScreen() {
   });
 
   return (
-    <>
+    <ScreenShell
+      title="Product Types"
+      actions={
+        <Link href="/admin/catalogue/product-types/new" className="btn btn-primary">
+          New product type
+        </Link>
+      }
+    >
       <section className="section">
-        <p className="eyebrow">Catalogue · Screen 0e</p>
-        <h1>Product Catalogue</h1>
-        <p style={{ maxWidth: '52ch' }}>
-          Product types define the shape of every product instance and plan downstream. Each row
-          carries two JSON Schemas (product fields + plan rows), a premium-calculation strategy
-          code, and optional parsing rules + display templates.
-        </p>
-        <p className="field-help">
-          Edits bump the type's version. Phase 1 mutates in place; immutable published versions
-          arrive with the publish workflow (S28).
-        </p>
-      </section>
-
-      <section className="section">
-        <div className="row">
-          <Link href="/admin/catalogue/product-types/new" className="btn btn-primary">
-            + New product type
-          </Link>
-        </div>
-      </section>
-
-      <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing product types</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -102,14 +87,14 @@ export function ProductTypesScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>
+          <div className="card card-padded text-center">
+            <p className="mb-0">
               No product types yet. The 12 v2 catalogue defaults are seeded by Story S16 — for now,
               add types manually here.
             </p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }

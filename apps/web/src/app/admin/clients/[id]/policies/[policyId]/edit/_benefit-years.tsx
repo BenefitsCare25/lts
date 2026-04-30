@@ -1,7 +1,7 @@
 // =============================================================
 // BenefitYearsSection — list + add + state-transition controls
 // for one policy. Drops in below the policy form on the edit page.
-// Mutations use the benefitYears tRPC router (S17).
+// Mutations use the benefitYears tRPC router.
 // =============================================================
 
 'use client';
@@ -91,12 +91,7 @@ export function BenefitYearsSection({
 
   return (
     <section className="section">
-      <h3 style={{ marginBottom: '0.75rem' }}>Benefit years</h3>
-      <p className="field-help" style={{ marginBottom: '1rem', maxWidth: '60ch' }}>
-        Each benefit year is a versioned snapshot of products, plans, and eligibility for a coverage
-        period. The first year is created automatically when the policy is added — publish it to
-        lock the configuration, then add next year's draft for renewal.
-      </p>
+      <h3 className="mb-3">Benefit years</h3>
 
       {list.isLoading ? (
         <p>Loading…</p>
@@ -215,13 +210,13 @@ export function BenefitYearsSection({
           </table>
         </div>
       ) : (
-        <div className="card card-padded" style={{ textAlign: 'center' }}>
-          <p style={{ marginBottom: 0 }}>No benefit years yet for this policy.</p>
+        <div className="card card-padded text-center">
+          <p className="mb-0">No benefit years yet for this policy.</p>
         </div>
       )}
 
-      <div className="card card-padded" style={{ marginTop: '1rem' }}>
-        <h4 style={{ marginBottom: '0.75rem' }}>Add benefit year</h4>
+      <div className="card card-padded mt-4">
+        <h4 className="mb-3">Add benefit year</h4>
         <form onSubmit={submit} className="form-grid">
           <div className="field">
             <label className="field-label" htmlFor="by-start">

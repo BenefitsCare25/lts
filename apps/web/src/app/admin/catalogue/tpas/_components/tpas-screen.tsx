@@ -1,5 +1,5 @@
 // =============================================================
-// TPAs list + inline create form (Screen 0c — S9).
+// TPAs list + inline create form.
 //
 // supportedInsurerIds is rendered as a chip-style multi-select
 // pulling from the existing Insurer Registry. If no insurers exist
@@ -9,6 +9,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { TPA_FEED_FORMATS, type TpaFeedFormat } from '@insurance-saas/shared-types';
 import Link from 'next/link';
@@ -77,19 +78,10 @@ export function TpasScreen() {
   };
 
   return (
-    <>
-      <section className="section">
-        <p className="eyebrow">Catalogue · Screen 0c</p>
-        <h1>TPA Registry</h1>
-        <p style={{ maxWidth: '52ch' }}>
-          Third-party administrators that ingest claims feeds for one or more insurers. Used by the
-          claims pipeline to route incoming files to the correct parser.
-        </p>
-      </section>
-
+    <ScreenShell title="TPAs">
       <section className="section">
         <div className="card card-padded">
-          <h3 style={{ marginBottom: '1rem' }}>Add TPA</h3>
+          <h3 className="mb-4">New TPA</h3>
           <form onSubmit={submit} className="form-grid">
             <div className="field">
               <label className="field-label" htmlFor="tpa-name">
@@ -128,11 +120,11 @@ export function TpasScreen() {
             <fieldset className="fieldset">
               <legend>Supported insurers</legend>
               {insurers.isLoading ? (
-                <p style={{ margin: 0 }}>
+                <p className="m-0">
                   <small>Loading insurers…</small>
                 </p>
               ) : (insurers.data ?? []).length === 0 ? (
-                <p style={{ margin: 0 }}>
+                <p className="m-0">
                   <small>
                     No insurers exist yet.{' '}
                     <Link href="/admin/catalogue/insurers">Add one first</Link>.
@@ -193,7 +185,7 @@ export function TpasScreen() {
       </section>
 
       <section className="section">
-        <h3 style={{ marginBottom: '0.75rem' }}>Existing TPAs</h3>
+        <h3 className="mb-3">Existing TPAs</h3>
         {tpas.isLoading ? (
           <p>Loading…</p>
         ) : tpas.error ? (
@@ -259,11 +251,11 @@ export function TpasScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded" style={{ textAlign: 'center' }}>
-            <p style={{ marginBottom: 0 }}>No TPAs yet.</p>
+          <div className="card card-padded text-center">
+            <p className="mb-0">No TPAs yet.</p>
           </div>
         )}
       </section>
-    </>
+    </ScreenShell>
   );
 }
