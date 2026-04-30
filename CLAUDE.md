@@ -23,7 +23,9 @@ Read order at the start of every session:
 
 Node.js 22 LTS, TypeScript strict. Next.js 15 with App Router as a single full-stack app. PostgreSQL 16 via Prisma 5. WorkOS AuthKit for authentication, with WorkOS Organizations mapped one-to-one onto our `Tenant` entity (multi-tenancy). Ajv for JSON Schema validation, Zod for API input validation, `@rjsf/core` for auto-generating admin forms from catalogue schemas, `json-logic-js` for benefit group eligibility predicates, `exceljs` for placement slip parsing, BullMQ with Azure Redis for background jobs. Biome for linting and formatting. Vitest for unit and integration tests, Playwright for end-to-end. pnpm for package management.
 
-Hosting: GitHub for source and CI, Azure Container Apps for runtime, Azure Database for PostgreSQL Flexible Server, Azure Cache for Redis, **SharePoint (via Microsoft Graph + ROPC delegated auth) for uploaded files** — same pattern as sister-project PAD; the lib lives at `apps/web/src/server/storage/sharepoint.ts`. Azure Key Vault for secrets, Application Insights for observability. All resources in `southeastasia` region for Singapore PDPA data residency.
+Hosting: GitHub for source and CI, Azure Container Apps for runtime, Azure Database for PostgreSQL Flexible Server, Azure Cache for Redis, **SharePoint (via Microsoft Graph + ROPC delegated auth) for uploaded files** — same pattern as sister-project PAD; the lib lives at `apps/web/src/server/storage/sharepoint.ts`. Azure Key Vault for secrets, Application Insights (workspace-based, backed by Log Analytics) for observability. All resources in `southeastasia` region for Singapore PDPA data residency.
+
+AI extraction layer (placement-slip → catalogue JSON) is **BYOK per tenant** — each tenant supplies their own Azure AI Foundry endpoint + deployment + key via the `/admin/settings/ai-provider` UI. The platform never holds a shared LLM key; instead it stores per-tenant credentials encrypted at rest with AES-256-GCM (`apps/web/src/server/security/secret-cipher.ts`, master key from `APP_SECRET_KEY` env). Plaintext keys never leave server memory and are never logged.
 
 ## Repo layout
 
@@ -31,24 +33,32 @@ Hosting: GitHub for source and CI, Azure Container Apps for runtime, Azure Datab
 apps/web/              Next.js app
   src/app/             App Router routes
     (auth)/            sign-in, callbacks
-    (admin)/           broker admin surfaces, tenant-scoped
+    admin/             broker admin surfaces, tenant-scoped
+      settings/        tenant-level config (ai-provider, …)
     api/               route handlers
   src/server/          server-only code
-    auth/              WorkOS integration
+    auth/              session helpers (Auth.js for Phase 1)
     db/                Prisma client + tenant helpers
-    catalogue/         ProductType logic, schema validation
-    ingestion/         Excel parser, template engine
+    catalogue/         ProductType logic, schema validation (Ajv singleton)
+    ingestion/         Excel parser + AI extraction pipeline
     policies/          lifecycle, publish workflow
-    storage/           Azure Blob client
+    security/          app-level encryption (secret-cipher.ts)
+    storage/           SharePoint client (sharepoint.ts)
     jobs/              BullMQ workers
     tenant/            middleware + scoping helpers
+    trpc/              router composition + role guards
   src/components/      React components
+    ui/                centralised primitives (ScreenShell, Breadcrumbs,
+                       Card, Field, ConfidenceBadge, Form). New screens
+                       MUST consume these instead of inventing layouts.
   src/lib/             shared client+server utilities
   tests/               unit, integration, e2e
-packages/catalogue-schemas/   seed JSON Schemas (GHS, GTL, GPA, …)
+docker/                container entrypoint scripts
+packages/catalogue-schemas/   seed JSON Schemas (GHS, GTL, …) + extracted-product.json
 packages/shared-types/        shared TS types
 prisma/                schema + migrations + seed
-infra/bicep/           Azure IaC
+infra/bicep/           Azure IaC (modules: container-app, postgres, redis,
+                       app-insights, log-analytics, container-registry, …)
 scripts/               dev bootstrap, codegen
 docs/                  architecture, build brief, ADRs
 ```
@@ -89,17 +99,22 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
   2. Validates input with Zod (define the schema alongside the handler).
   3. Returns typed results; errors as discriminated unions, not thrown exceptions, unless the caller has to crash (validation errors don't; programming errors do).
 
-**Validation layers.** Two distinct validators, do not conflate:
+**Validation layers.** Three distinct validators, do not conflate:
   - Zod validates API input (the shape of what a user submitted).
   - Ajv validates catalogue JSONB against `ProductType.schema` and `ProductType.planSchema` (the insurance-domain rules).
+  - Ajv also validates AI-extracted JSON against `packages/catalogue-schemas/extracted-product.json` (the LLM output contract — every leaf must be `{value, raw, confidence, sourceRef}`).
 
-**Forms.** Admin forms are generated from catalogue JSON Schemas via `@rjsf/core`. Do not hand-write forms for product-specific data. Hand-written forms are only for metadata (a Client's name and UEN, a User's profile, an Insurer's label).
+**Secrets at rest.** Tenant-supplied secrets (Azure AI Foundry keys today; future BYOK creds) are encrypted with AES-256-GCM via `apps/web/src/server/security/secret-cipher.ts`. The master key comes from `APP_SECRET_KEY` (Container App secret in prod, `.env.local` in dev — set with `openssl rand -base64 48`). The cipher format is `v1.<base64url(iv ‖ ciphertext ‖ authTag)>` so we can rotate later without breaking old rows. Never log plaintext keys, never persist them outside the encrypted column, and never echo them back from a tRPC procedure — `getMasked` returns `keyLastFour` only.
+
+**Forms.** Admin forms are generated from catalogue JSON Schemas via `@rjsf/core` for product-specific data. Hand-written forms are only for metadata (Client name + UEN, User profile, Insurer label, AI provider config) — and those use the `<Form>` + `<Field>` primitives in `apps/web/src/components/ui/` (react-hook-form + Zod under the hood). Do not invent a third form pattern; do not roll `useState`-driven forms in new code.
+
+**UI primitives.** Every new admin screen consumes the `components/ui/` layer: `<ScreenShell>` for header + content padding, `<Breadcrumbs>` (auto-rendered in `admin/layout.tsx`, do not duplicate per page), `<Card>` for surfaces, `<Field>` for labelled inputs, `<ConfidenceBadge>` for AI-extraction confidence chips, `<Form>` for hand-written forms. Spacing comes from utility classes (`gap-*`, `mb-*`, `p-*`, `flex`, `items-center`, `justify-between`) mapped to `--space-*` tokens — do not reach for inline `style={{}}`.
 
 **Error handling.** Server-side errors log with structured context (tenant id, user id, request id, action). Client-side error boundaries present a friendly message and a reference id. Never expose raw error messages to end users.
 
 **Tests.** Every server module has unit tests. Every server action has at least one integration test hitting a real Postgres (via testcontainers or a dedicated test DB). Every critical admin workflow has at least one Playwright test. Tests live next to their source (`foo.ts` next to `foo.test.ts`) for unit, under `tests/integration` and `tests/e2e` for the others.
 
-**Migrations.** One migration per logical change. Migration names are descriptive (`add_product_type_version_immutability_trigger`, not `update_schema`). Destructive migrations in production require a separate data migration + application deploy pair.
+**Migrations.** One migration per logical change. Migration names are descriptive (`add_product_type_version_immutability_trigger`, not `update_schema`). Destructive migrations in production require a separate data migration + application deploy pair. Every new tenant-scoped table MUST also include its RLS policy in the same migration — see `20260428100000_extend_rls/migration.sql` for the canonical pattern. The container's `docker/entrypoint.sh` runs `prisma migrate deploy` before `next start` on every revision boot, so a pushed migration auto-applies on the next deploy and a broken migration fails-fast (Container Apps rolls back the bad revision automatically).
 
 **Commits.** Conventional Commits, pushed directly to `main`. Small, focused, one concern per commit. The first line is the changelog entry; only use a body when the *why* needs more space. Run the full local check suite (`pnpm typecheck && pnpm check && pnpm test && pnpm build`) before every push — there is no PR review gate.
 
@@ -123,7 +138,10 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 - Mutate a published `ProductType` version or a `PUBLISHED` `BenefitYear`.
 - Bypass `requireTenantContext()` for "convenience" on tenant-scoped reads.
 - Skip Ajv validation on JSONB writes for "speed" — always validate.
-- Store secrets in code, env files committed to git, or Prisma seed scripts. Everything sensitive goes in Key Vault.
+- Store secrets in code, env files committed to git, or Prisma seed scripts. Everything sensitive goes in Key Vault, the Container App secret bag (referenced via `secretref:`), or — for tenant-supplied secrets — the AES-256-GCM column via `secret-cipher`.
+- Rotate `APP_SECRET_KEY` without a re-encryption migration — every existing `TenantAiProvider.encryptedKey` row will become undecryptable. Treat it as a one-time-set value.
+- Provision Azure resources via the portal or CLI without backing them up in Bicep — the next full Bicep deploy will diverge or worse, drop your manually-set Container App secrets.
+- Render hardcoded back-link eyebrows (`<p className="eyebrow"><Link>← X</Link></p>`) in admin screens — `<Breadcrumbs>` is rendered once in `admin/layout.tsx` and handles navigation.
 - Catch-and-ignore errors. Either handle them meaningfully or let them propagate with context.
 - Modify migrations that have been applied to any environment beyond local dev. Create a new migration instead.
 - Use raw SQL without an ADR justifying it.
@@ -146,7 +164,9 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Testing code that uses the database.** Spin up a Postgres via testcontainers in the test setup. Wrap each test in a transaction that rolls back on teardown.
 
-**Working with Azure resources.** Everything goes through Bicep. Do not create resources via portal or CLI without capturing them in Bicep after.
+**Working with Azure resources.** Everything goes through Bicep. Do not create resources via portal or CLI without capturing them in Bicep after. The deploy workflow (`.github/workflows/ci.yml`) takes the **fast path** (image-only update) when `infra/` is unchanged, and the **full Bicep path** when any file under `infra/` changes — be deliberate about which one you're triggering. Required GitHub Actions secrets are listed at the top of `ci.yml`; missing secrets surface as Bicep param defaults of `''` which omit the corresponding Container App secret/env var.
+
+**Adding a tenant-supplied secret.** New BYOK feature? Add it to the `TenantAiProvider` model only if it shares the AI Foundry shape; otherwise model a sibling `Tenant<X>Credential` table with `encryptedKey: String` + `keyLastFour: String @db.VarChar(4)` columns and the same RLS policy. Always go through `encryptSecret()` / `decryptSecret()` — never store plaintext. Expose a `getMasked` query that returns `keyLastFour` only, an `upsert`/`clear` mutation pair on `adminProcedure`, and a `test` mutation that decrypts in-memory and exercises the live API. The `apps/web/src/server/trpc/routers/tenant-ai-provider.ts` router is the canonical template.
 
 ## When stuck
 
@@ -167,6 +187,12 @@ Never silently invent behaviour. If a requirement is ambiguous, ask. If you made
 **Six metadata registries drive every dropdown.** Global Reference (Country/Currency/Industry), Insurer Registry, TPA Registry, Pool Registry, Product Catalogue, Operator Library, and the per-tenant Employee Schema. None of these dropdowns are hardcoded in UI code. See v2 plan §1.2 and §3 for sources of truth.
 
 **Policy, BenefitYear, Product, Plan — four different things.** A `Policy` is the abstract policy. A `BenefitYear` is a specific draft or published configuration for a benefit year (`DRAFT` / `PUBLISHED` / `ARCHIVED`). A `Product` is an instance of a `ProductType` under that `BenefitYear`. A `Plan` is one option within a Product (and may stack on another via `stacksOn`). The hierarchy is Tenant > Client > Policy > BenefitYear > Product > {Plans, PremiumRates, ProductEligibility}, with `PolicyEntity` rows sitting under Policy for multi-entity master policies (e.g. STM's three legal entities).
+
+**ExtractionDraft, not parseResult.** The pre-AI ingestion path wrote `PlacementSlipUpload.parseResult` directly. The new pipeline writes a separate `ExtractionDraft` row keyed 1:1 to the upload. Status flow: `QUEUED` → `EXTRACTING` → `READY` → `APPLIED` (or `FAILED` / `DISCARDED`). `ExtractionDraft.extractedProducts` holds `ExtractedProduct[]` validated against `extracted-product.json`; the broker reviews and edits in the new `/imports/[uploadId]/review` UI; on Apply the existing `applyToCatalogue` mutation creates real `Product` / `Plan` / `PolicyEntity` / `PremiumRate` rows. Heuristic parsing stays as a deterministic prepass — same `parsingRules` per insurer — but the LLM owns the final shape.
+
+**Two prisma migrate deploys per CI/CD run.** The deploy workflow runs `prisma migrate deploy` from the GitHub runner before swapping the image, AND the new container's `docker/entrypoint.sh` runs it again on startup. Both are idempotent, so this is fine — either path alone is enough. The runner path is faster feedback (you see the migration apply in the workflow log); the container path is the safety net for any deploy that bypasses the workflow.
+
+**Resource naming for observability.** Log Analytics is `${appName}-law` (not `-logs`); Application Insights is `${appName}-ai` (not `-appi`). These match the resources bootstrapped via az CLI on 2026-04-30; the Bicep modules were renamed to adopt them as no-ops rather than create duplicates.
 
 ---
 

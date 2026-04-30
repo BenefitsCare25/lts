@@ -95,6 +95,16 @@ param sharepointServiceAccountPassword string = ''
 @secure()
 param authSecret string = ''
 
+// ---- App-level encryption -------------------------------------------------
+// Master key for the AES-256-GCM cipher used by server/security/secret-cipher
+// to encrypt tenant-supplied secrets at rest (Azure AI Foundry keys today;
+// future BYOK credentials). Set once and never rotated without re-encrypting
+// every existing row.
+
+@description('AES-256-GCM master key for application-level encryption (TenantAiProvider). Generated once; rotating it makes existing encrypted rows undecryptable. Empty omits APP_SECRET_KEY; AI Foundry BYOK feature will fail.')
+@secure()
+param appSecretKey string = ''
+
 @description('Minimum container replicas. Set to 1 on staging to eliminate cold starts during active development.')
 param appMinReplicas int = 0
 
@@ -114,19 +124,25 @@ var appName = 'insurance-saas-${environmentName}'
 
 // ---- Optional: Log Analytics + App Insights --------------------------------
 
+// Log Analytics workspace — `-law` suffix matches the resource that
+// was bootstrapped via az CLI on 2026-04-30. The Bicep module config
+// (PerGB2018, 30-day retention) matches the live resource verbatim, so
+// a redeploy here is a no-op update; ARM does not recreate.
 module logAnalytics 'modules/log-analytics.bicep' = if (deployObservability) {
   name: 'logAnalytics'
   params: {
-    name: '${appName}-logs'
+    name: '${appName}-law'
     location: location
     tags: tags
   }
 }
 
+// Application Insights — `-ai` suffix mirrors the CLI bootstrap. Same
+// adopt-via-noop behaviour as the LAW module above.
 module appInsights 'modules/app-insights.bicep' = if (deployObservability) {
   name: 'appInsights'
   params: {
-    name: '${appName}-appi'
+    name: '${appName}-ai'
     location: location
     #disable-next-line BCP318
     workspaceId: logAnalytics.outputs.id
@@ -136,7 +152,7 @@ module appInsights 'modules/app-insights.bicep' = if (deployObservability) {
 
 // Workspace resource reference so we can listKeys() for Container Apps env.
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = if (deployObservability) {
-  name: '${appName}-logs'
+  name: '${appName}-law'
   dependsOn: [
     logAnalytics
   ]
@@ -243,6 +259,7 @@ module containerApp 'modules/container-app.bicep' = {
     sharepointServiceAccountUsername: sharepointServiceAccountUsername
     sharepointServiceAccountPassword: sharepointServiceAccountPassword
     authSecret: authSecret
+    appSecretKey: appSecretKey
     minReplicas: appMinReplicas
     tags: tags
   }
