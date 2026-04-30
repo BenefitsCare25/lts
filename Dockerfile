@@ -46,13 +46,12 @@ RUN pnpm prisma generate
 RUN STANDALONE_BUILD=true pnpm --filter @insurance-saas/web build
 
 # Dereference pnpm's symlinked node_modules into a flat tree at
-# /opt/prisma-runtime so the runtime image can copy in just the
-# prisma assets it needs (CLI, engines, generated client) without
-# dragging the entire .pnpm graph along.
+# /opt/prisma-runtime. Only the prisma CLI + engines are needed at
+# startup for `prisma migrate deploy`; the generated @prisma/client
+# is already inside the Next standalone bundle (Next traces it).
 RUN mkdir -p /opt/prisma-runtime/node_modules && \
     cp -RL node_modules/prisma /opt/prisma-runtime/node_modules/ && \
-    cp -RL node_modules/@prisma /opt/prisma-runtime/node_modules/ && \
-    cp -RL node_modules/.prisma /opt/prisma-runtime/node_modules/
+    cp -RL node_modules/@prisma /opt/prisma-runtime/node_modules/
 
 # ---- 3. run -----------------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS run
