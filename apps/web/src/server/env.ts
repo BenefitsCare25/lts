@@ -25,6 +25,11 @@ const PROD_REQUIRED = ['AUTH_SECRET'] as const;
 // the key was generated with `openssl rand -base64 48` and base64-
 // encoded. The cipher itself is AES-256-GCM via scrypt KDF.
 const APP_SECRET_KEY_MIN_LENGTH = 32;
+// Minimum AUTH_SECRET length. Auth.js v5 with JWT sessions wants at
+// least 32 random bytes to make HMAC-SHA256 token signatures
+// brute-force-resistant. Mirrors the APP_SECRET_KEY threshold so a
+// short value (e.g. a placeholder like "changeme") is rejected at boot.
+const AUTH_SECRET_MIN_LENGTH = 32;
 
 type RequiredKey = (typeof PROD_REQUIRED)[number];
 
@@ -63,6 +68,8 @@ export function validateEnvOnBoot(): void {
   const isProd = process.env.NODE_ENV === 'production';
 
   const missingAuth = PROD_REQUIRED.filter((key) => read(key) === undefined);
+  const authSecret = read('AUTH_SECRET');
+  const authSecretTooShort = authSecret !== undefined && authSecret.length < AUTH_SECRET_MIN_LENGTH;
   const appSecretKey = read('APP_SECRET_KEY');
   const appSecretMissing = appSecretKey === undefined;
   const appSecretTooShort =
@@ -72,6 +79,10 @@ export function validateEnvOnBoot(): void {
   if (isProd) {
     if (missingAuth.length > 0) {
       fatal.push(`Missing required auth env vars: ${missingAuth.join(', ')}.`);
+    } else if (authSecretTooShort) {
+      fatal.push(
+        `AUTH_SECRET must be at least ${AUTH_SECRET_MIN_LENGTH} characters (got ${authSecret.length}). Generate with \`openssl rand -base64 48\`.`,
+      );
     }
     if (appSecretMissing) {
       fatal.push(
@@ -92,6 +103,10 @@ export function validateEnvOnBoot(): void {
   if (missingAuth.length > 0) {
     console.warn(
       '[env] AUTH_SECRET not set — Auth.js will generate an ephemeral signing secret for this process. Sessions will invalidate on restart.',
+    );
+  } else if (authSecretTooShort) {
+    console.warn(
+      `[env] AUTH_SECRET is shorter than ${AUTH_SECRET_MIN_LENGTH} characters. Production will refuse to boot — fix before deploying.`,
     );
   }
   if (appSecretMissing) {

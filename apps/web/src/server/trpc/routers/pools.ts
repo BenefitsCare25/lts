@@ -12,6 +12,7 @@
 // Pool, so cross-tenant isolation is enforced one level up.
 // =============================================================
 
+import type { TenantDb } from '@/server/db/tenant';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -29,11 +30,7 @@ const poolInputSchema = z.object({
   members: z.array(memberSchema).max(20),
 });
 
-async function assertInsurersBelongToTenant(
-  // biome-ignore lint/suspicious/noExplicitAny: db type is the extended Prisma client
-  db: any,
-  insurerIds: string[],
-): Promise<void> {
+async function assertInsurersBelongToTenant(db: TenantDb, insurerIds: string[]): Promise<void> {
   if (insurerIds.length === 0) return;
   const matched = await db.insurer.findMany({
     where: { id: { in: insurerIds } },

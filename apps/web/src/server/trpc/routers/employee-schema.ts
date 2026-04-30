@@ -11,6 +11,7 @@
 // have full CRUD. The router enforces all three at the API level.
 // =============================================================
 
+import type { TenantDb } from '@/server/db/tenant';
 import {
   CUSTOM_FIELD_NAME_PATTERN,
   DEFAULT_EMPLOYEE_FIELDS,
@@ -68,8 +69,7 @@ const customFieldSchema = z
 // access. Cheaper than auto-seeding on tenant creation because not
 // every code path needs the schema (e.g. /api/health/redis).
 async function loadFields(
-  // biome-ignore lint/suspicious/noExplicitAny: prisma extension type
-  db: any,
+  db: TenantDb,
   tenantId: string,
 ): Promise<{ id: string; version: number; fields: EmployeeField[] }> {
   const existing = await db.employeeSchema.findFirst();
@@ -95,8 +95,7 @@ async function loadFields(
 }
 
 async function persistFields(
-  // biome-ignore lint/suspicious/noExplicitAny: prisma extension type
-  db: any,
+  db: TenantDb,
   schemaId: string,
   fields: EmployeeField[],
 ): Promise<{ version: number; fields: EmployeeField[] }> {

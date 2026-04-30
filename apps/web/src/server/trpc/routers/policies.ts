@@ -18,6 +18,7 @@
 // =============================================================
 
 import { prisma } from '@/server/db/client';
+import type { TenantDb } from '@/server/db/tenant';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -53,11 +54,7 @@ type PolicyInput = z.infer<typeof policyInputSchema>;
 // Verifies the client exists and belongs to the caller's tenant.
 // ctx.db.client.findFirst is tenant-scoped via the Prisma extension,
 // so a client from another tenant returns null and we throw NOT_FOUND.
-async function assertClient(
-  // biome-ignore lint/suspicious/noExplicitAny: extended Prisma client type
-  db: any,
-  clientId: string,
-): Promise<void> {
+async function assertClient(db: TenantDb, clientId: string): Promise<void> {
   const client = await db.client.findFirst({
     where: { id: clientId },
     select: { id: true },

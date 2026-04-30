@@ -72,4 +72,22 @@ describe('server/env', () => {
     setEnv({ NODE_ENV: 'development', AUTH_SECRET: undefined });
     expect(() => validateEnvOnBoot()).not.toThrow();
   });
+
+  it('validateEnvOnBoot rejects short AUTH_SECRET in production', () => {
+    setEnv({
+      NODE_ENV: 'production',
+      AUTH_SECRET: 'changeme',
+      APP_SECRET_KEY: 'a'.repeat(48),
+    });
+    expect(() => validateEnvOnBoot()).toThrowError(/AUTH_SECRET must be at least/);
+  });
+
+  it('validateEnvOnBoot accepts a 32+ char AUTH_SECRET in production', () => {
+    setEnv({
+      NODE_ENV: 'production',
+      AUTH_SECRET: 'a'.repeat(32),
+      APP_SECRET_KEY: 'a'.repeat(48),
+    });
+    expect(() => validateEnvOnBoot()).not.toThrow();
+  });
 });
