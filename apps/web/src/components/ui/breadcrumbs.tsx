@@ -20,7 +20,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Fragment } from 'react';
-import { resolveLabel, type BreadcrumbCrumb } from './breadcrumb-config';
+import { type BreadcrumbCrumb, resolveLabel } from './breadcrumb-config';
 
 interface BreadcrumbsProps {
   // Optional override map: { [segment]: label }. Use when the
@@ -39,9 +39,7 @@ export function Breadcrumbs({ overrides }: BreadcrumbsProps) {
 
   const crumbs: BreadcrumbCrumb[] = segments.map((segment, index) => {
     const fullPath = `/${segments.slice(0, index + 1).join('/')}`;
-    const label =
-      overrides?.[segment] ??
-      resolveLabel({ segment, fullPath, index, segments });
+    const label = overrides?.[segment] ?? resolveLabel({ segment, fullPath, index, segments });
     return {
       href: fullPath,
       label,
@@ -53,7 +51,11 @@ export function Breadcrumbs({ overrides }: BreadcrumbsProps) {
     <nav aria-label="Breadcrumb" className="breadcrumbs">
       {crumbs.map((crumb, i) => (
         <Fragment key={crumb.href}>
-          {i > 0 ? <span aria-hidden className="breadcrumbs__sep">›</span> : null}
+          {i > 0 ? (
+            <span aria-hidden className="breadcrumbs__sep">
+              ›
+            </span>
+          ) : null}
           {crumb.isCurrent ? (
             <span aria-current="page" className="breadcrumbs__current">
               {crumb.label}
