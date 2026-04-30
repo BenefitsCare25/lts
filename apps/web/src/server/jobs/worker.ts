@@ -1,15 +1,11 @@
-import { Worker } from 'bullmq';
 import { prisma } from '@/server/db/client';
-import {
-  AI_EXTRACTION_JOB,
-  type AiExtractionJobData,
-  processAiExtraction,
-} from './extraction';
+import type { Prisma } from '@prisma/client';
+import { Worker } from 'bullmq';
+import type { Job } from 'bullmq';
+import { AI_EXTRACTION_JOB, type AiExtractionJobData, processAiExtraction } from './extraction';
 import { HELLO_WORLD_JOB, processHelloWorld } from './hello-world';
 import { QUEUE_NAMES } from './queues';
 import { getRedisConnection, isRedisConfigured } from './redis';
-import type { Job } from 'bullmq';
-import type { Prisma } from '@prisma/client';
 
 let _worker: Worker | null = null;
 
@@ -54,10 +50,7 @@ export function startWorker(): void {
     if (!data?.uploadId) return;
     if ((job.attemptsMade ?? 0) < attempts) return; // more retries pending
     finalizeFailure(data.uploadId, err.message).catch((finalizeErr) => {
-      console.error(
-        `[jobs] failed to mark draft FAILED for upload ${data.uploadId}:`,
-        finalizeErr,
-      );
+      console.error(`[jobs] failed to mark draft FAILED for upload ${data.uploadId}:`, finalizeErr);
     });
   });
 

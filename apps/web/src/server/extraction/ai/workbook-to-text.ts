@@ -20,8 +20,8 @@
 //     a warning is recorded so the broker sees what was skipped.
 // =============================================================
 
-import ExcelJS from 'exceljs';
 import { normalizeToXlsxBuffer } from '@/server/ingestion/xls-to-xlsx';
+import ExcelJS from 'exceljs';
 
 // 150_000 chars ≈ 40k tokens of body + headroom for the system
 // preamble and tool-schema. Claude 4.6 / GPT-4.1 both handle 200k
@@ -113,8 +113,7 @@ function sheetToMarkdown(
   lines.push('');
 
   const lastRow = Math.min(ws.actualRowCount ?? ws.rowCount ?? 0, MAX_ROWS_PER_SHEET);
-  const truncatedRows =
-    (ws.actualRowCount ?? ws.rowCount ?? 0) > MAX_ROWS_PER_SHEET;
+  const truncatedRows = (ws.actualRowCount ?? ws.rowCount ?? 0) > MAX_ROWS_PER_SHEET;
   const lastCol = Math.min(ws.actualColumnCount ?? ws.columnCount ?? 0, MAX_COLS_PER_SHEET);
 
   if (lastRow === 0 || lastCol === 0) {
@@ -156,9 +155,7 @@ function sheetToMarkdown(
       const text = cellToText(cell);
       if (text === '') continue;
       const a1 = `${columnLetter(colIdx)}${rowIdx}`;
-      const trimmed = text.length > MAX_CELL_CHARS
-        ? `${text.slice(0, MAX_CELL_CHARS)}…`
-        : text;
+      const trimmed = text.length > MAX_CELL_CHARS ? `${text.slice(0, MAX_CELL_CHARS)}…` : text;
       rowLines.push(`${a1}: ${trimmed}`);
     }
     if (rowLines.length > 0) {
