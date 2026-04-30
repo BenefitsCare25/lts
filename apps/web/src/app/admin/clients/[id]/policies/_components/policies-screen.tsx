@@ -28,10 +28,7 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
     <ScreenShell
       title="Policies"
       actions={
-        <Link
-          href={`/admin/clients/${clientId}/policies/new`}
-          className="btn btn-primary"
-        >
+        <Link href={`/admin/clients/${clientId}/policies/new`} className="btn btn-primary">
           + New policy
         </Link>
       }

@@ -52,5 +52,4 @@ export type PremiumStrategy = (typeof PREMIUM_STRATEGIES)[number];
 // server-side Zod refinements so the two cannot drift.
 export const REGISTRY_CODE_PATTERN = '^[A-Z][A-Z0-9_]*$';
 export const REGISTRY_CODE_REGEX = /^[A-Z][A-Z0-9_]*$/;
-export const REGISTRY_CODE_HELP =
-  'Uppercase letters, digits, underscores. Unique per tenant.';
+export const REGISTRY_CODE_HELP = 'Uppercase letters, digits, underscores. Unique per tenant.';
