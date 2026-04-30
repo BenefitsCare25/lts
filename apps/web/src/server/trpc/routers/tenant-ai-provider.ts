@@ -27,13 +27,29 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
 
+// Reduce any Foundry URL the user might paste to its inference root
+// (scheme + host). The portal shows two URLs prominently:
+//   - resource (inference):  https://<res>.services.ai.azure.com
+//   - project  (mgmt API):   https://<res>.services.ai.azure.com/api/projects/<name>
+// Users naturally copy the project URL, which 400s with the misleading
+// "API version not supported" when we append /openai/deployments/...
+// because that path doesn't exist under /api/projects. Always collapse
+// to the URL origin so the inference path is correct regardless of
+// which one was pasted.
+function normalizeFoundryEndpoint(raw: string): string {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+}
+
 const endpointSchema = z
   .string()
   .trim()
   .url('Endpoint must be a full URL, e.g. https://my-resource.services.ai.azure.com')
   .max(300)
-  // Strip a trailing slash for a stable canonical form.
-  .transform((s) => s.replace(/\/+$/, ''));
+  .transform(normalizeFoundryEndpoint);
 
 const deploymentNameSchema = z
   .string()
@@ -59,7 +75,7 @@ const apiKeySchema = z
 const upsertInputSchema = z.object({
   endpoint: endpointSchema,
   deploymentName: deploymentNameSchema,
-  apiVersion: apiVersionSchema.default('2024-08-01-preview'),
+  apiVersion: apiVersionSchema.default('2024-10-21'),
   apiKey: apiKeySchema,
 });
 
@@ -100,35 +116,73 @@ async function readMasked(db: import('@/server/db/tenant').TenantDb): Promise<Ma
   };
 }
 
-// Tiny ping to the configured Azure AI Foundry chat-completions
-// endpoint. Validates that endpoint + deployment + key all work
-// together. Returns plain ok/error so the UI can render a status
-// chip without surfacing the raw key.
+// Foundry surfaces multiple inference protocols under a single
+// resource. Anthropic Claude deployments use the Anthropic Messages
+// API at /anthropic/v1/messages (with anthropic-version header and
+// x-api-key auth), while every other partner model (OpenAI, DeepSeek,
+// Cohere, Mistral, Llama, Phi, …) uses the Azure OpenAI compatibility
+// path at /openai/deployments/<name>/chat/completions (with api-key
+// auth and ?api-version=… query). We pick by deployment name prefix.
+// Source: https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude
+function isClaudeDeployment(deploymentName: string): boolean {
+  return /^claude/i.test(deploymentName);
+}
+
+// Anthropic API version Foundry currently supports for the Messages
+// API. This is the Anthropic protocol version (sent as a header), not
+// an Azure REST api-version, so we hardcode it instead of letting
+// tenants set it. If/when Foundry exposes a newer one this is the
+// single line to update.
+const ANTHROPIC_VERSION = '2023-06-01';
+
+// Tiny ping to the configured Azure AI Foundry inference endpoint.
+// Validates endpoint + deployment + key all work together. Returns
+// plain ok/error so the UI can render a status chip without surfacing
+// the raw key.
 async function pingAzureAiFoundry(args: {
   endpoint: string;
   deploymentName: string;
   apiVersion: string;
   apiKey: string;
 }): Promise<{ ok: true; latencyMs: number } | { ok: false; status: number; error: string }> {
-  // Azure AI Foundry exposes both the OpenAI-compatible Azure OpenAI
-  // path and the newer Azure AI Inference path. We use the OpenAI
-  // path (deployment-scoped) because every Foundry resource exposes
-  // it and most tenants will be migrating from Azure OpenAI.
-  const url = `${args.endpoint}/openai/deployments/${encodeURIComponent(
-    args.deploymentName,
-  )}/chat/completions?api-version=${encodeURIComponent(args.apiVersion)}`;
+  // Defensive normalisation: rows saved before the schema-level
+  // normaliser was added may still hold the project-scoped URL
+  // (.../api/projects/<name>), which 404s under both /anthropic and
+  // /openai. Collapse to the resource origin so the test works even
+  // on dirty rows — the user can then re-save to persist the
+  // canonical form.
+  const root = normalizeFoundryEndpoint(args.endpoint);
+  const claude = isClaudeDeployment(args.deploymentName);
+  const url = claude
+    ? `${root}/anthropic/v1/messages`
+    : `${root}/openai/deployments/${encodeURIComponent(
+        args.deploymentName,
+      )}/chat/completions?api-version=${encodeURIComponent(args.apiVersion)}`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (claude) {
+    headers['x-api-key'] = args.apiKey;
+    headers['anthropic-version'] = ANTHROPIC_VERSION;
+  } else {
+    headers['api-key'] = args.apiKey;
+  }
+  // Anthropic puts the model in the body (deployment is not in the
+  // URL); OpenAI-compat reads the deployment from the URL path.
+  const body = claude
+    ? {
+        model: args.deploymentName,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+      }
+    : {
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+      };
   const started = Date.now();
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': args.apiKey,
-      },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: 'ping' }],
-        max_tokens: 1,
-      }),
+      headers,
+      body: JSON.stringify(body),
       // Don't hang the broker UI — 10s is more than enough for a
       // 1-token response.
       signal: AbortSignal.timeout(10_000),

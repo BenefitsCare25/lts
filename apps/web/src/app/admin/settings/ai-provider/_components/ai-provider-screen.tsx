@@ -16,7 +16,7 @@ import { Card, ConfidenceBadge, Field, ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { useEffect, useState } from 'react';
 
-const DEFAULT_API_VERSION = '2024-08-01-preview';
+const DEFAULT_API_VERSION = '2024-10-21';
 
 interface FormState {
   endpoint: string;
@@ -200,7 +200,7 @@ export function AiProviderScreen() {
                 <Field
                   label="Endpoint"
                   htmlFor="aip-endpoint"
-                  hint="The resource URL from Azure AI Foundry, e.g. https://my-resource.services.ai.azure.com"
+                  hint="The resource URL only — e.g. https://my-resource.services.ai.azure.com. Do NOT paste the project URL (the one ending in /api/projects/…) shown in Foundry; that path is for management calls and will fail at inference time."
                   required
                 >
                   <input
@@ -234,7 +234,7 @@ export function AiProviderScreen() {
                 <Field
                   label="API version"
                   htmlFor="aip-apiversion"
-                  hint="Azure REST API version. Leave the default unless the Foundry portal lists a newer one."
+                  hint="Azure REST API version, used for OpenAI-compatible deployments (gpt-*, deepseek-*, etc.). Ignored for Claude deployments — Foundry routes those through the Anthropic Messages API and Claude's protocol version is fixed by Anthropic. Leave at 2024-10-21 unless the Foundry portal lists a newer one."
                 >
                   <input
                     id="aip-apiversion"
