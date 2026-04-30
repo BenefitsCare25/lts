@@ -12,6 +12,6 @@ export default async function BenefitGroupsPage({
   params: Promise<{ id: string; policyId: string }>;
 }) {
   await requireSession();
-  const { id, policyId } = await params;
-  return <BenefitGroupsScreen clientId={id} policyId={policyId} />;
+  const { policyId } = await params;
+  return <BenefitGroupsScreen policyId={policyId} />;
 }

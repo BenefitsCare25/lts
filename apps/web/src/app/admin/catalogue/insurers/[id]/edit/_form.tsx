@@ -83,9 +83,6 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href="/admin/catalogue/insurers">← Insurers</Link>
-        </p>
         <h1>Edit insurer</h1>
       </section>
 

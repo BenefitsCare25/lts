@@ -190,9 +190,7 @@ export function PlanForm({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={productHref}>← {product.data.productType.code} plans</Link>
-        </p>
+        <p className="eyebrow mb-2">{product.data.productType.code} plans</p>
         <h1>{mode === 'create' ? 'Add plan' : `Edit ${form.code}`}</h1>
       </section>
 

@@ -178,10 +178,9 @@ export function EditPolicyForm({
   return (
     <>
       <section className="section">
-        <p className="eyebrow">
-          <Link href={`/admin/clients/${clientId}/policies`}>← Policies</Link>
-          {policy.data?.client ? <> · {policy.data.client.legalName}</> : null}
-        </p>
+        {policy.data?.client ? (
+          <p className="eyebrow mb-2">{policy.data.client.legalName}</p>
+        ) : null}
         <h1>Edit policy</h1>
         <p className="field-help">Saved version: v{policy.data.versionId}</p>
       </section>

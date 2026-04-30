@@ -45,6 +45,15 @@ RUN pnpm prisma generate
 # STANDALONE_BUILD enables next.config.mjs's output:'standalone' branch.
 RUN STANDALONE_BUILD=true pnpm --filter @insurance-saas/web build
 
+# Dereference pnpm's symlinked node_modules into a flat tree at
+# /opt/prisma-runtime so the runtime image can copy in just the
+# prisma assets it needs (CLI, engines, generated client) without
+# dragging the entire .pnpm graph along.
+RUN mkdir -p /opt/prisma-runtime/node_modules && \
+    cp -RL node_modules/prisma /opt/prisma-runtime/node_modules/ && \
+    cp -RL node_modules/@prisma /opt/prisma-runtime/node_modules/ && \
+    cp -RL node_modules/.prisma /opt/prisma-runtime/node_modules/
+
 # ---- 3. run -----------------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine AS run
 WORKDIR /app
@@ -59,11 +68,21 @@ COPY --from=build /repo/apps/web/.next/standalone ./
 COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
 
+# Prisma CLI + migrate engine + schema/migrations. Needed at startup
+# so the entrypoint can run `prisma migrate deploy`. The /opt/prisma-runtime
+# tree was pre-flattened in the build stage to avoid pnpm's symlink layout.
+COPY --from=build /repo/prisma ./prisma
+COPY --from=build /opt/prisma-runtime/node_modules ./node_modules
+
+# Entrypoint runs `prisma migrate deploy` before starting the server.
+COPY docker/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 # Non-root user — Container Apps runs containers as PID 1.
 RUN addgroup -S app && adduser -S app -G app && chown -R app:app /app
 USER app
 
 EXPOSE 3000
 
-# The standalone output wires everything through apps/web/server.js.
-CMD ["node", "apps/web/server.js"]
+# Run pending migrations, then exec the standalone server (PID 1).
+ENTRYPOINT ["./entrypoint.sh"]
