@@ -251,9 +251,9 @@ export const placementSlipsRouter = router({
       );
 
       // tenantId is required at the column level (added in
-       // 20260430140000_wizard_foundation). Bare `prisma.placementSlipUpload.create`
-       // doesn't auto-inject it; pass explicitly. The wizard's orphan-upload path
-       // uses the same column with clientId omitted.
+      // 20260430140000_wizard_foundation). Bare `prisma.placementSlipUpload.create`
+      // doesn't auto-inject it; pass explicitly. The wizard's orphan-upload path
+      // uses the same column with clientId omitted.
       const upload = await prisma.placementSlipUpload.create({
         data: {
           tenantId: ctx.tenantId,
@@ -679,7 +679,8 @@ export const placementSlipsRouter = router({
             );
 
             // Plans — derive a short code from the parsed label.
-            const coverBasis = COVER_BASIS_BY_STRATEGY[productType.premiumStrategy] ?? 'fixed_amount';
+            const coverBasis =
+              COVER_BASIS_BY_STRATEGY[productType.premiumStrategy] ?? 'fixed_amount';
 
             const labelToCode = new Map<string, string>();
             for (let i = 0; i < parsed.plans.length; i++) {

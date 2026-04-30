@@ -140,9 +140,7 @@ export function ReviewSection({ form, draft, sectionStatus, applyReadiness }: Pr
 
           {error ? <p className="field-error mt-3">{error}</p> : null}
           {appliedClientId ? (
-            <p className="text-good mt-3">
-              ✓ Applied. Redirecting to the new client&hellip;
-            </p>
+            <p className="text-good mt-3">✓ Applied. Redirecting to the new client&hellip;</p>
           ) : null}
 
           <div className="row mt-3">

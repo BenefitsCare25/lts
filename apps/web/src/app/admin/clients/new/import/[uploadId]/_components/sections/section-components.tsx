@@ -5,9 +5,10 @@
 // needs; unused props are ignored.
 // =============================================================
 
-import type { ComponentType } from 'react';
 import type { AppRouter } from '@/server/trpc/router';
 import type { inferRouterOutputs } from '@trpc/server';
+import type { ComponentType } from 'react';
+import type { DraftFormState, SectionId } from './_registry';
 import { BenefitYearSection } from './benefit-year';
 import { ClientSection } from './client';
 import { EligibilitySection } from './eligibility';
@@ -18,13 +19,9 @@ import { ReconciliationSection } from './reconciliation';
 import { ReviewSection } from './review';
 import { SchemaAdditionsSection } from './schema-additions';
 import { SourceSummarySection } from './source-summary';
-import type { DraftFormState, SectionId } from './_registry';
 
 type Draft = inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
-type SectionStatusMap = Record<
-  SectionId,
-  'complete' | 'in_progress' | 'has_issues' | 'pending'
->;
+type SectionStatusMap = Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'>;
 
 export type SectionRenderProps = {
   draft: Draft;

@@ -29,8 +29,8 @@ import {
   type ExtractedProduct,
   envelopeFromParseResult,
 } from './heuristic-to-envelope';
-import { suggestBenefitGroups, type BenefitGroupSuggestion } from './predicate-suggester';
-import { reconcile, type ReconciliationReport } from './reconciliation';
+import { type BenefitGroupSuggestion, suggestBenefitGroups } from './predicate-suggester';
+import { type ReconciliationReport, reconcile } from './reconciliation';
 
 export type ExtractionSuggestions = {
   benefitGroups: BenefitGroupSuggestion[];
@@ -104,10 +104,7 @@ async function loadCatalogueContext(db: TenantDb): Promise<{
   return { catalogue, parsingRulesPerProduct, employeeFields };
 }
 
-export async function extractFromWorkbook(
-  db: TenantDb,
-  buffer: Buffer,
-): Promise<ExtractionResult> {
+export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise<ExtractionResult> {
   const { catalogue, parsingRulesPerProduct, employeeFields } = await loadCatalogueContext(db);
 
   // Stage 1 — deterministic parser.

@@ -337,7 +337,10 @@ function envelopeProduct(
         Number.parseInt(String(fields.last_entry_age ?? '').match(/\d+/)?.[0] ?? '', 10),
         headerSourceRef('last_entry_age'),
       ),
-      administrationType: stringField(fields.administration_type, headerSourceRef('administration_type')),
+      administrationType: stringField(
+        fields.administration_type,
+        headerSourceRef('administration_type'),
+      ),
       currency: stringField('SGD', headerSourceRef('default-currency')),
     },
     policyholder: {
@@ -371,10 +374,7 @@ function envelopeProduct(
 
 export type CatalogueLookup = {
   productTypeStrategy: Record<string, string>; // productTypeCode → premiumStrategy
-  parsingRules: Record<
-    string,
-    Record<string, ParsingRules>
-  >; // productTypeCode → insurerCode → ParsingRules
+  parsingRules: Record<string, Record<string, ParsingRules>>; // productTypeCode → insurerCode → ParsingRules
 };
 
 export function envelopeFromParseResult(

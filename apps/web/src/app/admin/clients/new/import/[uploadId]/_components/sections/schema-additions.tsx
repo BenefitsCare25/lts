@@ -40,9 +40,9 @@ export function SchemaAdditionsSection({ draft }: Props) {
 
   const existingFields = useMemo(() => {
     if (!employeeSchema.data) return [];
-    return (employeeSchema.data.fields as Array<{ name: string; label: string; type: string }>).filter(
-      (f) => f.name,
-    );
+    return (
+      employeeSchema.data.fields as Array<{ name: string; label: string; type: string }>
+    ).filter((f) => f.name);
   }, [employeeSchema.data]);
 
   if (suggestions.missingPredicateFields.length === 0) {
@@ -89,9 +89,7 @@ export function SchemaAdditionsSection({ draft }: Props) {
                   </li>
                   <li>
                     <strong>Used by</strong>:{' '}
-                    {field.referencedBy.length === 0
-                      ? '—'
-                      : field.referencedBy.join(', ')}
+                    {field.referencedBy.length === 0 ? '—' : field.referencedBy.join(', ')}
                   </li>
                 </ul>
 
@@ -165,8 +163,8 @@ export function SchemaAdditionsSection({ draft }: Props) {
                           }))
                         }
                       />
-                      Drop predicate term ({field.referencedBy.length}{' '}
-                      predicate{field.referencedBy.length === 1 ? '' : 's'} affected)
+                      Drop predicate term ({field.referencedBy.length} predicate
+                      {field.referencedBy.length === 1 ? '' : 's'} affected)
                     </label>
                   </div>
                 </fieldset>

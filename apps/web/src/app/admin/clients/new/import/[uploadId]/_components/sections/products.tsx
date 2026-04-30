@@ -150,18 +150,8 @@ function DetailsTab({ product }: { product: WizardExtractedProduct }) {
       <Card className="card-padded">
         <h3 className="mb-3">Product details</h3>
         <div className="form-grid">
-          <FieldRow
-            label="Product type"
-            value={product.productTypeCode}
-            confidence={1}
-            readOnly
-          />
-          <FieldRow
-            label="Insurer"
-            value={product.insurerCode}
-            confidence={1}
-            readOnly
-          />
+          <FieldRow label="Product type" value={product.productTypeCode} confidence={1} readOnly />
+          <FieldRow label="Insurer" value={product.insurerCode} confidence={1} readOnly />
           <FieldRow
             label="Policy number"
             value={product.header.policyNumber.value ?? ''}
@@ -428,10 +418,10 @@ function EndorsementsTab({ product }: { product: WizardExtractedProduct }) {
       <Card className="card-padded">
         <h3 className="mb-3">Endorsements &amp; exclusions</h3>
         <p className="field-help mb-3">
-          Plan-level cover additions (endorsements) and carve-outs (exclusions) are stored as
-          codes against the tenant&rsquo;s catalogues. Today the catalogues are empty by default —
-          seed them in the next slice and the slip&rsquo;s comments sheet will auto-suggest matches
-          per plan.
+          Plan-level cover additions (endorsements) and carve-outs (exclusions) are stored as codes
+          against the tenant&rsquo;s catalogues. Today the catalogues are empty by default — seed
+          them in the next slice and the slip&rsquo;s comments sheet will auto-suggest matches per
+          plan.
         </p>
         <ul className="issue-list">
           {product.plans.map((plan) => {
@@ -473,7 +463,10 @@ function FieldRow({
 }) {
   // Stable id derived from the label so each FieldRow's <label
   // for="…"> matches its input. Slugifies for safety.
-  const id = `fr-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  const id = `fr-${label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')}`;
   return (
     <div className="field">
       <label className="field-label" htmlFor={id}>

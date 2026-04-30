@@ -25,8 +25,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type DraftFormState,
-  type SectionId,
   SECTIONS,
+  type SectionId,
   emptyDraftFormState,
 } from './sections/_registry';
 import { SECTION_COMPONENTS } from './sections/section-components';
@@ -81,10 +81,7 @@ export function WizardShell({ uploadId }: Props) {
     });
   }, [draft.data]);
 
-  const sectionStatus = useMemo(
-    () => computeSectionStatus(form, draft.data),
-    [form, draft.data],
-  );
+  const sectionStatus = useMemo(() => computeSectionStatus(form, draft.data), [form, draft.data]);
   const applyReadiness = useMemo(() => {
     const total = SECTIONS.length;
     const ready = SECTIONS.filter((s) => sectionStatus[s.id] === 'complete').length;
@@ -219,18 +216,15 @@ function PrevNextNav({
 // completeness against `form` (broker-edited) and the draft (AI-
 // extracted). Generic enough that sections can be added without
 // changing the shell.
-type DraftLike =
-  | { extractedProducts: unknown; progress: unknown }
-  | null
-  | undefined;
+type DraftLike = { extractedProducts: unknown; progress: unknown } | null | undefined;
 
 function computeSectionStatus(
   form: DraftFormState,
   draft: DraftLike,
 ): Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> {
-  const extracted =
-    (draft?.extractedProducts as Array<{ insurerCode: string }> | null) ?? [];
-  const progressObj = (draft?.progress as { suggestions?: { missingPredicateFields?: unknown[] } } | null) ?? null;
+  const extracted = (draft?.extractedProducts as Array<{ insurerCode: string }> | null) ?? [];
+  const progressObj =
+    (draft?.progress as { suggestions?: { missingPredicateFields?: unknown[] } } | null) ?? null;
   const missingFieldsCount = progressObj?.suggestions?.missingPredicateFields?.length ?? 0;
   const result: Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> = {
     source: 'complete', // read-only summary; always complete once loaded
@@ -260,7 +254,10 @@ function computeSectionStatus(
   }
 
   // Policy entities
-  if (form.policyEntities.length > 0 && form.policyEntities.every((e) => e.legalName && e.policyNumber)) {
+  if (
+    form.policyEntities.length > 0 &&
+    form.policyEntities.every((e) => e.legalName && e.policyNumber)
+  ) {
     result.entities = form.policyEntities.some((e) => e.isMaster) ? 'complete' : 'has_issues';
   } else if (form.policyEntities.length > 0) {
     result.entities = 'in_progress';
