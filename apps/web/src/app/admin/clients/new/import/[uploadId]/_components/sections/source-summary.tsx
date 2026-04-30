@@ -6,8 +6,8 @@
 // =============================================================
 
 import { Card } from '@/components/ui';
-import type { inferRouterOutputs } from '@trpc/server';
 import type { AppRouter } from '@/server/trpc/router';
+import type { inferRouterOutputs } from '@trpc/server';
 
 type DraftQuery = inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
 

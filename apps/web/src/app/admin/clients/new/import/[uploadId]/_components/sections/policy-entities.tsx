@@ -16,10 +16,7 @@ type Props = {
 };
 
 export function PolicyEntitiesSection({ form, setForm }: Props) {
-  const update = (
-    index: number,
-    patch: Partial<DraftFormState['policyEntities'][number]>,
-  ) => {
+  const update = (index: number, patch: Partial<DraftFormState['policyEntities'][number]>) => {
     setForm((prev) => ({
       ...prev,
       policyEntities: prev.policyEntities.map((e, i) => (i === index ? { ...e, ...patch } : e)),
@@ -137,7 +134,8 @@ export function PolicyEntitiesSection({ form, setForm }: Props) {
                         value={row.headcountEstimate ?? ''}
                         onChange={(e) =>
                           update(idx, {
-                            headcountEstimate: e.target.value === '' ? null : Number(e.target.value),
+                            headcountEstimate:
+                              e.target.value === '' ? null : Number(e.target.value),
                           })
                         }
                       />

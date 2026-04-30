@@ -61,9 +61,7 @@ export function EligibilitySection({ draft }: Props) {
                 {suggestions.benefitGroups.map((g) => (
                   <li
                     key={g.suggestedName}
-                    className={
-                      g.tokenMatches === 0 ? 'issue is-warning' : 'issue is-info'
-                    }
+                    className={g.tokenMatches === 0 ? 'issue is-warning' : 'issue is-info'}
                   >
                     <label className="row" style={{ alignItems: 'flex-start', gap: '0.75rem' }}>
                       <input
@@ -105,11 +103,7 @@ export function EligibilitySection({ draft }: Props) {
                 : 'No extracted products — nothing to map eligibility against.'}
             </p>
           ) : (
-            <Matrix
-              suggestions={suggestions}
-              products={products}
-              included={included}
-            />
+            <Matrix suggestions={suggestions} products={products} included={included} />
           )}
         </Card>
       </section>
@@ -168,7 +162,9 @@ function Matrix({
                 {products.map((p) => {
                   const defaultRawCode = row[p.productTypeCode];
                   const matchedPlan = defaultRawCode
-                    ? p.plans.find((pl) => pl.rawCode === defaultRawCode || pl.code === defaultRawCode)
+                    ? p.plans.find(
+                        (pl) => pl.rawCode === defaultRawCode || pl.code === defaultRawCode,
+                      )
                     : null;
                   return (
                     <td key={p.productTypeCode}>

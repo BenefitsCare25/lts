@@ -52,9 +52,10 @@ export function InsurersPoolSection({ draft }: Props) {
   // This is workbook-level info, repeated across every GE product;
   // taking it from the first match is fine.
   const poolName = useMemo(() => {
-    const result = (draft.upload.parseResult as null | {
-      products?: { fields?: Record<string, unknown> }[];
-    }) ?? null;
+    const result =
+      (draft.upload.parseResult as null | {
+        products?: { fields?: Record<string, unknown> }[];
+      }) ?? null;
     for (const p of result?.products ?? []) {
       const name = String(p.fields?.pool_name ?? '').trim();
       if (name && name !== 'NA' && name !== 'N.A') return name;
@@ -101,9 +102,7 @@ export function InsurersPoolSection({ draft }: Props) {
                       <td>{row.productCount}</td>
                       <td>
                         {row.registryId ? (
-                          <span
-                            className={row.active ? 'pill pill-success' : 'pill pill-muted'}
-                          >
+                          <span className={row.active ? 'pill pill-success' : 'pill pill-muted'}>
                             {row.active ? 'in registry' : 'inactive'}
                           </span>
                         ) : (

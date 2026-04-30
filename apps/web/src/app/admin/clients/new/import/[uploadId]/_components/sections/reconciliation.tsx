@@ -58,9 +58,11 @@ export function ReconciliationSection({ draft }: Props) {
                           : '—'}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        {row.declared != null
-                          ? row.declared.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                          : <span className="text-muted">— pending</span>}
+                        {row.declared != null ? (
+                          row.declared.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                        ) : (
+                          <span className="text-muted">— pending</span>
+                        )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {row.variancePct != null ? (
@@ -87,16 +89,20 @@ export function ReconciliationSection({ draft }: Props) {
                       })}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {reconciliation.grandDeclared != null
-                        ? reconciliation.grandDeclared.toLocaleString(undefined, {
-                            maximumFractionDigits: 2,
-                          })
-                        : <span className="text-muted">— pending</span>}
+                      {reconciliation.grandDeclared != null ? (
+                        reconciliation.grandDeclared.toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })
+                      ) : (
+                        <span className="text-muted">— pending</span>
+                      )}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {reconciliation.grandVariancePct != null
-                        ? `${reconciliation.grandVariancePct.toFixed(2)}%`
-                        : <span className="text-muted">—</span>}
+                      {reconciliation.grandVariancePct != null ? (
+                        `${reconciliation.grandVariancePct.toFixed(2)}%`
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
                   </tr>
                 </tbody>
@@ -106,8 +112,8 @@ export function ReconciliationSection({ draft }: Props) {
 
           {reconciliation.grandDeclared == null ? (
             <p className="field-help mt-3">
-              <strong>Note:</strong> Slip-declared totals are not parsed yet. Once the parser
-              learns to read the billing-numbers sheet, the &ldquo;Slip declared&rdquo; and
+              <strong>Note:</strong> Slip-declared totals are not parsed yet. Once the parser learns
+              to read the billing-numbers sheet, the &ldquo;Slip declared&rdquo; and
               &ldquo;Variance&rdquo; columns will populate automatically — Apply will block when
               variance exceeds 1%.
             </p>
