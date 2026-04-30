@@ -172,3 +172,29 @@ All 5 items shipped 2026-04-28. Local-only commits (not pushed to main yet) — 
 ### Phase 2 deliverable shape
 
 A v2-style plan once we have a sponsor / first-prospect for Phase 2 scope. Keep this section as the running backlog until then.
+
+---
+
+## Phase 2A — Import-first Create Client wizard (in flight)
+
+The first concrete Phase 2 slice. Replaces manual client creation with a placement-slip-first wizard that runs the AI extraction pipeline end-to-end. All entries 2026-04-30 unless noted.
+
+| Item | Status | Notes |
+|---|---|---|
+| Migration `20260430140000_wizard_foundation` | ✅ done | Nullable `PlacementSlipUpload.clientId` + direct `tenantId`; `Policy.ageBasis` + `BenefitYear.carryForwardFromYearId`; 7 new tables (`BenefitGroupPreset`, `EndorsementCatalogue`, `ExclusionCatalogue`, `PolicyException`, `FlexBundle`, `FlexBundlePlan`, `ProductAttachment`, `IssueType`); RLS + FORCE on every new tenant-scoped table. `TENANT_MODELS` 10 → 14. |
+| Catalogue seed extensions | ✅ done | `PRODUCT_BASE_PROPERTIES` gained sum/premium currencies, `notes`, `no_underwriting_max_age`. `SCHEDULE_REMARK_PROPERTIES` (endorsements + exclusions arrays) baked into every product's `planSchema.schedule` via `planSchemaFor()`. |
+| AI extraction pipeline | ✅ done (heuristic) / ⏳ LLM stage deferred | `server/extraction/{extractor,heuristic-to-envelope,predicate-suggester,reconciliation,predicate-patterns}.ts`. Heuristic path produces full envelope-shaped `ExtractedProduct[]` with provenance + confidence per leaf; suggestions blob carries benefit-group predicates, default-plan matrix, missing-field detection, reconciliation totals. LLM hook wired but no-op until BYOK calibration lands. |
+| `placementSlips.uploadOrphan` | ✅ done | Synchronous parse + extract; persists upload + ExtractionDraft (READY); JSON size guarded at 4 MB. |
+| `extraction-drafts` tRPC router | ✅ done | `listOrphans`, `byUploadId`, `updateExtractedProducts`, `discard`, `applyToCatalogue` (single Prisma transaction creating Client + Policy + PolicyEntities + BenefitYear, binding the upload, marking the draft APPLIED, AuditLog). |
+| `/admin/clients/new` mode picker | ✅ done | Two-tile entry (Import slip / Type details) + orphan-resume list. Manual form lifted from legacy `/admin/clients` create section. |
+| Wizard shell + 10 sections | ✅ done | Three-pane layout, left rail with status icons, URL-hash deep-linking. All 10 sections shipped functional (no placeholders): Source / Client / Policy entities / Benefit year / Insurers & pool / Products (4 sub-tabs) / Eligibility / Schema additions / Reconciliation / Review & apply. Confidence dots and source-cell breadcrumbs everywhere. |
+| Cross-section refactor | ✅ done | `readFileAsBase64` lifted to `lib/file.ts`; `COVER_BASIS_BY_STRATEGY` + `excelColumnIndex` to `server/catalogue/premium-strategy.ts`; predicate pattern table to `predicate-patterns.ts` (reconciled `Bargainable` mapping); `assertExcelBuffer` + `persistUploadBytes` extracted in `placement-slips.ts`; section dispatch uses `SECTION_COMPONENTS` registry instead of ternary chain. |
+
+### Phase 2A — what's next
+
+- LLM stage: actual call against `TenantAiProvider`, prompt-cached system preamble + per-(productType, insurer) few-shot examples
+- Per-product apply pipeline merged into `extractionDrafts.applyToCatalogue` — Plans / PremiumRates / BenefitGroups / ProductEligibility / EmployeeSchema additions in one transaction
+- Billing-numbers sheet parser → declared totals → reconciliation Variance column
+- Endorsement / Exclusion catalogue seed data + `comments` sheet → catalogue-code mapping
+- Flex bundle composition UI (schema is in place)
+- Effective-dated plan changes mid-year UI

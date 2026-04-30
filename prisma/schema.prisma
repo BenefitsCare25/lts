@@ -36,15 +36,19 @@ model Tenant {
   slug      String   @unique
   createdAt DateTime @default(now())
 
-  users            User[]
-  clients          Client[]
-  employeeSchemas  EmployeeSchema[]
-  productTypes     ProductType[]
-  insurers         Insurer[]
-  tpas             TPA[]
-  pools            Pool[]
-  extractionDrafts ExtractionDraft[]
-  aiProvider       TenantAiProvider?
+  users                User[]
+  clients              Client[]
+  employeeSchemas      EmployeeSchema[]
+  productTypes         ProductType[]
+  insurers             Insurer[]
+  tpas                 TPA[]
+  pools                Pool[]
+  extractionDrafts     ExtractionDraft[]
+  aiProvider           TenantAiProvider?
+  benefitGroupPresets  BenefitGroupPreset[]
+  endorsementCatalogue EndorsementCatalogue[]
+  exclusionCatalogue   ExclusionCatalogue[]
+  placementSlipUploads PlacementSlipUpload[]
 }
 
 model User {
@@ -271,33 +275,53 @@ enum ClientStatus {
 }
 
 model Policy {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   clientId  String
   name      String
-  versionId Int    @default(1) // optimistic locking
+  versionId Int      @default(1) // optimistic locking
+  // How an employee's age-next-birthday is computed for eligibility:
+  //   POLICY_START — age at policy start date (Inspro default)
+  //   HIRE_DATE    — age at the employee's hire date
+  //   AS_AT_EVENT  — recomputed at each enrolment / claim event
+  ageBasis  AgeBasis @default(POLICY_START)
 
-  client        Client         @relation(fields: [clientId], references: [id])
+  client        Client            @relation(fields: [clientId], references: [id])
   benefitYears  BenefitYear[]
   entities      PolicyEntity[]
   benefitGroups BenefitGroup[]
+  exceptions    PolicyException[]
+  flexBundles   FlexBundle[]
 
   @@index([clientId])
 }
 
-model BenefitYear {
-  id          String           @id @default(cuid())
-  policyId    String
-  startDate   DateTime
-  endDate     DateTime
-  state       BenefitYearState @default(DRAFT)
-  publishedAt DateTime?
-  publishedBy String?
+enum AgeBasis {
+  POLICY_START
+  HIRE_DATE
+  AS_AT_EVENT
+}
 
-  policy   Policy    @relation(fields: [policyId], references: [id])
-  products Product[]
+model BenefitYear {
+  id                     String           @id @default(cuid())
+  policyId               String
+  startDate              DateTime
+  endDate                DateTime
+  state                  BenefitYearState @default(DRAFT)
+  publishedAt            DateTime?
+  publishedBy            String?
+  // Renewal carry-forward: when set, applyToCatalogue copies the prior
+  // year's Enrollment + ProductEligibility rows as the seed for this
+  // year. Brokers can override individual rows after copy.
+  carryForwardFromYearId String?
+
+  policy           Policy        @relation(fields: [policyId], references: [id])
+  products         Product[]
+  carryForwardFrom BenefitYear?  @relation("CarryForwardChain", fields: [carryForwardFromYearId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  carryForwardTo   BenefitYear[] @relation("CarryForwardChain")
 
   @@unique([policyId, startDate])
   @@index([policyId])
+  @@index([carryForwardFromYearId])
 }
 
 enum BenefitYearState {
@@ -346,12 +370,15 @@ model Product {
   data          Json // validated against ProductType.schema
   versionId     Int     @default(1) // optimistic locking
 
-  benefitYear  BenefitYear          @relation(fields: [benefitYearId], references: [id])
-  productType  ProductType          @relation(fields: [productTypeId], references: [id])
-  pool         Pool?                @relation(fields: [poolId], references: [id])
-  plans        Plan[]
-  eligibility  ProductEligibility[]
-  premiumRates PremiumRate[]
+  benefitYear     BenefitYear          @relation(fields: [benefitYearId], references: [id])
+  productType     ProductType          @relation(fields: [productTypeId], references: [id])
+  pool            Pool?                @relation(fields: [poolId], references: [id])
+  plans           Plan[]
+  eligibility     ProductEligibility[]
+  premiumRates    PremiumRate[]
+  attachments     ProductAttachment[]
+  exceptions      PolicyException[]
+  flexBundlePlans FlexBundlePlan[]
 
   @@index([benefitYearId])
   @@index([productTypeId])
@@ -371,9 +398,11 @@ model Plan {
   effectiveFrom DateTime? // effective-dated benefit schedules
   effectiveTo   DateTime?
 
-  product Product @relation(fields: [productId], references: [id])
-  riderOf Plan?   @relation("PlanRider", fields: [stacksOn], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  riders  Plan[]  @relation("PlanRider")
+  product         Product           @relation(fields: [productId], references: [id])
+  riderOf         Plan?             @relation("PlanRider", fields: [stacksOn], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  riders          Plan[]            @relation("PlanRider")
+  exceptions      PolicyException[]
+  flexBundlePlans FlexBundlePlan[]
 
   @@unique([productId, code])
   @@index([productId])
@@ -416,9 +445,10 @@ model Employee {
   hireDate        DateTime
   terminationDate DateTime?
 
-  client      Client       @relation(fields: [clientId], references: [id])
+  client      Client            @relation(fields: [clientId], references: [id])
   dependents  Dependent[]
   enrollments Enrollment[]
+  exceptions  PolicyException[]
 
   @@index([clientId])
 }
@@ -475,12 +505,24 @@ model AuditLog {
   @@index([entityType, entityId])
 }
 
+// PlacementSlipUpload now supports two lifecycles:
+//   1. Bound upload — broker uploads under an existing client; clientId
+//      is set at upload time. (Original Phase 1G behaviour.)
+//   2. Orphan upload — broker drops a slip on /admin/clients/new before
+//      a client exists; clientId is null until the wizard's Apply step
+//      creates the client and back-fills it. The wizard reads/writes
+//      via tenantId only during this window.
+//
+// Both shapes share `tenantId` directly so RLS works without a parent FK
+// walk (the parent-FK helper returned null for orphan rows). Existing
+// rows are back-filled via the migration's UPDATE statement.
 model PlacementSlipUpload {
   id              String   @id @default(cuid())
-  clientId        String
+  tenantId        String
+  clientId        String?
   uploadedBy      String
   filename        String
-  storageKey      String // Azure Blob key
+  storageKey      String // Azure Blob / SharePoint key
   storageWebUrl   String? // SharePoint/OneDrive web URL for the file
   insurerTemplate String? // detected template; null if unknown
   parseStatus     String // "PENDING" | "PARSED" | "FAILED" | "REVIEWED" | "APPLIED"
@@ -488,8 +530,10 @@ model PlacementSlipUpload {
   issues          Json? // resolved/unresolved issues
   createdAt       DateTime @default(now())
 
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
   extractionDraft ExtractionDraft?
 
+  @@index([tenantId])
   @@index([clientId])
 }
 
@@ -532,4 +576,167 @@ model ExtractionDraft {
   upload PlacementSlipUpload @relation(fields: [uploadId], references: [id])
 
   @@index([tenantId, status])
+}
+
+// ================================================================
+// Wizard foundation — catalogues, presets, exceptions, bundles
+// ================================================================
+//
+// Tables introduced in 20260430140000_wizard_foundation to support
+// the import-first Create Client wizard. All catalogues are tenant-
+// scoped (one per broker); bundles and exceptions are policy-scoped.
+// IssueType is a system-managed registry — no tenantId.
+
+// Reusable predicate templates per tenant. The wizard's eligibility
+// section offers these as quick-add chips so brokers stop re-typing
+// "Foreign Workers" / "Bargainable" / "Senior management" on every
+// new client. `applicableProductCodes` narrows the chip palette per
+// product type (e.g. "Manual worker" only relevant to WICA).
+model BenefitGroupPreset {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  name                   String
+  description            String?
+  predicate              Json // JSONLogic, same shape as BenefitGroup.predicate
+  category               String? // STAFF_CLASS | FOREIGN_WORKER | OCCUPATION | GEOGRAPHIC
+  applicableProductCodes String[] @default([])
+  createdAt              DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Tenant-scoped endorsement registry. Plans reference codes from
+// here in `Plan.schedule.endorsements[]`. Codes (e.g.
+// PROLONGED_ILLNESS_EXTENSION) are stable; labels and descriptions
+// are tenant-editable. AI extractor maps slip text to codes via the
+// catalogue.
+model EndorsementCatalogue {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  code                   String
+  label                  String
+  description            String?
+  applicableProductCodes String[] @default([])
+  active                 Boolean  @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// Mirror of EndorsementCatalogue for exclusions (carved-out cover).
+// Stored separately so the UI can offer them on different tabs and
+// the catalogue admin can curate them independently.
+model ExclusionCatalogue {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  code                   String
+  label                  String
+  description            String?
+  applicableProductCodes String[] @default([])
+  active                 Boolean  @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// Per-employee carve-outs against a Policy / Product / Plan.
+// Matches Inspro's "Employees Above Last Entry Age" grandfather list
+// plus future cases (waived underwriting, plan override, etc.).
+// `exceptionType` is a string code so new categories don't need a
+// migration; surface enum is enforced at the application layer.
+model PolicyException {
+  id            String    @id @default(cuid())
+  policyId      String
+  productId     String?
+  planId        String?
+  employeeId    String
+  exceptionType String // GRANDFATHERED_AGE | WAIVED_UNDERWRITING | PLAN_OVERRIDE | ...
+  reason        String?
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime  @default(now())
+
+  policy   Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  product  Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  plan     Plan?    @relation(fields: [planId], references: [id], onDelete: SetNull)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([policyId])
+  @@index([employeeId])
+}
+
+// Flex picker bundle composition. The Setup sheet's "Flex S = GTL +
+// GPA + GHS2 + SP2" pattern is one row in FlexBundle plus N rows in
+// FlexBundlePlan. Employee picks a bundle; enrolment writes one
+// Enrollment per bundle plan. Generic — any policy can have flex.
+model FlexBundle {
+  id          String   @id @default(cuid())
+  policyId    String
+  code        String // "FLEX_S", "FLEX_M", ...
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  policy Policy           @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  plans  FlexBundlePlan[]
+
+  @@unique([policyId, code])
+  @@index([policyId])
+}
+
+model FlexBundlePlan {
+  id        String @id @default(cuid())
+  bundleId  String
+  productId String
+  planId    String
+
+  bundle  FlexBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  plan    Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([bundleId, productId])
+  @@index([bundleId])
+}
+
+// File attachments hung off a Product (e.g. broker product summary
+// PDF). storageKey is a SharePoint path mirroring PlacementSlipUpload.
+// `kind` reserves the column for non-summary attachments later
+// (T&Cs, schedule of benefits PDF, claim form).
+model ProductAttachment {
+  id            String   @id @default(cuid())
+  productId     String
+  filename      String
+  storageKey    String
+  storageWebUrl String?
+  kind          String   @default("PRODUCT_SUMMARY")
+  uploadedBy    String?
+  createdAt     DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+// System-level taxonomy of every issue the wizard / parser / extractor
+// can surface. Intentionally has no tenantId — these are platform
+// concepts, not tenant data. Brokers see them rendered through one
+// generic <IssueResolver> component driven by `suggestedActions`.
+//
+// Severity here is the *default* — handlers can downgrade per
+// occurrence (e.g. PARTIAL_RATE_TABLE is `warning` by default but
+// upgrades to `error` if the broker chose "block apply" mode).
+model IssueType {
+  code             String   @id // e.g. "INSURER_CELL_VS_TEMPLATE_MISMATCH"
+  category         String // SOURCE | EXTRACTION | VALIDATION | RECONCILIATION
+  defaultSeverity  String // info | warning | error
+  label            String
+  description      String?
+  suggestedActions String[] @default([])
 }

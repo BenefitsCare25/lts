@@ -5,25 +5,9 @@
 'use client';
 
 import { ScreenShell } from '@/components/ui';
+import { readFileAsBase64 } from '@/lib/file';
 import { trpc } from '@/lib/trpc/client';
 import { useState } from 'react';
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const r = reader.result;
-      if (typeof r !== 'string') {
-        reject(new Error('Unexpected file read result.'));
-        return;
-      }
-      const idx = r.indexOf(',');
-      resolve(idx === -1 ? r : r.slice(idx + 1));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('File read failed.'));
-    reader.readAsDataURL(file);
-  });
-}
 
 export function ClaimsScreen({ clientId }: { clientId: string }) {
   const insurers = trpc.insurers.list.useQuery();

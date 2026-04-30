@@ -15,8 +15,10 @@
 // =============================================================
 
 import { safeCompile } from '@/server/catalogue/ajv';
+import { COVER_BASIS_BY_STRATEGY, excelColumnIndex } from '@/server/catalogue/premium-strategy';
 import { prisma } from '@/server/db/client';
 import type { TenantDb } from '@/server/db/tenant';
+import { extractFromWorkbook } from '@/server/extraction/extractor';
 import { type ParseResult, type ParsingRules, parsePlacementSlip } from '@/server/ingestion/parser';
 import {
   deleteFile as deleteFromSharePoint,
@@ -47,15 +49,116 @@ async function assertClient(db: TenantDb, clientId: string): Promise<void> {
   }
 }
 
-// PlacementSlipUpload has no `client` relation in the schema (just a
-// String FK on `clientId`), so tenant-gating happens in two steps.
-async function loadUploadForTenant(db: TenantDb, uploadId: string) {
+// Tenant-gating walks both shapes:
+//   bound upload  — clientId is set; verify the client belongs to ctx.tenant
+//   orphan upload — clientId is null; verify upload.tenantId matches ctx
+// The direct tenantId column was added in 20260430140000 to make orphan
+// uploads possible (the wizard creates them on /admin/clients/new
+// before any client exists).
+async function loadUploadForTenant(db: TenantDb, tenantId: string, uploadId: string) {
   const upload = await prisma.placementSlipUpload.findUnique({ where: { id: uploadId } });
   if (!upload) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Upload not found.' });
   }
-  await assertClient(db, upload.clientId);
+  if (upload.tenantId !== tenantId) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Upload not found.' });
+  }
+  if (upload.clientId) {
+    await assertClient(db, upload.clientId);
+  }
   return upload;
+}
+
+// Magic-byte sniff: accepts both .xlsx (ZIP signature PK\x03\x04)
+// and .xls (CFB / OLE2 signature D0 CF 11 E0 A1 B1 1A E1). Throws
+// BAD_REQUEST early so the parser doesn't allocate state on a non-
+// Excel file. The .xls path normalises to .xlsx in-memory inside
+// parser.ts via xls-to-xlsx.ts.
+function assertExcelBuffer(buffer: Buffer): void {
+  if (buffer.length === 0) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Empty file.' });
+  }
+  if (buffer.length > 25 * 1024 * 1024) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'File exceeds 25 MB limit.' });
+  }
+  const isXlsx =
+    buffer.length >= 4 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b &&
+    buffer[2] === 0x03 &&
+    buffer[3] === 0x04;
+  const isXls =
+    buffer.length >= 8 &&
+    buffer[0] === 0xd0 &&
+    buffer[1] === 0xcf &&
+    buffer[2] === 0x11 &&
+    buffer[3] === 0xe0 &&
+    buffer[4] === 0xa1 &&
+    buffer[5] === 0xb1 &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0xe1;
+  if (!isXlsx && !isXls) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'File is not a valid Excel workbook (.xls or .xlsx).',
+    });
+  }
+}
+
+// Persist an upload's bytes to SharePoint when ROPC env is wired,
+// or fall back to an inline marker (bytes not retained) otherwise.
+// `folderSegment` is the per-tenant subfolder — a clientId for
+// bound uploads, "__orphan__" for the wizard's pre-client uploads.
+// On SharePoint failure, mutates `result.issues` so the caller's
+// status downgrades to NEEDS_REVIEW without throwing.
+async function persistUploadBytes(
+  tenantId: string,
+  filename: string,
+  buffer: Buffer,
+  folderSegment: string,
+  result: ParseResult,
+): Promise<{ storageKey: string; webUrl: string | null }> {
+  if (!isSharePointConfigured()) {
+    return { storageKey: `inline:pending-${Date.now()}`, webUrl: null };
+  }
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { slug: true },
+  });
+  if (!tenant) {
+    throw new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'Tenant slug missing — cannot resolve SharePoint folder.',
+    });
+  }
+  // Filename: timestamped + sanitised so a re-upload of the same
+  // source file doesn't collide and audit history survives.
+  const safeName =
+    filename
+      .replace(/[/\\]/g, '_')
+      .replace(/\.\./g, '_')
+      .replace(/[^\w.\-() ]/g, '_')
+      .replace(/^\.+/, '')
+      .slice(0, 200)
+      .trim() || 'placement-slip.xlsx';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const finalName = `${stamp}__${safeName}`;
+  const folder = placementSlipFolder(tenant.slug, folderSegment);
+  try {
+    await ensureFolder(folder);
+    const uploaded = await uploadToSharePoint(folder, finalName, buffer);
+    return { storageKey: `sharepoint:${uploaded.path}`, webUrl: uploaded.webUrl };
+  } catch (err) {
+    console.error('[placement-slips] SharePoint upload failed:', err);
+    result.issues.push({
+      severity: 'warning',
+      code: 'SHAREPOINT_UPLOAD_FAILED',
+      message:
+        'SharePoint upload failed. Re-parse will require re-upload (file bytes were not retained).',
+    });
+    if (result.status === 'PARSED') result.status = 'NEEDS_REVIEW';
+    return { storageKey: `inline:pending-${Date.now()}`, webUrl: null };
+  }
 }
 
 async function loadCatalogueParsingRules(db: TenantDb) {
@@ -98,7 +201,7 @@ export const placementSlipsRouter = router({
     }),
 
   byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
-    const upload = await loadUploadForTenant(ctx.db, input.id);
+    const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
     return upload;
   }),
 
@@ -116,42 +219,7 @@ export const placementSlipsRouter = router({
       await assertClient(ctx.db, input.clientId);
 
       const buffer = Buffer.from(input.contentBase64, 'base64');
-      if (buffer.length === 0) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Empty file.' });
-      }
-      if (buffer.length > 25 * 1024 * 1024) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'File exceeds 25 MB limit.',
-        });
-      }
-      // Magic-byte sniff: accept both .xlsx (ZIP signature PK\x03\x04)
-      // and .xls (CFB / OLE2 signature D0 CF 11 E0 A1 B1 1A E1). Reject
-      // early before the parser allocates state on a non-Excel file.
-      // The .xls path normalises to .xlsx in-memory inside parser.ts
-      // via xls-to-xlsx.ts.
-      const isXlsx =
-        buffer.length >= 4 &&
-        buffer[0] === 0x50 &&
-        buffer[1] === 0x4b &&
-        buffer[2] === 0x03 &&
-        buffer[3] === 0x04;
-      const isXls =
-        buffer.length >= 8 &&
-        buffer[0] === 0xd0 &&
-        buffer[1] === 0xcf &&
-        buffer[2] === 0x11 &&
-        buffer[3] === 0xe0 &&
-        buffer[4] === 0xa1 &&
-        buffer[5] === 0xb1 &&
-        buffer[6] === 0x1a &&
-        buffer[7] === 0xe1;
-      if (!isXlsx && !isXls) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'File is not a valid Excel workbook (.xls or .xlsx).',
-        });
-      }
+      assertExcelBuffer(buffer);
 
       const catalogueRules = await loadCatalogueParsingRules(ctx.db);
       let result: ParseResult;
@@ -174,63 +242,21 @@ export const placementSlipsRouter = router({
         };
       }
 
-      // Upload to SharePoint when ROPC env is configured. Otherwise
-      // fall back to the inline marker for local dev — the file
-      // bytes aren't retained then, so re-parse requires re-upload.
-      let storageKey = '';
-      let webUrl: string | null = null;
-      if (isSharePointConfigured()) {
-        // Tenant is not in TENANT_MODELS (it IS the tenant), so we must
-        // look it up via the bare client with an explicit id filter.
-        const tenant = await prisma.tenant.findUnique({
-          where: { id: ctx.tenantId },
-          select: { slug: true },
-        });
-        if (!tenant) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Tenant slug missing — cannot resolve SharePoint folder.',
-          });
-        }
-        // Filename: timestamped + sanitised so a re-upload of the
-        // same source file doesn't collide and audit history survives.
-        const safeName =
-          input.filename
-            .replace(/[/\\]/g, '_')
-            .replace(/\.\./g, '_')
-            .replace(/[^\w.\-() ]/g, '_')
-            .replace(/^\.+/, '')
-            .slice(0, 200)
-            .trim() || 'placement-slip.xlsx';
-        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const finalName = `${stamp}__${safeName}`;
-        const folder = placementSlipFolder(tenant.slug, input.clientId);
-        try {
-          await ensureFolder(folder);
-          const uploaded = await uploadToSharePoint(folder, finalName, buffer);
-          storageKey = `sharepoint:${uploaded.path}`;
-          webUrl = uploaded.webUrl;
-        } catch (err) {
-          // SharePoint failure shouldn't drop the parse work — record
-          // it as a NEEDS_REVIEW issue and keep the parsed payload.
-          // Detail goes server-side; client gets a generic message.
-          console.error('[placement-slips] SharePoint upload failed:', err);
-          result.issues.push({
-            severity: 'warning',
-            code: 'SHAREPOINT_UPLOAD_FAILED',
-            message:
-              'SharePoint upload failed. Re-parse will require re-upload (file bytes were not retained).',
-          });
-          if (result.status === 'PARSED') result.status = 'NEEDS_REVIEW';
-          storageKey = `inline:pending-${Date.now()}`;
-        }
-      } else {
-        // Dev / local fallback — bytes aren't persisted.
-        storageKey = `inline:pending-${Date.now()}`;
-      }
+      const { storageKey, webUrl } = await persistUploadBytes(
+        ctx.tenantId,
+        input.filename,
+        buffer,
+        input.clientId,
+        result,
+      );
 
+      // tenantId is required at the column level (added in
+       // 20260430140000_wizard_foundation). Bare `prisma.placementSlipUpload.create`
+       // doesn't auto-inject it; pass explicitly. The wizard's orphan-upload path
+       // uses the same column with clientId omitted.
       const upload = await prisma.placementSlipUpload.create({
         data: {
+          tenantId: ctx.tenantId,
           clientId: input.clientId,
           uploadedBy: ctx.userId,
           filename: input.filename,
@@ -252,6 +278,125 @@ export const placementSlipsRouter = router({
       return { id: upload.id, webUrl, ...result };
     }),
 
+  // Wizard entry point — accept a slip on /admin/clients/new before
+  // any client exists. Stores the bytes under a tenant-only SharePoint
+  // path; clientId is back-filled by the wizard's Apply step. Returns
+  // just the upload id so the caller can route to the wizard URL —
+  // the synchronous parse/extract pipeline runs server-side and the
+  // wizard polls for status.
+  uploadOrphan: adminProcedure
+    .input(
+      z.object({
+        filename: z.string().trim().min(1).max(200),
+        contentBase64: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const buffer = Buffer.from(input.contentBase64, 'base64');
+      assertExcelBuffer(buffer);
+
+      // Run the full extractor: heuristic parse → envelope → suggestions.
+      // When TenantAiProvider is configured the extractor's LLM stage
+      // also enriches confidence, but the contract returned here is
+      // identical either way.
+      let extraction: Awaited<ReturnType<typeof extractFromWorkbook>>;
+      try {
+        extraction = await extractFromWorkbook(ctx.db, buffer);
+      } catch (err) {
+        extraction = {
+          parseResult: {
+            status: 'FAILED',
+            detectedTemplate: null,
+            products: [],
+            policyEntities: [],
+            benefitGroups: [],
+            issues: [
+              {
+                severity: 'error',
+                code: 'PARSER_THREW',
+                message: err instanceof Error ? err.message : 'Parser threw an unexpected error.',
+              },
+            ],
+          },
+          extractedProducts: [],
+          suggestions: {
+            benefitGroups: [],
+            eligibilityMatrix: [],
+            missingPredicateFields: [],
+            reconciliation: {
+              perProduct: [],
+              grandComputed: 0,
+              grandDeclared: null,
+              grandVariancePct: null,
+            },
+          },
+        };
+      }
+      const result = extraction.parseResult;
+
+      // Folder is tenant-only — wizard re-binds the upload to a
+      // client folder (or copies, depending on storage policy) on Apply.
+      const { storageKey, webUrl } = await persistUploadBytes(
+        ctx.tenantId,
+        input.filename,
+        buffer,
+        '__orphan__',
+        result,
+      );
+
+      const upload = await prisma.placementSlipUpload.create({
+        data: {
+          tenantId: ctx.tenantId,
+          clientId: null,
+          uploadedBy: ctx.userId,
+          filename: input.filename,
+          storageKey,
+          storageWebUrl: webUrl,
+          insurerTemplate: result.detectedTemplate,
+          parseStatus: result.status,
+          parseResult: result as unknown as Prisma.InputJsonValue,
+          issues: result.issues as unknown as Prisma.InputJsonValue,
+        },
+      });
+      if (storageKey.startsWith('inline:pending-')) {
+        await prisma.placementSlipUpload.update({
+          where: { id: upload.id },
+          data: { storageKey: `inline:${upload.id}` },
+        });
+      }
+
+      // The extraction draft row is the wizard's working surface.
+      // We persist the envelope-shaped products plus the suggestions
+      // blob (predicates, eligibility matrix, missing fields,
+      // reconciliation) so every section reads from one place.
+      // Hard cap on the JSONB payload — a malformed workbook with
+      // thousands of rate rows could otherwise inflate this past
+      // Postgres's per-row limits.
+      const extractedJson = JSON.stringify(extraction.extractedProducts);
+      if (extractedJson.length > 4 * 1024 * 1024) {
+        throw new TRPCError({
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'Extracted product payload exceeds 4 MB; check the slip for malformed data.',
+        });
+      }
+      await prisma.extractionDraft.create({
+        data: {
+          tenantId: ctx.tenantId,
+          uploadId: upload.id,
+          status: 'READY',
+          progress: {
+            stage: extraction.extractedProducts.length > 0 ? 'COMPLETE' : 'HEURISTIC_ONLY',
+            totalProducts: extraction.extractedProducts.length,
+            completed: extraction.extractedProducts.length,
+            suggestions: extraction.suggestions,
+          } as unknown as Prisma.InputJsonValue,
+          extractedProducts: extraction.extractedProducts as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      return { id: upload.id, webUrl };
+    }),
+
   // S29 (storage): re-parse an existing upload by fetching the bytes
   // back from SharePoint and running the parser again. Only works
   // when storageKey starts with "sharepoint:" — inline fallback uploads
@@ -259,7 +404,7 @@ export const placementSlipsRouter = router({
   reparse: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, input.id);
+      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
       if (!upload.storageKey.startsWith('sharepoint:')) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -292,7 +437,7 @@ export const placementSlipsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, input.id);
+      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
       const issues = (upload.issues as { resolved?: boolean }[] | null) ?? [];
       const target = issues[input.issueIndex];
       if (!target) {
@@ -332,7 +477,7 @@ export const placementSlipsRouter = router({
   applyToCatalogue: adminProcedure
     .input(z.object({ id: z.string().min(1), benefitYearId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, input.id);
+      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
       if (upload.parseStatus !== 'PARSED') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -340,11 +485,23 @@ export const placementSlipsRouter = router({
         });
       }
 
+      // applyToCatalogue is only meaningful on bound uploads — orphan
+      // uploads run through extractionDrafts.applyToCatalogue, which
+      // creates the Client + Policy as part of its own transaction.
+      // Guard here keeps TypeScript happy now that clientId is nullable.
+      if (!upload.clientId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Upload is not bound to a client. Apply via the create-client wizard instead.',
+        });
+      }
+      const uploadClientId = upload.clientId;
+
       // Resolve target benefit year + tenant gate via parent join.
       const benefitYear = await prisma.benefitYear.findFirst({
         where: {
           id: input.benefitYearId,
-          policy: { client: { tenantId: ctx.tenantId, id: upload.clientId } },
+          policy: { client: { tenantId: ctx.tenantId, id: uploadClientId } },
         },
         include: { policy: true },
       });
@@ -522,14 +679,7 @@ export const placementSlipsRouter = router({
             );
 
             // Plans — derive a short code from the parsed label.
-            const coverBasisByStrategy: Record<string, string> = {
-              per_individual_salary_multiple: 'salary_multiple',
-              per_individual_fixed_sum: 'fixed_amount',
-              per_group_cover_tier: 'per_cover_tier',
-              per_headcount_flat: 'fixed_amount',
-              per_individual_earnings: 'fixed_amount',
-            };
-            const coverBasis = coverBasisByStrategy[productType.premiumStrategy] ?? 'fixed_amount';
+            const coverBasis = COVER_BASIS_BY_STRATEGY[productType.premiumStrategy] ?? 'fixed_amount';
 
             const labelToCode = new Map<string, string>();
             for (let i = 0; i < parsed.plans.length; i++) {
@@ -634,8 +784,7 @@ export const placementSlipsRouter = router({
               planByLabel.set(p.code.toLowerCase(), p.id);
             }
 
-            const colIndex = (letter: string) => letter.toUpperCase().charCodeAt(0) - 64;
-            const planMatchKey = `col${colIndex(map.planMatch)}`;
+            const planMatchKey = `col${excelColumnIndex(map.planMatch)}`;
 
             // Wipe + rebuild so re-apply is deterministic.
             await tx.premiumRate.deleteMany({ where: { productId: product.id } });
@@ -663,7 +812,7 @@ export const placementSlipsRouter = router({
 
               if (map.tiers && map.tiers.length > 0) {
                 for (const t of map.tiers) {
-                  const cell = rateRow[`col${colIndex(t.rateColumn)}`];
+                  const cell = rateRow[`col${excelColumnIndex(t.rateColumn)}`];
                   const num =
                     typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
                   if (!Number.isFinite(num) || num <= 0) continue;
@@ -676,7 +825,7 @@ export const placementSlipsRouter = router({
                   });
                 }
               } else if (map.ratePerThousand) {
-                const cell = rateRow[`col${colIndex(map.ratePerThousand)}`];
+                const cell = rateRow[`col${excelColumnIndex(map.ratePerThousand)}`];
                 const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
                 if (Number.isFinite(num) && num > 0) {
                   ratesToCreate.push({
@@ -688,7 +837,7 @@ export const placementSlipsRouter = router({
                   });
                 }
               } else if (map.fixedAmount) {
-                const cell = rateRow[`col${colIndex(map.fixedAmount)}`];
+                const cell = rateRow[`col${excelColumnIndex(map.fixedAmount)}`];
                 const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
                 if (Number.isFinite(num) && num > 0) {
                   ratesToCreate.push({
@@ -759,7 +908,7 @@ export const placementSlipsRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, input.id);
+      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
       if (upload.storageKey.startsWith('sharepoint:') && isSharePointConfigured()) {
         const path = upload.storageKey.replace(/^sharepoint:/, '');
         try {
