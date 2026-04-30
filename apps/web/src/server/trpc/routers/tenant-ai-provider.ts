@@ -74,9 +74,7 @@ interface MaskedAiProvider {
   updatedAt: Date | null;
 }
 
-async function readMasked(
-  db: import('@/server/db/tenant').TenantDb,
-): Promise<MaskedAiProvider> {
+async function readMasked(db: import('@/server/db/tenant').TenantDb): Promise<MaskedAiProvider> {
   const row = await db.tenantAiProvider.findFirst();
   if (!row) {
     return {

@@ -28,13 +28,7 @@ interface ScreenShellProps {
   children: ReactNode;
 }
 
-export function ScreenShell({
-  title,
-  eyebrow,
-  description,
-  actions,
-  children,
-}: ScreenShellProps) {
+export function ScreenShell({ title, eyebrow, description, actions, children }: ScreenShellProps) {
   return (
     <>
       <header className="screen-shell-head">

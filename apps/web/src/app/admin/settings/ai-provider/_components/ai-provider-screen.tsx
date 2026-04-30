@@ -79,8 +79,7 @@ export function AiProviderScreen() {
         });
       }
     },
-    onError: (err) =>
-      setTestResult({ ok: false, detail: err.message }),
+    onError: (err) => setTestResult({ ok: false, detail: err.message }),
   });
 
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -143,10 +142,7 @@ export function AiProviderScreen() {
               <Card variant="padded">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <h3 className="mb-0">Current configuration</h3>
-                  <ConfidenceBadge
-                    confidence={masked.data.active ? 1 : 0.5}
-                    variant="pill"
-                  />
+                  <ConfidenceBadge confidence={masked.data.active ? 1 : 0.5} variant="pill" />
                 </div>
                 <dl className="dl">
                   <dt>Provider</dt>

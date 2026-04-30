@@ -13,7 +13,7 @@
 // =============================================================
 
 import type { ReactNode } from 'react';
-import { ConfidenceBadge, levelOf, type SourceRef } from './confidence-badge';
+import { ConfidenceBadge, type SourceRef, levelOf } from './confidence-badge';
 
 interface FieldProps {
   label: ReactNode;

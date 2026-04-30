@@ -8,7 +8,7 @@
 //   - applyToCatalogue adapter (defensive read on apply)
 // =============================================================
 
-import { safeCompile, type ValidateFunction } from '@/server/catalogue/ajv';
+import { type ValidateFunction, safeCompile } from '@/server/catalogue/ajv';
 // JSON imports are first-class in TS 5+ with resolveJsonModule.
 import schema from '@insurance-saas/catalogue-schemas/extracted-product.json';
 

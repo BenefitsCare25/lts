@@ -170,9 +170,15 @@
       "properties": {
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "sourceRef": { "$ref": "#/definitions/SourceRef" },
-        "category": { "type": "string", "description": "raw label, e.g. 'Executive', 'Hay Job Grade B3'" },
+        "category": {
+          "type": "string",
+          "description": "raw label, e.g. 'Executive', 'Hay Job Grade B3'"
+        },
         "headcount": { "type": ["integer", "null"] },
-        "sumInsuredFormula": { "type": ["string", "null"], "description": "raw formula text, e.g. '24 x LDBMS'" },
+        "sumInsuredFormula": {
+          "type": ["string", "null"],
+          "description": "raw formula text, e.g. '24 x LDBMS'"
+        },
         "participation": { "type": ["string", "null"] }
       }
     },
@@ -185,7 +191,10 @@
         "sourceRef": { "$ref": "#/definitions/SourceRef" },
         "rawCode": { "type": "string" },
         "rawName": { "type": "string" },
-        "code": { "type": "string", "description": "Canonical code emitted by normalizer; falls back to rawCode if no mapping" },
+        "code": {
+          "type": "string",
+          "description": "Canonical code emitted by normalizer; falls back to rawCode if no mapping"
+        },
         "name": { "type": "string", "description": "Canonical/display name" },
         "coverBasis": {
           "type": "string",
@@ -193,7 +202,10 @@
         },
         "stacksOnRawCode": { "type": ["string", "null"] },
         "selectionMode": { "type": "string", "enum": ["broker_default", "employee_flex"] },
-        "schedule": { "type": "object", "description": "Plan-schedule fields keyed per ProductType.planSchema; values may themselves be FieldEnvelopes" }
+        "schedule": {
+          "type": "object",
+          "description": "Plan-schedule fields keyed per ProductType.planSchema; values may themselves be FieldEnvelopes"
+        }
       }
     },
     "PremiumRateField": {
@@ -204,7 +216,10 @@
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "sourceRef": { "$ref": "#/definitions/SourceRef" },
         "planRawCode": { "type": "string" },
-        "coverTier": { "type": ["string", "null"], "description": "EO|ES|EC|EF or insurer-specific tier code; null when basis is not per_cover_tier" },
+        "coverTier": {
+          "type": ["string", "null"],
+          "description": "EO|ES|EC|EF or insurer-specific tier code; null when basis is not per_cover_tier"
+        },
         "ratePerThousand": { "type": ["number", "null"] },
         "fixedAmount": { "type": ["number", "null"] },
         "ageBand": {
@@ -224,8 +239,14 @@
       "properties": {
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "sourceRef": { "$ref": "#/definitions/SourceRef" },
-        "rawName": { "type": "string", "description": "Verbatim from slip, e.g. 'Hospital R&B' or 'Daily Room Allowance'" },
-        "name": { "type": "string", "description": "Canonical name from normalization map; falls back to rawName" },
+        "rawName": {
+          "type": "string",
+          "description": "Verbatim from slip, e.g. 'Hospital R&B' or 'Daily Room Allowance'"
+        },
+        "name": {
+          "type": "string",
+          "description": "Canonical name from normalization map; falls back to rawName"
+        },
         "description": { "type": ["string", "null"] },
         "limits": {
           "type": "array",
@@ -237,7 +258,10 @@
             "properties": {
               "planRawCode": { "type": "string" },
               "amount": { "type": ["number", "null"] },
-              "unit": { "type": ["string", "null"], "description": "e.g. 'per disability', 'per year', 'per day'" },
+              "unit": {
+                "type": ["string", "null"],
+                "description": "e.g. 'per disability', 'per year', 'per day'"
+              },
               "rawText": { "type": ["string", "null"] }
             }
           }
