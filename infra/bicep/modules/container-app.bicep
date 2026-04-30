@@ -44,6 +44,10 @@ param appInsightsConnectionString string = ''
 @secure()
 param authSecret string = ''
 
+@description('AES-256-GCM master key for application-level encryption (TenantAiProvider keys, future BYOK secrets). Generated once; rotating it makes existing encrypted rows undecryptable. Empty string omits APP_SECRET_KEY — extraction features will fail in production.')
+@secure()
+param appSecretKey string = ''
+
 // SharePoint storage credentials (Phase 1G — placement-slip uploads).
 // Five values together; presence of `sharepointTenantId` is the gate
 // because all five are required for the ROPC delegated-auth flow.
@@ -79,6 +83,7 @@ var hasRedis = !empty(redisUrl)
 var hasAppInsights = !empty(appInsightsConnectionString)
 var hasSharepoint = !empty(sharepointTenantId)
 var hasAuthSecret = !empty(authSecret)
+var hasAppSecretKey = !empty(appSecretKey)
 
 var baseSecrets = [
   {
@@ -134,6 +139,25 @@ var authSecrets = hasAuthSecret
       }
     ]
   : []
+var appSecretKeySecrets = hasAppSecretKey
+  ? [
+      {
+        name: 'app-secret-key'
+        value: appSecretKey
+      }
+    ]
+  : []
+// Application Insights connection string is set as a Container App secret
+// (rather than a plain env value) so its rotation goes through the same
+// secret-update flow as everything else.
+var aiSecrets = hasAppInsights
+  ? [
+      {
+        name: 'appinsights-connection-string'
+        value: appInsightsConnectionString
+      }
+    ]
+  : []
 
 // AUTH_TRUST_HOST tells NextAuth to trust X-Forwarded-Host from Container Apps
 // ingress; without it, NextAuth rejects every request behind the reverse proxy.
@@ -167,7 +191,15 @@ var aiEnv = hasAppInsights
   ? [
       {
         name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-        value: appInsightsConnectionString
+        secretRef: 'appinsights-connection-string'
+      }
+    ]
+  : []
+var appSecretKeyEnv = hasAppSecretKey
+  ? [
+      {
+        name: 'APP_SECRET_KEY'
+        secretRef: 'app-secret-key'
       }
     ]
   : []
@@ -226,7 +258,15 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           passwordSecretRef: 'registry-password'
         }
       ]
-      secrets: concat(baseSecrets, dbSecret, redisSecret, sharepointSecrets, authSecrets)
+      secrets: concat(
+        baseSecrets,
+        dbSecret,
+        redisSecret,
+        sharepointSecrets,
+        authSecrets,
+        appSecretKeySecrets,
+        aiSecrets
+      )
     }
     template: {
       containers: [
@@ -237,7 +277,15 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: concat(baseEnv, dbEnv, redisEnv, aiEnv, sharepointEnv, authEnv)
+          env: concat(
+            baseEnv,
+            dbEnv,
+            redisEnv,
+            aiEnv,
+            sharepointEnv,
+            authEnv,
+            appSecretKeyEnv
+          )
         }
       ]
       scale: {

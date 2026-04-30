@@ -12,7 +12,7 @@
       "value": "REPLACE_AT_DEPLOY_TIME_WITH_TAGGED_ACR_IMAGE"
     },
     "deployObservability": {
-      "value": false
+      "value": true
     },
     "deployPostgres": {
       "value": true

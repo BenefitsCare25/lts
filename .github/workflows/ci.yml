@@ -23,6 +23,12 @@ env:
 #   POSTGRES_ADMIN_PASSWORD                  Passed to Bicep when deployPostgres=true
 #   AUTH_SECRET                              NextAuth signing secret. Without it, login
 #                                            fails with "server configuration problem".
+#   APP_SECRET_KEY                           AES-256-GCM master key for the app-level
+#                                            cipher (server/security/secret-cipher).
+#                                            Encrypts TenantAiProvider keys at rest.
+#                                            Rotating breaks decryption of every row
+#                                            written under the prior key — generate
+#                                            once with `openssl rand -base64 48`.
 #   SHAREPOINT_TENANT_ID                     Distinct from AZURE_TENANT_ID — the tenant
 #                                            hosting the SharePoint app registration
 #   SHAREPOINT_CLIENT_ID                     SharePoint app registration client ID
@@ -262,6 +268,7 @@ jobs:
           SHAREPOINT_SERVICE_ACCOUNT_USERNAME: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_USERNAME }}
           SHAREPOINT_SERVICE_ACCOUNT_PASSWORD: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_PASSWORD }}
           AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
         run: |
           az deployment group create \
             --name "staging-$(date -u +%Y%m%d-%H%M%S)" \
@@ -276,5 +283,6 @@ jobs:
             --parameters "sharepointServiceAccountUsername=${SHAREPOINT_SERVICE_ACCOUNT_USERNAME}" \
             --parameters "sharepointServiceAccountPassword=${SHAREPOINT_SERVICE_ACCOUNT_PASSWORD}" \
             --parameters "authSecret=${AUTH_SECRET}" \
+            --parameters "appSecretKey=${APP_SECRET_KEY}" \
             --output none
           echo "Full Bicep deploy complete."
