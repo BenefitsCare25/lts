@@ -36,7 +36,11 @@ import { adminProcedure, router, tenantProcedure } from '../init';
 // because that path doesn't exist under /api/projects. Always collapse
 // to the URL origin so the inference path is correct regardless of
 // which one was pasted.
-function normalizeFoundryEndpoint(raw: string): string {
+//
+// Exported under __test__ so unit tests can assert the normalisation
+// without spinning up the router; the leading underscore signals it
+// is not a public API.
+export function normalizeFoundryEndpoint(raw: string): string {
   try {
     return new URL(raw).origin;
   } catch {
@@ -124,7 +128,9 @@ async function readMasked(db: import('@/server/db/tenant').TenantDb): Promise<Ma
 // path at /openai/deployments/<name>/chat/completions (with api-key
 // auth and ?api-version=… query). We pick by deployment name prefix.
 // Source: https://learn.microsoft.com/azure/ai-foundry/foundry-models/how-to/use-foundry-models-claude
-function isClaudeDeployment(deploymentName: string): boolean {
+// Exported for unit tests; same underscore-prefix-not-applicable
+// rationale as normalizeFoundryEndpoint.
+export function isClaudeDeployment(deploymentName: string): boolean {
   return /^claude/i.test(deploymentName);
 }
 

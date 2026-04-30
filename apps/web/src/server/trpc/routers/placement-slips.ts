@@ -12,13 +12,15 @@
 // `storageKey` carries the SharePoint path so re-parse can fetch
 // the bytes without re-upload. Falls back to "inline:" markers
 // when Azure AD env vars are missing (local dev without ROPC).
+//
+// Apply pipeline lives under `server/ingestion/apply/*`. This file
+// is intentionally thin — orchestration only.
 // =============================================================
 
-import { safeCompile } from '@/server/catalogue/ajv';
-import { COVER_BASIS_BY_STRATEGY, excelColumnIndex } from '@/server/catalogue/premium-strategy';
 import { prisma } from '@/server/db/client';
 import type { TenantDb } from '@/server/db/tenant';
 import { extractFromWorkbook } from '@/server/extraction/extractor';
+import { applyParsedToCatalogue } from '@/server/ingestion/apply/orchestrator';
 import { type ParseResult, type ParsingRules, parsePlacementSlip } from '@/server/ingestion/parser';
 import {
   deleteFile as deleteFromSharePoint,
@@ -33,11 +35,10 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
 
-// Use the tenant-scoped client (`ctx.db`) for all TENANT_MODELS lookups
-// — the Prisma extension in db/tenant.ts auto-injects the tenantId
-// filter so a regression here can't cross tenants. The bare `prisma`
-// import is reserved for non-tenant-scoped models (PlacementSlipUpload,
-// Plan, PremiumRate, etc., which gate via their parent Client lookup).
+// PlacementSlipUpload is in TENANT_MODELS — `ctx.db` auto-injects
+// tenantId on every CRUD. The bare `prisma` import is reserved for
+// non-tenant-scoped models (BenefitYear, PolicyEntity, etc., which
+// gate via parent FK joins).
 
 async function assertClient(db: TenantDb, clientId: string): Promise<void> {
   const client = await db.client.findFirst({
@@ -51,16 +52,15 @@ async function assertClient(db: TenantDb, clientId: string): Promise<void> {
 
 // Tenant-gating walks both shapes:
 //   bound upload  — clientId is set; verify the client belongs to ctx.tenant
-//   orphan upload — clientId is null; verify upload.tenantId matches ctx
+//   orphan upload — clientId is null; auto-tenant filter on ctx.db handles it
 // The direct tenantId column was added in 20260430140000 to make orphan
 // uploads possible (the wizard creates them on /admin/clients/new
 // before any client exists).
-async function loadUploadForTenant(db: TenantDb, tenantId: string, uploadId: string) {
-  const upload = await prisma.placementSlipUpload.findUnique({ where: { id: uploadId } });
+async function loadUploadForTenant(db: TenantDb, uploadId: string) {
+  // ctx.db auto-filters by tenantId — a row from another tenant is
+  // invisible (returns null) without a manual cross-check.
+  const upload = await db.placementSlipUpload.findFirst({ where: { id: uploadId } });
   if (!upload) {
-    throw new TRPCError({ code: 'NOT_FOUND', message: 'Upload not found.' });
-  }
-  if (upload.tenantId !== tenantId) {
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Upload not found.' });
   }
   if (upload.clientId) {
@@ -181,7 +181,7 @@ export const placementSlipsRouter = router({
     .input(z.object({ clientId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       await assertClient(ctx.db, input.clientId);
-      return prisma.placementSlipUpload.findMany({
+      return ctx.db.placementSlipUpload.findMany({
         where: { clientId: input.clientId },
         orderBy: { createdAt: 'desc' },
         select: {
@@ -201,8 +201,7 @@ export const placementSlipsRouter = router({
     }),
 
   byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
-    const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
-    return upload;
+    return loadUploadForTenant(ctx.db, input.id);
   }),
 
   upload: adminProcedure
@@ -250,13 +249,13 @@ export const placementSlipsRouter = router({
         result,
       );
 
-      // tenantId is required at the column level (added in
-      // 20260430140000_wizard_foundation). Bare `prisma.placementSlipUpload.create`
-      // doesn't auto-inject it; pass explicitly. The wizard's orphan-upload path
-      // uses the same column with clientId omitted.
-      const upload = await prisma.placementSlipUpload.create({
+      // The Prisma extension auto-injects tenantId on tenant-scoped
+      // create/update; the empty-string here satisfies the static
+      // Prisma type and is overwritten before the SQL is sent
+      // (same trick as audit.ts).
+      const upload = await ctx.db.placementSlipUpload.create({
         data: {
-          tenantId: ctx.tenantId,
+          tenantId: '',
           clientId: input.clientId,
           uploadedBy: ctx.userId,
           filename: input.filename,
@@ -270,7 +269,7 @@ export const placementSlipsRouter = router({
       });
       // For inline fallback, normalise the storageKey to include the row id.
       if (storageKey.startsWith('inline:pending-')) {
-        await prisma.placementSlipUpload.update({
+        await ctx.db.placementSlipUpload.update({
           where: { id: upload.id },
           data: { storageKey: `inline:${upload.id}` },
         });
@@ -344,9 +343,12 @@ export const placementSlipsRouter = router({
         result,
       );
 
-      const upload = await prisma.placementSlipUpload.create({
+      // ctx.db auto-stamps tenantId (empty-string satisfies the
+      // static Prisma type); clientId stays null for the orphan path
+      // until the wizard's Apply step binds it.
+      const upload = await ctx.db.placementSlipUpload.create({
         data: {
-          tenantId: ctx.tenantId,
+          tenantId: '',
           clientId: null,
           uploadedBy: ctx.userId,
           filename: input.filename,
@@ -359,16 +361,13 @@ export const placementSlipsRouter = router({
         },
       });
       if (storageKey.startsWith('inline:pending-')) {
-        await prisma.placementSlipUpload.update({
+        await ctx.db.placementSlipUpload.update({
           where: { id: upload.id },
           data: { storageKey: `inline:${upload.id}` },
         });
       }
 
       // The extraction draft row is the wizard's working surface.
-      // We persist the envelope-shaped products plus the suggestions
-      // blob (predicates, eligibility matrix, missing fields,
-      // reconciliation) so every section reads from one place.
       // Hard cap on the JSONB payload — a malformed workbook with
       // thousands of rate rows could otherwise inflate this past
       // Postgres's per-row limits.
@@ -379,9 +378,9 @@ export const placementSlipsRouter = router({
           message: 'Extracted product payload exceeds 4 MB; check the slip for malformed data.',
         });
       }
-      await prisma.extractionDraft.create({
+      await ctx.db.extractionDraft.create({
         data: {
-          tenantId: ctx.tenantId,
+          tenantId: '', // overwritten by the tenant extension
           uploadId: upload.id,
           status: 'READY',
           progress: {
@@ -404,7 +403,7 @@ export const placementSlipsRouter = router({
   reparse: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       if (!upload.storageKey.startsWith('sharepoint:')) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -416,7 +415,7 @@ export const placementSlipsRouter = router({
       const buffer = await downloadFromSharePoint(path);
       const catalogueRules = await loadCatalogueParsingRules(ctx.db);
       const result = await parsePlacementSlip(buffer, catalogueRules);
-      return prisma.placementSlipUpload.update({
+      return ctx.db.placementSlipUpload.update({
         where: { id: input.id },
         data: {
           insurerTemplate: result.detectedTemplate,
@@ -437,7 +436,7 @@ export const placementSlipsRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       const issues = (upload.issues as { resolved?: boolean }[] | null) ?? [];
       const target = issues[input.issueIndex];
       if (!target) {
@@ -450,7 +449,7 @@ export const placementSlipsRouter = router({
         : upload.parseStatus === 'FAILED'
           ? 'FAILED'
           : 'NEEDS_REVIEW';
-      return prisma.placementSlipUpload.update({
+      return ctx.db.placementSlipUpload.update({
         where: { id: input.id },
         data: {
           issues: issues as unknown as Prisma.InputJsonValue,
@@ -463,21 +462,13 @@ export const placementSlipsRouter = router({
   // parse result. Procedure name is `applyToCatalogue` because tRPC
   // reserves `apply` as a meta-method on routers.
   //
-  // Phase 1G scope:
-  //   ✅ PolicyEntity upsert from result.policyEntities
-  //   ✅ Product upsert per parsed product (insurer + policy_number)
-  //   ✅ Plan creation with placeholder schedule + stacksOn resolution
-  //   ⏳ PremiumRate: defers — column→schedule mapping is per-insurer
-  //      calibration the broker tunes once per insurer template.
-  //   ⏳ BenefitGroup: stays broker-confirmed in the review UI;
-  //      result.benefitGroups carries predicate suggestions only.
-  //
-  // Idempotent: re-applying upserts on (policyId, policyNumber) and
-  // (productId, code), so the same payload twice produces no dupes.
+  // The heavy lifting lives in `server/ingestion/apply/orchestrator.ts`.
+  // This handler validates preconditions and resolves the target
+  // benefitYear; the orchestrator owns the transaction.
   applyToCatalogue: adminProcedure
     .input(z.object({ id: z.string().min(1), benefitYearId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       if (upload.parseStatus !== 'PARSED') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -488,7 +479,6 @@ export const placementSlipsRouter = router({
       // applyToCatalogue is only meaningful on bound uploads — orphan
       // uploads run through extractionDrafts.applyToCatalogue, which
       // creates the Client + Policy as part of its own transaction.
-      // Guard here keeps TypeScript happy now that clientId is nullable.
       if (!upload.clientId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -526,382 +516,20 @@ export const placementSlipsRouter = router({
         });
       }
 
-      // Pre-resolve catalogue rows used inside the transaction. The
-      // tenant-scoped extension (`ctx.db`) auto-injects tenantId on
-      // these reads; doing them upfront keeps the transaction body
-      // focused on writes and means a missing-FK diagnostic surfaces
-      // before we open a transaction.
-      const insurerCache = new Map<string, string>(); // code → id
-      const productTypeCache = new Map<
-        string,
-        {
-          id: string;
-          planSchema: unknown;
-          premiumStrategy: string;
-          parsingRules: unknown;
-        }
-      >();
-      const skipped: { reason: string; detail: string }[] = [];
+      const { summary } = await applyParsedToCatalogue({
+        db: ctx.db,
+        parseResult,
+        uploadId: input.id,
+        benefitYearId: input.benefitYearId,
+        policyId: benefitYear.policy.id,
+      });
 
-      for (const parsed of parseResult.products) {
-        if (!insurerCache.has(parsed.templateInsurerCode)) {
-          const insurer = await ctx.db.insurer.findFirst({
-            where: { code: parsed.templateInsurerCode },
-            select: { id: true },
-          });
-          if (!insurer) {
-            skipped.push({
-              reason: 'INSURER_NOT_FOUND',
-              detail: `${parsed.productTypeCode}: insurer "${parsed.templateInsurerCode}" not in registry. Add it via /admin/catalogue/insurers and re-apply.`,
-            });
-            continue;
-          }
-          insurerCache.set(parsed.templateInsurerCode, insurer.id);
-        }
-        if (!productTypeCache.has(parsed.productTypeCode)) {
-          const pt = await ctx.db.productType.findFirst({
-            where: { code: parsed.productTypeCode },
-            select: { id: true, planSchema: true, premiumStrategy: true, parsingRules: true },
-          });
-          if (!pt) {
-            skipped.push({
-              reason: 'PRODUCT_TYPE_NOT_FOUND',
-              detail: `Product type ${parsed.productTypeCode} missing from catalogue.`,
-            });
-            continue;
-          }
-          productTypeCache.set(parsed.productTypeCode, pt);
-        }
-      }
+      // Re-read the upload so the response carries the post-tx state.
+      const updated = await ctx.db.placementSlipUpload.findFirst({
+        where: { id: input.id },
+      });
 
-      // ── Atomic write — H1 ─────────────────────────────────────
-      // Wrap every write in a single $transaction so a mid-flight
-      // failure rolls back PolicyEntity / Product / Plan / PremiumRate
-      // changes together. Without this, a crash between Plan upsert
-      // and PremiumRate.createMany leaves the catalogue half-written.
-      // The 60s timeout covers a worst-case STM-class slip (7 products,
-      // ~30 plans, 60+ rate rows) on a cold connection pool; smaller
-      // slips finish in <1s.
-      const txResult = await prisma.$transaction(
-        async (tx) => {
-          let policyEntitiesUpserted = 0;
-          let productsUpserted = 0;
-          let plansCreated = 0;
-          let stacksOnResolved = 0;
-          let premiumRatesCreated = 0;
-
-          // ── PolicyEntities ─────────────────────────────────────
-          for (const entity of parseResult.policyEntities ?? []) {
-            await tx.policyEntity.upsert({
-              where: {
-                policyId_policyNumber: {
-                  policyId: benefitYear.policy.id,
-                  policyNumber: entity.policyNumber,
-                },
-              },
-              update: {
-                legalName: entity.legalName,
-                isMaster: entity.isMaster,
-              },
-              create: {
-                policyId: benefitYear.policy.id,
-                policyNumber: entity.policyNumber,
-                legalName: entity.legalName,
-                isMaster: entity.isMaster,
-              },
-            });
-            policyEntitiesUpserted += 1;
-          }
-
-          // ── Products + Plans ───────────────────────────────────
-          for (const parsed of parseResult.products) {
-            const insurerId = insurerCache.get(parsed.templateInsurerCode);
-            const productType = productTypeCache.get(parsed.productTypeCode);
-            if (!insurerId || !productType) continue; // already in skipped[]
-
-            // Pool resolution from parsed pool_name (best-effort). Pool
-            // is a TENANT_MODEL — `ctx.db` auto-scopes it; the read is
-            // outside the tx but reads inside Prisma's pool are fine.
-            const poolName = String(parsed.fields.pool_name ?? '').trim();
-            let poolId: string | null = null;
-            if (poolName && poolName !== 'NA' && poolName !== 'N.A') {
-              const pool = await tx.pool.findFirst({
-                where: { name: poolName },
-                select: { id: true },
-              });
-              poolId = pool?.id ?? null;
-            }
-
-            // Product.data: minimum viable shape that passes
-            // ProductType.schema. Real fields fill in from
-            // parsed.fields where keys align.
-            const policyNumber =
-              String(parsed.fields.policy_numbers_csv ?? parsed.fields.policy_number ?? '')
-                .split(',')[0]
-                ?.trim() ?? '';
-            const productData: Record<string, unknown> = {
-              insurer: parsed.templateInsurerCode,
-              policy_number: policyNumber || 'PENDING',
-              eligibility_text: parsed.fields.eligibility_text ?? undefined,
-              benefit_period: parsed.fields.period_of_insurance ?? undefined,
-            };
-
-            // Upsert Product on (benefitYearId, productTypeId).
-            const existing = await tx.product.findFirst({
-              where: { benefitYearId: input.benefitYearId, productTypeId: productType.id },
-              select: { id: true },
-            });
-            const product = existing
-              ? await tx.product.update({
-                  where: { id: existing.id },
-                  data: { insurerId, poolId, data: productData as Prisma.InputJsonValue },
-                })
-              : await tx.product.create({
-                  data: {
-                    benefitYearId: input.benefitYearId,
-                    productTypeId: productType.id,
-                    insurerId,
-                    poolId,
-                    data: productData as Prisma.InputJsonValue,
-                  },
-                });
-            productsUpserted += 1;
-
-            // ── H2: Validate Plan.schedule against planSchema ──
-            // Compile once per product type (cached across products
-            // sharing a type within this apply call). Surface any
-            // required-field violations in skipped[] with an
-            // actionable message rather than silently writing
-            // schedule={} that fails review.validate later.
-            const compiled = safeCompile(
-              productType.planSchema,
-              `product-type:${productType.id}::planSchema-applyToCatalogue`,
-            );
-
-            // Plans — derive a short code from the parsed label.
-            const coverBasis =
-              COVER_BASIS_BY_STRATEGY[productType.premiumStrategy] ?? 'fixed_amount';
-
-            const labelToCode = new Map<string, string>();
-            for (let i = 0; i < parsed.plans.length; i++) {
-              const plan = parsed.plans[i];
-              if (!plan) continue;
-              const planMatch = plan.code.match(/^Plan\s+([A-Z0-9]+)/i);
-              const numberMatch = plan.code.match(/^(\d+)\b/);
-              const code = planMatch
-                ? `P${planMatch[1]?.toUpperCase()}`
-                : numberMatch
-                  ? `P${numberMatch[1]}`
-                  : `P${i + 1}`;
-              labelToCode.set(plan.code, code);
-
-              // Validate the placeholder candidate against planSchema
-              // so a broker knows up front when they'll need to fill
-              // schedule via the Plans tab before publish.
-              if (compiled.ok) {
-                const candidate = {
-                  code,
-                  name: plan.code,
-                  coverBasis,
-                  stacksOn: null,
-                  selectionMode: 'single',
-                  schedule: {},
-                  effectiveFrom: null,
-                  effectiveTo: null,
-                };
-                if (!compiled.validate(candidate)) {
-                  const fields = (compiled.validate.errors ?? [])
-                    .map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`.trim())
-                    .filter((m) => m.length > 0)
-                    .slice(0, 5)
-                    .join(', ');
-                  skipped.push({
-                    reason: 'PLAN_SCHEDULE_NEEDS_BROKER_INPUT',
-                    detail: `${parsed.productTypeCode} plan ${code}: required fields not on the slip — fill in via the Plans tab before publishing (${fields}).`,
-                  });
-                }
-              }
-
-              await tx.plan.upsert({
-                where: { productId_code: { productId: product.id, code } },
-                update: { name: plan.code, coverBasis },
-                create: {
-                  productId: product.id,
-                  code,
-                  name: plan.code,
-                  coverBasis,
-                  schedule: {} as Prisma.InputJsonValue,
-                },
-              });
-              plansCreated += 1;
-            }
-
-            // Second pass: resolve stacksOn now that all plans exist.
-            for (const plan of parsed.plans) {
-              if (!plan.stacksOnLabel) continue;
-              const baseLabelMatch = parsed.plans.find((p) =>
-                p.code.toLowerCase().startsWith(plan.stacksOnLabel?.toLowerCase() ?? '__never__'),
-              );
-              if (!baseLabelMatch) continue;
-              const childCode = labelToCode.get(plan.code);
-              const baseCode = labelToCode.get(baseLabelMatch.code);
-              if (!childCode || !baseCode) continue;
-              const baseRow = await tx.plan.findUnique({
-                where: { productId_code: { productId: product.id, code: baseCode } },
-                select: { id: true },
-              });
-              if (!baseRow) continue;
-              await tx.plan.update({
-                where: { productId_code: { productId: product.id, code: childCode } },
-                data: { stacksOn: baseRow.id },
-              });
-              stacksOnResolved += 1;
-            }
-
-            // ── PremiumRate creation (per product) ─────────────
-            // Pull rate_column_map from the cached parsingRules
-            // captured upfront — re-fetching ProductType in this
-            // loop is a wasted round-trip (perf H1).
-            const templates =
-              (productType.parsingRules as { templates?: Record<string, ParsingRules> } | null)
-                ?.templates ?? {};
-            const rules = templates[parsed.templateInsurerCode];
-            const map = rules?.rate_column_map;
-            if (!map) {
-              skipped.push({
-                reason: 'NO_RATE_COLUMN_MAP',
-                detail: `${parsed.productTypeCode} via ${parsed.templateInsurerCode}: parsingRules has no rate_column_map; rates can be entered via the Premium tab.`,
-              });
-              continue;
-            }
-
-            const allPlans = await tx.plan.findMany({
-              where: { productId: product.id },
-              select: { id: true, code: true, name: true },
-            });
-            const planByLabel = new Map<string, string>();
-            for (const p of allPlans) {
-              planByLabel.set(p.name.toLowerCase(), p.id);
-              planByLabel.set(p.code.toLowerCase(), p.id);
-            }
-
-            const planMatchKey = `col${excelColumnIndex(map.planMatch)}`;
-
-            // Wipe + rebuild so re-apply is deterministic.
-            await tx.premiumRate.deleteMany({ where: { productId: product.id } });
-
-            const ratesToCreate: {
-              productId: string;
-              planId: string;
-              coverTier: string | null;
-              ratePerThousand: number | null;
-              fixedAmount: number | null;
-            }[] = [];
-
-            for (const rateRow of parsed.rates) {
-              const rawLabel = rateRow[planMatchKey];
-              if (!rawLabel) continue;
-              const labelStr = String(rawLabel).trim().toLowerCase();
-              let planId: string | undefined;
-              for (const [k, v] of planByLabel) {
-                if (k.startsWith(labelStr) || labelStr.startsWith(k)) {
-                  planId = v;
-                  break;
-                }
-              }
-              if (!planId) continue;
-
-              if (map.tiers && map.tiers.length > 0) {
-                for (const t of map.tiers) {
-                  const cell = rateRow[`col${excelColumnIndex(t.rateColumn)}`];
-                  const num =
-                    typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-                  if (!Number.isFinite(num) || num <= 0) continue;
-                  ratesToCreate.push({
-                    productId: product.id,
-                    planId,
-                    coverTier: t.tier,
-                    ratePerThousand: null,
-                    fixedAmount: num,
-                  });
-                }
-              } else if (map.ratePerThousand) {
-                const cell = rateRow[`col${excelColumnIndex(map.ratePerThousand)}`];
-                const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-                if (Number.isFinite(num) && num > 0) {
-                  ratesToCreate.push({
-                    productId: product.id,
-                    planId,
-                    coverTier: null,
-                    ratePerThousand: num,
-                    fixedAmount: null,
-                  });
-                }
-              } else if (map.fixedAmount) {
-                const cell = rateRow[`col${excelColumnIndex(map.fixedAmount)}`];
-                const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-                if (Number.isFinite(num) && num > 0) {
-                  ratesToCreate.push({
-                    productId: product.id,
-                    planId,
-                    coverTier: null,
-                    ratePerThousand: null,
-                    fixedAmount: num,
-                  });
-                }
-              }
-            }
-
-            if (ratesToCreate.length > 0) {
-              await tx.premiumRate.createMany({ data: ratesToCreate });
-              premiumRatesCreated += ratesToCreate.length;
-            }
-          }
-
-          if ((parseResult.benefitGroups?.length ?? 0) > 0) {
-            skipped.push({
-              reason: 'BENEFIT_GROUPS_DEFERRED',
-              detail: `${parseResult.benefitGroups.length} predicate suggestions surfaced — confirm in the Benefit Groups screen, not auto-saved.`,
-            });
-          }
-
-          const updated = await tx.placementSlipUpload.update({
-            where: { id: input.id },
-            data: { parseStatus: 'APPLIED' },
-          });
-
-          return {
-            updated,
-            policyEntitiesUpserted,
-            productsUpserted,
-            plansCreated,
-            stacksOnResolved,
-            premiumRatesCreated,
-          };
-        },
-        { maxWait: 5_000, timeout: 60_000 },
-      );
-
-      const {
-        updated,
-        policyEntitiesUpserted,
-        productsUpserted,
-        plansCreated,
-        stacksOnResolved,
-        premiumRatesCreated,
-      } = txResult;
-
-      return {
-        upload: updated,
-        summary: {
-          policyEntitiesUpserted,
-          productsUpserted,
-          plansCreated,
-          stacksOnResolved,
-          premiumRatesCreated,
-          skipped,
-        },
-      };
+      return { upload: updated, summary };
     }),
 
   // Delete an upload row. SharePoint cleanup is best-effort — a
@@ -909,7 +537,7 @@ export const placementSlipsRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const upload = await loadUploadForTenant(ctx.db, ctx.tenantId, input.id);
+      const upload = await loadUploadForTenant(ctx.db, input.id);
       if (upload.storageKey.startsWith('sharepoint:') && isSharePointConfigured()) {
         const path = upload.storageKey.replace(/^sharepoint:/, '');
         try {
@@ -922,7 +550,7 @@ export const placementSlipsRouter = router({
           );
         }
       }
-      await prisma.placementSlipUpload.delete({ where: { id: input.id } });
+      await ctx.db.placementSlipUpload.delete({ where: { id: input.id } });
       return { id: input.id };
     }),
 });
