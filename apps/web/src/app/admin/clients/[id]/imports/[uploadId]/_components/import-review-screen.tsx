@@ -247,9 +247,7 @@ export function ImportReviewScreen({
                   {draftBenefitYears.length === 0 && !benefitYears.isLoading ? (
                     <span className="field-help">
                       No DRAFT benefit years on this policy.{' '}
-                      <Link
-                        href={`/admin/clients/${clientId}/policies/${selectedPolicyId}/edit`}
-                      >
+                      <Link href={`/admin/clients/${clientId}/policies/${selectedPolicyId}/edit`}>
                         Create one
                       </Link>
                       .
