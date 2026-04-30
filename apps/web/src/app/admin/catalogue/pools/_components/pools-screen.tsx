@@ -1,45 +1,27 @@
 // =============================================================
-// Pools list + inline create form.
+// Pools list. Creation lives at /admin/catalogue/pools/new.
 // =============================================================
 
 'use client';
 
-import { ScreenShell } from '@/components/ui';
+import { EmptyListState, ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { type MemberRow, MemberRows } from './member-rows';
-
-type FormState = {
-  name: string;
-  description: string;
-  members: MemberRow[];
-};
-
-const emptyForm: FormState = {
-  name: '',
-  description: '',
-  members: [],
-};
 
 export function PoolsScreen() {
   const utils = trpc.useUtils();
   const pools = trpc.pools.list.useQuery();
   const insurers = trpc.insurers.list.useQuery();
-  const create = trpc.pools.create.useMutation({
-    onSuccess: async () => {
-      setForm(emptyForm);
-      setFormError(null);
-      await utils.pools.list.invalidate();
-    },
-    onError: (err) => setFormError(err.message),
-  });
   const remove = trpc.pools.delete.useMutation({
-    onSuccess: () => utils.pools.list.invalidate(),
+    onSuccess: () => {
+      setDeleteError(null);
+      utils.pools.list.invalidate();
+    },
+    onError: (err) => setDeleteError(err.message),
   });
 
-  const [form, setForm] = useState<FormState>(emptyForm);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const insurerById = useMemo(() => {
     const map = new Map<string, string>();
@@ -47,73 +29,16 @@ export function PoolsScreen() {
     return map;
   }, [insurers.data]);
 
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    create.mutate({
-      name: form.name.trim(),
-      description: form.description.trim() === '' ? null : form.description.trim(),
-      members: form.members.filter((m) => m.insurerId !== ''),
-    });
-  };
-
   return (
-    <ScreenShell title="Pools">
+    <ScreenShell
+      title="Pools"
+      actions={
+        <Link href="/admin/catalogue/pools/new" className="btn btn-primary">
+          + New pool
+        </Link>
+      }
+    >
       <section className="section">
-        <div className="card card-padded">
-          <h3 className="mb-4">New pool</h3>
-          <form onSubmit={submit} className="form-grid">
-            <div className="field">
-              <label className="field-label" htmlFor="pool-name">
-                Name
-              </label>
-              <input
-                id="pool-name"
-                className="input"
-                type="text"
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Generali Pool — Captive"
-              />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="pool-desc">
-                Description
-              </label>
-              <textarea
-                id="pool-desc"
-                className="textarea"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Optional. E.g. STM captive arrangement, 60/40 with Great Eastern."
-              />
-            </div>
-
-            <fieldset className="fieldset">
-              <legend>Members</legend>
-              <MemberRows
-                members={form.members}
-                onChange={(next) => setForm({ ...form, members: next })}
-                insurers={insurers.data}
-                insurersLoading={insurers.isLoading}
-              />
-            </fieldset>
-
-            {formError ? <p className="field-error">{formError}</p> : null}
-
-            <div className="row">
-              <button type="submit" className="btn btn-primary" disabled={create.isPending}>
-                {create.isPending ? 'Saving…' : 'Add pool'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <section className="section">
-        <h3 className="mb-3">Existing pools</h3>
         {pools.isLoading ? (
           <p>Loading…</p>
         ) : pools.error ? (
@@ -174,10 +99,18 @@ export function PoolsScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded text-center">
-            <p className="mb-0">No pools yet.</p>
-          </div>
+          <EmptyListState
+            message="No pools yet."
+            actionHref="/admin/catalogue/pools/new"
+            actionLabel="+ Add your first pool"
+          />
         )}
+
+        {deleteError ? (
+          <p className="field-error mt-3" role="alert">
+            {deleteError}
+          </p>
+        ) : null}
       </section>
     </ScreenShell>
   );

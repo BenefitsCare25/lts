@@ -208,7 +208,6 @@ export function AiProviderScreen() {
                     className="input"
                     type="url"
                     required
-                    placeholder="https://my-resource.services.ai.azure.com"
                     value={form.endpoint}
                     onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
                   />
@@ -225,7 +224,6 @@ export function AiProviderScreen() {
                     className="input"
                     type="text"
                     required
-                    placeholder="claude-sonnet-4 / gpt-4o-mini / …"
                     value={form.deploymentName}
                     onChange={(e) => setForm({ ...form, deploymentName: e.target.value })}
                   />

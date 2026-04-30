@@ -245,7 +245,6 @@ export function EditPolicyForm({
                           maxLength={80}
                           value={row.policyNumber}
                           onChange={(e) => updateEntity(idx, { policyNumber: e.target.value })}
-                          placeholder="GE/2026/00123"
                         />
                       </div>
 
@@ -300,7 +299,6 @@ export function EditPolicyForm({
                           rows={4}
                           value={row.rateOverridesText}
                           onChange={(e) => updateEntity(idx, { rateOverridesText: e.target.value })}
-                          placeholder={'{\n  "GHS": { "rate_per_thousand": 1.85 }\n}'}
                           spellCheck={false}
                           style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}
                         />

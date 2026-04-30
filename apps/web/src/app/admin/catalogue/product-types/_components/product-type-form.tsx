@@ -5,8 +5,13 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { PREMIUM_STRATEGIES, type PremiumStrategy } from '@insurance-saas/shared-types';
+import {
+  PREMIUM_STRATEGIES,
+  type PremiumStrategy,
+  REGISTRY_CODE_PATTERN,
+} from '@insurance-saas/shared-types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -117,17 +122,16 @@ export function ProductTypeForm({ initial }: Props) {
   const pending = create.isPending || update.isPending;
 
   return (
-    <>
-      <section className="section">
-        <h1>{isEdit ? `Edit ${initial.code}` : 'New product type'}</h1>
-        {isEdit ? (
-          <p className="field-help">
-            Current version: <code>v{initial.version}</code>. Saving bumps to v{initial.version + 1}
-            .
-          </p>
-        ) : null}
-      </section>
-
+    <ScreenShell
+      title={isEdit ? `Edit ${initial.code}` : 'New product type'}
+      context={
+        isEdit ? (
+          <>
+            Current version <code>v{initial.version}</code> · saving bumps to v{initial.version + 1}
+          </>
+        ) : null
+      }
+    >
       <section className="section">
         <div className="card card-padded">
           <form onSubmit={submit} className="stack-4" style={{ maxWidth: '48rem' }}>
@@ -143,8 +147,7 @@ export function ProductTypeForm({ initial }: Props) {
                   required
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  pattern="^[A-Z][A-Z0-9_]*$"
-                  placeholder="GHS"
+                  pattern={REGISTRY_CODE_PATTERN}
                 />
                 <span className="field-help">Uppercase. Unique per tenant.</span>
               </div>
@@ -159,7 +162,6 @@ export function ProductTypeForm({ initial }: Props) {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Group Hospital & Surgical"
                 />
               </div>
             </div>
@@ -234,6 +236,6 @@ export function ProductTypeForm({ initial }: Props) {
           </form>
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }

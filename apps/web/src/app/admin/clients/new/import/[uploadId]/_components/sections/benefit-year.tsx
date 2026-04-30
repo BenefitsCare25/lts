@@ -45,7 +45,6 @@ export function BenefitYearSection({ form, setForm }: Props) {
                 maxLength={200}
                 value={form.policy.name}
                 onChange={(e) => updatePolicy('name', e.target.value)}
-                placeholder="Master Group Policy 2026"
               />
             </div>
 

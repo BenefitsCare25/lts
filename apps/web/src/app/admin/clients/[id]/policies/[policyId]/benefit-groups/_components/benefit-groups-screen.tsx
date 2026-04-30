@@ -320,7 +320,6 @@ export function BenefitGroupsScreen({ policyId }: { policyId: string }) {
                   maxLength={120}
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Senior Management"
                 />
               </div>
 

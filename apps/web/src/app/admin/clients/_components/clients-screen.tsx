@@ -1,268 +1,53 @@
 // =============================================================
-// Clients list + inline create form (Screen 1, S13).
+// Clients list (Screen 1, S13).
 //
-// Client onboarding entry point: legal entity name, UEN with
-// country-pattern validation, address, industry (SSIC), primary
-// contact. Country & Industry feed from the global reference
-// router (system-level seed data).
+// Listing-only surface. Client creation has moved to
+// /admin/clients/new which presents two paths:
+//   • Import slip — drop placement slip → AI extracts → wizard
+//   • Type details — manual entry of legal entity metadata
+//
+// The "Add new client" action in the screen-shell head is the
+// single entry point into both flows.
 // =============================================================
 
 'use client';
 
-import { ScreenShell } from '@/components/ui';
+import { EmptyListState, ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-
-type FormState = {
-  legalName: string;
-  tradingName: string;
-  uen: string;
-  countryOfIncorporation: string;
-  address: string;
-  industry: string;
-  primaryContactName: string;
-  primaryContactEmail: string;
-};
-
-const emptyForm: FormState = {
-  legalName: '',
-  tradingName: '',
-  uen: '',
-  countryOfIncorporation: 'SG',
-  address: '',
-  industry: '',
-  primaryContactName: '',
-  primaryContactEmail: '',
-};
 
 export function ClientsScreen() {
   const utils = trpc.useUtils();
   const list = trpc.clients.list.useQuery();
   const countries = trpc.referenceData.countries.useQuery();
-  const industries = trpc.referenceData.industries.useQuery();
 
-  const create = trpc.clients.create.useMutation({
-    onSuccess: async () => {
-      setForm(emptyForm);
-      setFormError(null);
-      await utils.clients.list.invalidate();
-    },
-    onError: (err) => setFormError(err.message),
-  });
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const remove = trpc.clients.delete.useMutation({
-    onSuccess: () => utils.clients.list.invalidate(),
-    onError: (err) => setFormError(err.message),
+    onSuccess: () => {
+      setDeleteError(null);
+      utils.clients.list.invalidate();
+    },
+    onError: (err) => setDeleteError(err.message),
   });
 
-  const [form, setForm] = useState<FormState>(emptyForm);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const selectedCountry = useMemo(
-    () => countries.data?.find((c) => c.code === form.countryOfIncorporation) ?? null,
-    [countries.data, form.countryOfIncorporation],
-  );
-
-  // Client-side UEN match preview. Server validates again on save.
-  const uenLooksValid = useMemo(() => {
-    if (!form.uen) return null;
-    if (!selectedCountry?.uenPattern) return null;
-    try {
-      return new RegExp(selectedCountry.uenPattern).test(form.uen);
-    } catch {
-      return null;
-    }
-  }, [form.uen, selectedCountry?.uenPattern]);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    create.mutate({
-      legalName: form.legalName.trim(),
-      tradingName: form.tradingName.trim() || null,
-      uen: form.uen.trim(),
-      countryOfIncorporation: form.countryOfIncorporation,
-      address: form.address.trim(),
-      industry: form.industry || null,
-      primaryContactName: form.primaryContactName.trim() || null,
-      primaryContactEmail: form.primaryContactEmail.trim() || null,
-      status: 'ACTIVE',
-    });
-  };
-
-  // Country lookup map for the list table.
-  const countryName = (code: string) => countries.data?.find((c) => c.code === code)?.name ?? code;
+  const countryNameByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of countries.data ?? []) map.set(c.code, c.name);
+    return map;
+  }, [countries.data]);
 
   return (
-    <ScreenShell title="Clients">
+    <ScreenShell
+      title="Clients"
+      actions={
+        <Link href="/admin/clients/new" className="btn btn-primary">
+          + Add new client
+        </Link>
+      }
+    >
       <section className="section">
-        <div className="card card-padded">
-          <h3 className="mb-4">New client</h3>
-          <form onSubmit={submit} className="form-grid">
-            <div className="field">
-              <label className="field-label" htmlFor="cli-legal">
-                Legal entity name
-              </label>
-              <input
-                id="cli-legal"
-                className="input"
-                type="text"
-                required
-                maxLength={200}
-                value={form.legalName}
-                onChange={(e) => setForm({ ...form, legalName: e.target.value })}
-                placeholder="Balance Medical Pte. Ltd."
-              />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-trading">
-                Trading name <span className="field-help-inline">(optional)</span>
-              </label>
-              <input
-                id="cli-trading"
-                className="input"
-                type="text"
-                maxLength={200}
-                value={form.tradingName}
-                onChange={(e) => setForm({ ...form, tradingName: e.target.value })}
-                placeholder="Balance Medical"
-              />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-country">
-                Country of incorporation
-              </label>
-              <select
-                id="cli-country"
-                className="input"
-                required
-                value={form.countryOfIncorporation}
-                onChange={(e) => setForm({ ...form, countryOfIncorporation: e.target.value })}
-                disabled={countries.isLoading}
-              >
-                {countries.data?.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name} ({c.code})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-uen">
-                UEN
-              </label>
-              <input
-                id="cli-uen"
-                className="input"
-                type="text"
-                required
-                maxLength={40}
-                value={form.uen}
-                onChange={(e) => setForm({ ...form, uen: e.target.value.toUpperCase() })}
-                placeholder={
-                  selectedCountry?.uenPattern ? '202012345A' : 'Business registration number'
-                }
-                pattern={selectedCountry?.uenPattern ?? undefined}
-              />
-              <span className="field-help">
-                {selectedCountry?.uenPattern
-                  ? `Format for ${selectedCountry.name}: ${selectedCountry.uenPattern}`
-                  : `No registration format on file for ${selectedCountry?.name ?? 'this country'} — any value accepted.`}
-                {uenLooksValid === false ? (
-                  <>
-                    {' '}
-                    <strong className="text-error">Does not match expected format.</strong>
-                  </>
-                ) : null}
-              </span>
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-address">
-                Registered address
-              </label>
-              <textarea
-                id="cli-address"
-                className="input"
-                required
-                maxLength={500}
-                rows={2}
-                value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
-                placeholder="1 North Bridge Road, #08-08, High Street Centre, Singapore 179094"
-              />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-industry">
-                Industry (SSIC) <span className="field-help-inline">(optional)</span>
-              </label>
-              <select
-                id="cli-industry"
-                className="input"
-                value={form.industry}
-                onChange={(e) => setForm({ ...form, industry: e.target.value })}
-                disabled={industries.isLoading}
-              >
-                <option value="">— Select industry —</option>
-                {industries.data?.map((i) => (
-                  <option key={i.code} value={i.code}>
-                    {i.code} · {i.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-contact-name">
-                Primary contact name <span className="field-help-inline">(optional)</span>
-              </label>
-              <input
-                id="cli-contact-name"
-                className="input"
-                type="text"
-                maxLength={120}
-                value={form.primaryContactName}
-                onChange={(e) => setForm({ ...form, primaryContactName: e.target.value })}
-                placeholder="Jane Tan"
-              />
-            </div>
-
-            <div className="field">
-              <label className="field-label" htmlFor="cli-contact-email">
-                Contact email <span className="field-help-inline">(optional)</span>
-              </label>
-              <input
-                id="cli-contact-email"
-                className="input"
-                type="email"
-                maxLength={254}
-                value={form.primaryContactEmail}
-                onChange={(e) => setForm({ ...form, primaryContactEmail: e.target.value })}
-                placeholder="hr@balancemedical.sg"
-              />
-            </div>
-
-            {formError ? <p className="field-error">{formError}</p> : null}
-
-            <div className="row">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={create.isPending || uenLooksValid === false}
-              >
-                {create.isPending ? 'Saving…' : 'Add client'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <section className="section">
-        <h3 className="mb-3">Existing clients</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -288,7 +73,10 @@ export function ClientsScreen() {
                     <td>
                       <code>{client.uen}</code>
                     </td>
-                    <td>{countryName(client.countryOfIncorporation)}</td>
+                    <td>
+                      {countryNameByCode.get(client.countryOfIncorporation) ??
+                        client.countryOfIncorporation}
+                    </td>
                     <td>
                       <span
                         className={
@@ -356,10 +144,18 @@ export function ClientsScreen() {
             </table>
           </div>
         ) : (
-          <div className="card card-padded text-center">
-            <p className="mb-0">No clients yet. Add your first one above.</p>
-          </div>
+          <EmptyListState
+            message="No clients yet."
+            actionHref="/admin/clients/new"
+            actionLabel="+ Add your first client"
+          />
         )}
+
+        {deleteError ? (
+          <p className="field-error mt-3" role="alert">
+            {deleteError}
+          </p>
+        ) : null}
       </section>
     </ScreenShell>
   );
