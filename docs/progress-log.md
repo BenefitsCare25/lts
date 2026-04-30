@@ -4,6 +4,30 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-30 (later) — Admin UI/UX consistency pass
+
+**Session focus.** Audit the full admin tree for navigation/flow inconsistencies after the import-first wizard landed, fix all issues found, and unify the create-page pattern across every section.
+
+**What landed.**
+
+- **`/admin/clients` is now listing-only.** Stripped the inline create form; added a single `+ Add new client` action button in the screen-shell head pointing to `/admin/clients/new` (the two-tile mode picker). Empty-state CTA also routes there.
+- **Catalogue + policies migrated to the `/new` page pattern.** Inline-create forms removed from `insurers`, `tpas`, `pools`, and per-client `policies` listing pages. Each got a sibling `_components/<x>-create-form.tsx` and a server-shell `new/page.tsx`. Policy create routes to `/edit` on success so the broker can configure entities.
+- **Edit forms wrapped in `<ScreenShell>`.** Five edit forms (`clients/[id]/edit`, `catalogue/{insurers,tpas,pools}/[id]/edit`, `catalogue/product-types`) replaced bare `<h1>` with the standard screen-shell head — consistent with every other screen.
+- **Section rail clarity.** `ClientsListRail` now exposes both "All clients" (exact-match) and "New client" so the wizard route doesn't make "All clients" appear active.
+- **Broken link fixed.** `import-review-screen.tsx:251` linked to `/benefit-years/new` (404). Repointed to the policy `/edit` page, where benefit-year creation actually lives via `BenefitYearsSection`.
+- **Fake-content placeholders removed.** Stripped example values from form inputs across 10+ files (insurer/TPA/pool/policy/employee-schema/product-type/benefit-group/plan/AI-provider). Kept functional UX hints (`"From"`, `"To"`, `"0"`, `"Pick a field first"`, `"optional"` markers).
+- **Simplification pass.** Memoized country lookup in clients-screen (`O(rows × countries) → O(rows)`); dropped redundant `<section>` wrapping single-card create forms; extracted `<EmptyListState>` primitive (5× duplication eliminated); extracted `REGISTRY_CODE_PATTERN` + `REGISTRY_CODE_HELP` constants in `@insurance-saas/shared-types` (5 hardcoded copies of the regex collapsed).
+
+**Decisions and rationale.**
+
+1. **Two import paths kept side-by-side, not merged.** Orphan upload (`extractionDrafts.applyToCatalogue` from `/admin/clients/new`) creates Client + Policy + BY in one transaction; bound upload (`placementSlips.applyToCatalogue` from `/admin/clients/[id]/imports`) applies a slip to an existing client's DRAFT benefit year. Different mutations, different lifecycles — correct by design.
+2. **`<EmptyListState>` extracted, full `<ListingScreen>` not.** The empty-state markup was 5× verbatim. The full listing shell wraps a too-divergent table (each list has custom columns/pills) — extracting it would reinvent TanStack Table.
+3. **Create+edit form unification deferred.** Reuse review flagged ~500 lines of near-duplication between `*-create-form.tsx` and `[id]/edit/_form.tsx`. Real ROI but high regression surface; postponed for a focused refactor pass.
+
+**Verification before push.** `pnpm typecheck` clean, `pnpm lint` clean, `pnpm build` clean (all new `/new` routes registered).
+
+---
+
 ## 2026-04-30 — Import-first Create Client wizard (Phase 2A foundation)
 
 **Session focus.** Replace the manual `/admin/clients` create form with an import-first wizard at `/admin/clients/new` that drops a placement slip, runs the AI extraction pipeline end-to-end, and lands the broker on a 10-section editable form. Section UI for all 10 sections (no placeholders), backed by a single `ExtractionDraft` row.

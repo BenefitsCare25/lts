@@ -259,10 +259,10 @@ export function EmployeeSchemaScreen() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value.toLowerCase() })}
                 pattern="^employee\.[a-z][a-z0-9_]*$"
-                placeholder="employee.hay_job_grade"
               />
               <span className="field-help">
-                Must start with <code>employee.</code> e.g. <code>employee.hay_job_grade</code>.
+                Must start with <code>employee.</code> followed by lowercase letters, digits, or
+                underscores.
               </span>
             </div>
 
@@ -277,7 +277,6 @@ export function EmployeeSchemaScreen() {
                 required
                 value={form.label}
                 onChange={(e) => setForm({ ...form, label: e.target.value })}
-                placeholder="Hay Job Grade"
               />
             </div>
 
@@ -309,7 +308,6 @@ export function EmployeeSchemaScreen() {
                   className="textarea"
                   value={form.enumValues}
                   onChange={(e) => setForm({ ...form, enumValues: e.target.value })}
-                  placeholder={'FLEX_S\nFLEX_M\nFLEX_MC\nFLEX_MC2'}
                 />
                 <span className="field-help">One per line, or comma-separated.</span>
               </div>

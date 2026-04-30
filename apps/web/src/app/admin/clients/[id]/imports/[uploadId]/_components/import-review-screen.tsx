@@ -248,7 +248,7 @@ export function ImportReviewScreen({
                     <span className="field-help">
                       No DRAFT benefit years on this policy.{' '}
                       <Link
-                        href={`/admin/clients/${clientId}/policies/${selectedPolicyId}/benefit-years/new`}
+                        href={`/admin/clients/${clientId}/policies/${selectedPolicyId}/edit`}
                       >
                         Create one
                       </Link>

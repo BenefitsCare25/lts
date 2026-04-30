@@ -52,6 +52,9 @@ function StaticRail({
 }
 
 function ClientsListRail({ pathname }: { pathname: string }) {
+  // "All clients" is exact-match so it doesn't light up while the user
+  // is on /admin/clients/new (its sibling). The new-client entry is
+  // active for the mode picker AND the import-wizard sub-route.
   return (
     <nav className="admin-rail" aria-label="Clients">
       <p className="admin-rail__heading">Clients</p>
@@ -62,6 +65,13 @@ function ClientsListRail({ pathname }: { pathname: string }) {
           aria-current={pathname === '/admin/clients' ? 'page' : undefined}
         >
           All clients
+        </Link>
+        <Link
+          href="/admin/clients/new"
+          className="admin-rail__link"
+          aria-current={pathname.startsWith('/admin/clients/new') ? 'page' : undefined}
+        >
+          New client
         </Link>
       </div>
     </nav>

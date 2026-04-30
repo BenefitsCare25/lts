@@ -46,3 +46,11 @@ export const PREMIUM_STRATEGIES = [
 ] as const;
 
 export type PremiumStrategy = (typeof PREMIUM_STRATEGIES)[number];
+
+// Shared regex for tenant-unique registry codes (insurer, TPA,
+// product type). Same shape on client `pattern=` attributes and
+// server-side Zod refinements so the two cannot drift.
+export const REGISTRY_CODE_PATTERN = '^[A-Z][A-Z0-9_]*$';
+export const REGISTRY_CODE_REGEX = /^[A-Z][A-Z0-9_]*$/;
+export const REGISTRY_CODE_HELP =
+  'Uppercase letters, digits, underscores. Unique per tenant.';

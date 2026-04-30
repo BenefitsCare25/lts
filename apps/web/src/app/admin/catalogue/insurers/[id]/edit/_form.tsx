@@ -6,8 +6,13 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { PRODUCT_TYPE_CODES, type ProductTypeCode } from '@insurance-saas/shared-types';
+import {
+  PRODUCT_TYPE_CODES,
+  type ProductTypeCode,
+  REGISTRY_CODE_PATTERN,
+} from '@insurance-saas/shared-types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -81,11 +86,7 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
   };
 
   return (
-    <>
-      <section className="section">
-        <h1>Edit insurer</h1>
-      </section>
-
+    <ScreenShell title="Edit insurer">
       <section className="section">
         <div className="card card-padded">
           <form onSubmit={submit} className="form-grid">
@@ -114,7 +115,7 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
                 required
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                pattern="^[A-Z][A-Z0-9_]*$"
+                pattern={REGISTRY_CODE_PATTERN}
               />
             </div>
 
@@ -145,7 +146,6 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
                 maxLength={40}
                 value={form.claimFeedProtocol}
                 onChange={(e) => setForm({ ...form, claimFeedProtocol: e.target.value })}
-                placeholder="IHP"
               />
             </div>
 
@@ -175,6 +175,6 @@ export function EditInsurerForm({ insurerId }: { insurerId: string }) {
           </form>
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }

@@ -5,6 +5,7 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -63,11 +64,7 @@ export function EditPoolForm({ poolId }: { poolId: string }) {
   };
 
   return (
-    <>
-      <section className="section">
-        <h1>Edit pool</h1>
-      </section>
-
+    <ScreenShell title="Edit pool">
       <section className="section">
         <div className="card card-padded">
           <form onSubmit={submit} className="form-grid">
@@ -120,6 +117,6 @@ export function EditPoolForm({ poolId }: { poolId: string }) {
           </form>
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }

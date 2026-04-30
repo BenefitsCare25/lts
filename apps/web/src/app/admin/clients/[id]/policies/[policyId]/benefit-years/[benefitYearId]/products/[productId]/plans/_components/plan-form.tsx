@@ -208,7 +208,6 @@ export function PlanForm({
                 maxLength={40}
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                placeholder="P1"
                 pattern="^P[A-Z0-9]+$"
                 disabled={!editable}
               />

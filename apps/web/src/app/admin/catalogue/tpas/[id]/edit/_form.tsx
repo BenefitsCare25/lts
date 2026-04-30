@@ -6,8 +6,13 @@
 
 'use client';
 
+import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { TPA_FEED_FORMATS, type TpaFeedFormat } from '@insurance-saas/shared-types';
+import {
+  REGISTRY_CODE_PATTERN,
+  TPA_FEED_FORMATS,
+  type TpaFeedFormat,
+} from '@insurance-saas/shared-types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -80,11 +85,7 @@ export function EditTpaForm({ tpaId }: { tpaId: string }) {
   };
 
   return (
-    <>
-      <section className="section">
-        <h1>Edit TPA</h1>
-      </section>
-
+    <ScreenShell title="Edit TPA">
       <section className="section">
         <div className="card card-padded">
           <form onSubmit={submit} className="form-grid">
@@ -113,7 +114,7 @@ export function EditTpaForm({ tpaId }: { tpaId: string }) {
                 required
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-                pattern="^[A-Z][A-Z0-9_]*$"
+                pattern={REGISTRY_CODE_PATTERN}
               />
             </div>
 
@@ -186,6 +187,6 @@ export function EditTpaForm({ tpaId }: { tpaId: string }) {
           </form>
         </div>
       </section>
-    </>
+    </ScreenShell>
   );
 }

@@ -1,13 +1,11 @@
 // =============================================================
-// Policies list + inline create form for one client.
-//
-// Create takes only a policy name — entities are managed on the
-// edit page where the rate-overrides JSON gets the room it needs.
+// Policies list for one client. Creation lives at
+// /admin/clients/[id]/policies/new.
 // =============================================================
 
 'use client';
 
-import { ScreenShell } from '@/components/ui';
+import { EmptyListState, ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -16,73 +14,29 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
   const utils = trpc.useUtils();
   const list = trpc.policies.listByClient.useQuery({ clientId });
 
-  const create = trpc.policies.create.useMutation({
-    onSuccess: async () => {
-      setName('');
-      setFormError(null);
-      await utils.policies.listByClient.invalidate({ clientId });
-    },
-    onError: (err) => setFormError(err.message),
-  });
   const remove = trpc.policies.delete.useMutation({
-    onSuccess: () => utils.policies.listByClient.invalidate({ clientId }),
-    onError: (err) => setFormError(err.message),
+    onSuccess: () => {
+      setDeleteError(null);
+      utils.policies.listByClient.invalidate({ clientId });
+    },
+    onError: (err) => setDeleteError(err.message),
   });
 
-  const [name, setName] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
-    create.mutate({
-      clientId,
-      data: { name: name.trim(), entities: [] },
-    });
-  };
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   return (
-    <ScreenShell title="Policies">
+    <ScreenShell
+      title="Policies"
+      actions={
+        <Link
+          href={`/admin/clients/${clientId}/policies/new`}
+          className="btn btn-primary"
+        >
+          + New policy
+        </Link>
+      }
+    >
       <section className="section">
-        <div className="card card-padded">
-          <h3 className="mb-4">New policy</h3>
-          <form onSubmit={submit} className="form-grid">
-            <div className="field">
-              <label className="field-label" htmlFor="pol-name">
-                Policy name
-              </label>
-              <input
-                id="pol-name"
-                className="input"
-                type="text"
-                required
-                maxLength={200}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Master Employee Benefits 2026"
-              />
-              <span className="field-help">
-                Add the policy name first; configure entities and rate overrides on the next screen.
-              </span>
-            </div>
-
-            {formError ? <p className="field-error">{formError}</p> : null}
-
-            <div className="row">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={create.isPending || name.trim().length === 0}
-              >
-                {create.isPending ? 'Saving…' : 'Add policy'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <section className="section">
-        <h3 className="mb-3">Existing policies</h3>
         {list.isLoading ? (
           <p>Loading…</p>
         ) : list.error ? (
@@ -134,10 +88,18 @@ export function ClientPoliciesScreen({ clientId }: { clientId: string }) {
             </table>
           </div>
         ) : (
-          <div className="card card-padded text-center">
-            <p className="mb-0">No policies yet for this client.</p>
-          </div>
+          <EmptyListState
+            message="No policies yet for this client."
+            actionHref={`/admin/clients/${clientId}/policies/new`}
+            actionLabel="+ Add the first policy"
+          />
         )}
+
+        {deleteError ? (
+          <p className="field-error mt-3" role="alert">
+            {deleteError}
+          </p>
+        ) : null}
       </section>
     </ScreenShell>
   );
