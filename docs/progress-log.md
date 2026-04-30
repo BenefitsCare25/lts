@@ -4,6 +4,61 @@ Running record of Claude Code sessions. Newest entries on top. Each entry: sessi
 
 ---
 
+## 2026-04-30 — Import-first Create Client wizard (Phase 2A foundation)
+
+**Session focus.** Replace the manual `/admin/clients` create form with an import-first wizard at `/admin/clients/new` that drops a placement slip, runs the AI extraction pipeline end-to-end, and lands the broker on a 10-section editable form. Section UI for all 10 sections (no placeholders), backed by a single `ExtractionDraft` row.
+
+**What landed.**
+
+- **DB foundation — migration `20260430140000_wizard_foundation`.**
+  - `PlacementSlipUpload`: `clientId` becomes nullable, direct `tenantId` column added (back-filled from existing rows), RLS policy switched from parent-FK to direct-tenant. Orphan uploads (no client yet) are now first-class.
+  - `Policy.ageBasis` enum (`POLICY_START | HIRE_DATE | AS_AT_EVENT`) — drives how the predicate engine resolves `employee.age_next_birthday`.
+  - `BenefitYear.carryForwardFromYearId` self-FK for renewal carry-forward.
+  - 7 new tables with RLS + FORCE: `BenefitGroupPreset` (reusable predicates), `EndorsementCatalogue` / `ExclusionCatalogue` (tenant-scoped plan-remark codes), `PolicyException` (employee carve-outs / grandfathered exceptions), `FlexBundle` + `FlexBundlePlan` (Flex S/M/MC/MC2 picker shape), `ProductAttachment` (product summary file attachments), `IssueType` (system-managed taxonomy of every issue the wizard / parser / extractor can surface — no tenantId).
+  - New RLS helper `app_tenant_of_flex_bundle()`. `TENANT_MODELS` in `db/tenant.ts` extended from 10 → 14 (added BenefitGroupPreset, EndorsementCatalogue, ExclusionCatalogue, PlacementSlipUpload).
+
+- **Catalogue seed extensions.** `PRODUCT_BASE_PROPERTIES` gained `sum_assured_currency`, `premium_currency`, `notes`, and `age_limits.no_underwriting_max_age` (Inspro had this as a separate field from the SI cutoff). `SCHEDULE_REMARK_PROPERTIES` (`endorsements[]` + `exclusions[]` arrays of `{code, description}`) baked into every product's `planSchema.schedule` via `planSchemaFor()` — applies generically to all 12 product types, no per-product changes.
+
+- **AI extraction pipeline (`server/extraction/`).**
+  - `heuristic-to-envelope.ts` — pure function: `ParseResult → ExtractedProduct[]` matching `extracted-product.json`. Wraps every leaf in `{value, raw, confidence, sourceRef}`. Confidence = 1.0 for non-empty parsed cells, 0.6 for regex-derived, 0 for empty. Per-tier and per-block premium rates layered on via the catalogue's `rate_column_map`.
+  - `predicate-suggester.ts` — plan-label text → JSONLogic predicate referencing `employee.*` field paths. Pattern table extracted to `predicate-patterns.ts` and shared with `parser.ts` (the `Bargainable` mapping had silently diverged between the two — `parser.ts` mapped to a non-existent `employee.bargainable: true` boolean while the suggester correctly mapped to `employee.employment_type == 'BARGAINABLE'`; reconciled to the suggester's version since `employment_type` is the seeded STANDARD enum field).
+  - `reconciliation.ts` — computed-vs-declared totals report. Computed = sum of fixed-amount rates per product today; rate-per-thousand reconciliation activates once the Plans tab grows headcount × SI inputs. Slip-declared totals stay null until the parser learns to read the billing-numbers sheet.
+  - `extractor.ts` — orchestrator wired into `placementSlips.uploadOrphan`. Runs heuristic → envelope → suggestions in one pass. Loads `productType` + `employeeSchema` via `Promise.all`. The LLM stage hook is wired but a no-op until `TenantAiProvider` BYOK lands; turning it on later doesn't change the contract — every section will keep reading the same envelope.
+
+- **Backend wiring.**
+  - `placementSlips.uploadOrphan` — new mutation accepting only filename + bytes, persists upload + ExtractionDraft (READY) for the wizard. JSON size guard caps `extractedProducts` at 4 MB.
+  - `extraction-drafts.ts` — new tRPC router with `listOrphans` (resume mid-wizard), `byUploadId`, `updateExtractedProducts`, `discard`, `applyToCatalogue` (single Prisma transaction creating Client + Policy + PolicyEntities + BenefitYear, binding the upload, marking the draft APPLIED, writing AuditLog). PolicyEntities use `createMany` instead of a loop.
+  - Refactor: extracted `assertExcelBuffer()` and `persistUploadBytes()` helpers in `placement-slips.ts` so the bound and orphan upload paths share magic-byte sniff and SharePoint scaffolding (~110 lines deduped). `COVER_BASIS_BY_STRATEGY` and `excelColumnIndex()` extracted to `server/catalogue/premium-strategy.ts`.
+
+- **UI — `/admin/clients/new` and `/admin/clients/new/import/[uploadId]`.**
+  - **Mode picker** at `/admin/clients/new`: two-tile entry (Import slip / Type details) plus a "Resume in-progress imports" list of orphan drafts.
+  - **Wizard shell**: three-pane layout, left rail with 10 sections + status icons (✓ / ● / ○ / ⚠), URL hash for deep-linking, prev/next footer. Section dispatch is a `SECTION_COMPONENTS: Record<SectionId, ComponentType>` registry, not a ternary chain.
+  - **All 10 sections shipped as functional UI** (no placeholders): Source summary, Client form, Policy entities (table editor with master radio), Benefit year (dates + age-basis chips), Insurers & pool (registry cross-reference + add-to-registry deep link), Products (per-product picker + 4 sub-tabs Details/Plans/Rates/Endorsements with confidence dots, source-cell breadcrumbs, stacking visualisation, per-tier and per-block rate matrices), Eligibility (suggested groups checklist + groups × products default-plan matrix with JSONLogic rendered in plain English), Schema additions (per missing field: Add CUSTOM / Map to existing / Drop term radios), Reconciliation (per-product totals with variance pill), Review & apply (summary + apply-readiness gate + single-tx commit).
+  - **One-shot seeding guards** in wizard-shell and Client section via `useRef<string | null>` keyed on `draft.id` — tRPC refetches no longer re-seed and overwrite broker edits. `StackingTree` Maps memoized on `[plans]`.
+  - **Shared utilities**: `apps/web/src/lib/file.ts` exports `readFileAsBase64` (lifted from three duplicates in imports-screen / claims-screen / create-mode-screen). `_types.ts` exports `extractedProductsFromDraft` and `suggestionsFromDraft` accessors so sections never reach into raw JSON.
+
+**Decisions and rationale.**
+
+1. **Orphan upload column shape.** Considered keeping clientId required and creating a stub `Client` row up-front, but that pollutes the Clients list with abandoned drafts and requires undoing the row on cancel. Nullable `clientId` + direct `tenantId` is simpler and lets the apply step bind in one transaction.
+2. **Direct tenantId on PlacementSlipUpload.** The existing parent-FK helper RLS path returned null for orphan rows. Adding tenantId directly makes RLS a one-liner check that works for both shapes — same pattern as `User`, `ExtractionDraft`, `TenantAiProvider`.
+3. **Heuristic-only extraction today; LLM hook is a no-op.** Real LLM calls (BYOK Azure AI Foundry per-tenant) need the prompt + few-shot examples calibrated against real slips, which is its own slice. The contract returned from `extractFromWorkbook` is already the full `ExtractedProduct[]` shape, so wiring an LLM later is a single-file change inside `extractor.ts`.
+4. **No-placeholder sections.** Earlier slice left §5–9 as `<SectionPlaceholder>` cards. User pushback: "make sure all is cover and not just placeholder for Sections 5–9, please only extract and setup the mandatory data that make sense". All 5 now read real data, with clear "next slice" notes only on the bits that genuinely need follow-up (LLM enrichment, billing-numbers parser, endorsement catalogue seeding, per-product apply pipeline).
+5. **`Bargainable` predicate reconciliation.** Two divergent mappings would have produced predicates referencing `employee.bargainable: true` (a field that doesn't exist) on the parser path and `employee.employment_type == 'BARGAINABLE'` on the suggester path. Reconciled to the suggester's version since `employment_type` is a seeded STANDARD field and `bargainable` would have required a tenant schema migration. Pattern table now lives in one module so this can't happen again.
+6. **Apply transaction scope: foundational rows only.** This slice's Apply creates Client + Policy + PolicyEntities + BenefitYear and binds the upload. Per-product Plans / PremiumRates / BenefitGroups / ProductEligibility are still written via the existing `placementSlips.applyToCatalogue` from inside the wizard's Products / Eligibility sections (next slice). Splitting the transaction this way means the user lands on a real client even if a later step needs a re-run.
+
+**What's next (Phase 2A continuation).**
+
+- LLM stage in `extractor.ts` — actual call against `TenantAiProvider`, prompt-cached system preamble + per-(productType, insurer) few-shot examples sourced from `parsingRules.templates.examples[]`.
+- Per-product apply pipeline merged into `extractionDrafts.applyToCatalogue` — Plans / PremiumRates / BenefitGroups / ProductEligibility / EmployeeSchema additions all in the same transaction as the foundational rows.
+- Billing-numbers sheet parser → declared totals → reconciliation Variance column.
+- Endorsement / Exclusion catalogue seed data per tenant + `comments` sheet → catalogue-code mapping.
+- Effective-dated rate / plan changes mid-year (UI surface for `Plan.effectiveFrom/To`).
+- Flex bundle composition UI (`FlexBundle` schema is in place).
+
+**Verification before push.** `pnpm typecheck` clean, `pnpm lint` clean, `pnpm build` clean (wizard route at 11.7 kB, mode picker at 3.65 kB).
+
+---
+
 ## 2026-04-28 — Phase 1 close-out (S23 → S35 + SharePoint + security pass)
 
 **Session focus.** Close every remaining Phase 1 story in one stretch (S23 eligibility through S35 claims feed), swap Azure Blob for SharePoint storage, then run a security/cleanup audit and apply the fixes.

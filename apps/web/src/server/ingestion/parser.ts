@@ -289,91 +289,15 @@ function extractPolicyEntities(
   return [];
 }
 
-// Heuristic predicate inference. Each plan name (or eligibility text)
-// carries domain phrases like "Hay Job Grade 18 and above", "Foreign
-// Workers WP/SP", "Bargainable", etc. We pattern-match those into a
-// JSONLogic predicate the broker confirms in the review screen.
-//
-// The patterns are intentionally narrow — false-positive predicates
-// damage trust more than false-negatives. Anything we don't recognise
-// becomes a {confidence: 0} suggestion that the broker writes by hand.
-const PATTERNS: {
-  re: RegExp;
-  // biome-ignore lint/suspicious/noExplicitAny: JSONLogic atom shape varies.
-  build: (m: RegExpMatchArray) => any;
-}[] = [
-  // "Hay Job Grade 18 and above"
-  {
-    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:and\s*above|\+)/i,
-    build: (m) => ({ '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] }),
-  },
-  // "Hay Job Grade 08 to 15" or "08 - 15"
-  {
-    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})/i,
-    build: (m) => ({
-      and: [
-        { '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] },
-        { '<=': [{ var: 'employee.hay_job_grade' }, Number(m[2])] },
-      ],
-    }),
-  },
-  // "Foreign Workers" / "FW WP/SP" / "Work Permit or S-Pass"
-  {
-    re: /Foreign\s*Workers?|FW\s*(?:WP|SP)|Work\s*Permit\s*or\s*S-?\s*Pass/i,
-    build: () => ({ in: [{ var: 'employee.work_pass_type' }, ['WORK_PERMIT', 'S_PASS']] }),
-  },
-  // "Bargainable" (employee category)
-  {
-    re: /\bBargainable\b/i,
-    build: () => ({ '==': [{ var: 'employee.bargainable' }, true] }),
-  },
-  // "Intern" / "Contract"
-  {
-    re: /\bInterns?\b|\bContract\s*Employees?\b/i,
-    build: () => ({ in: [{ var: 'employee.employment_type' }, ['INTERN', 'CONTRACT']] }),
-  },
-  // "Manual Workers" (Allianz WICI categorisation)
-  {
-    re: /\bManual\s*Workers?\b/i,
-    build: () => ({ '==': [{ var: 'employee.manual_worker' }, true] }),
-  },
-];
-
-// Flattens nested `{ and: [...] }` so a predicate like
-// { and: [{ and: [a, b] }, c] } collapses to { and: [a, b, c] }.
-// Cosmetic — JSONLogic evaluates both shapes identically — but the
-// flat form is what a human would write and matches what the
-// review UI expects.
-function flattenAnd(node: unknown): unknown {
-  if (!node || typeof node !== 'object' || !('and' in (node as Record<string, unknown>))) {
-    return node;
-  }
-  const arr = (node as { and: unknown[] }).and;
-  const out: unknown[] = [];
-  for (const child of arr) {
-    const flat = flattenAnd(child);
-    if (flat && typeof flat === 'object' && 'and' in (flat as Record<string, unknown>)) {
-      out.push(...(flat as { and: unknown[] }).and);
-    } else {
-      out.push(flat);
-    }
-  }
-  return { and: out };
-}
+// Heuristic predicate inference uses the shared pattern table in
+// server/extraction/predicate-patterns.ts. Empty `{}` predicates
+// signal "broker must replace" — JSONLogic treats `{}` as truthy
+// so the eligibility engine must reject them without confirmation.
+import { inferPredicateFromText } from '@/server/extraction/predicate-patterns';
 
 function inferPredicate(text: string): { predicate: Record<string, unknown>; confidence: number } {
-  const matches: Record<string, unknown>[] = [];
-  for (const p of PATTERNS) {
-    const m = text.match(p.re);
-    if (m) matches.push(p.build(m));
-  }
-  if (matches.length === 0) {
-    // Empty object — broker must replace. JSONLogic treats {} as truthy
-    // so don't ship this to the eligibility engine without confirmation.
-    return { predicate: {}, confidence: 0 };
-  }
-  const raw = matches.length === 1 ? (matches[0] ?? {}) : { and: matches };
-  return { predicate: flattenAnd(raw) as Record<string, unknown>, confidence: matches.length };
+  const { predicate, matchCount } = inferPredicateFromText(text);
+  return { predicate, confidence: matchCount };
 }
 
 function inferBenefitGroups(products: ParsedProduct[]): ParsedBenefitGroup[] {

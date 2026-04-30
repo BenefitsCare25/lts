@@ -19,7 +19,7 @@
 
 import { prisma } from './client';
 
-// The 10 models that carry a direct tenantId column.
+// The 14 models that carry a direct tenantId column.
 // Models accessed only via relations (Policy → Client, Employee → Client,
 // etc.) are isolated at the app layer by navigating through their
 // tenant-scoped parent, and at the DB layer by RLS on that parent.
@@ -36,6 +36,15 @@ const TENANT_MODELS = new Set([
   'TenantAiProvider',
   // AI extraction drafts carry a direct tenantId.
   'ExtractionDraft',
+  // Reusable predicate templates per tenant.
+  'BenefitGroupPreset',
+  // Per-tenant catalogues for plan endorsements / exclusions.
+  'EndorsementCatalogue',
+  'ExclusionCatalogue',
+  // Direct tenantId added in 20260430140000 to support orphan uploads
+  // (no clientId yet during the Create Client wizard). Auto-scope keeps
+  // the wizard's pre-client list/byId queries from leaking across tenants.
+  'PlacementSlipUpload',
 ]);
 
 export class UserNotProvisionedError extends Error {

@@ -13,6 +13,7 @@ import { claimsFeedRouter } from './routers/claims-feed';
 import { clientsRouter } from './routers/clients';
 import { employeeSchemaRouter } from './routers/employee-schema';
 import { employeesRouter } from './routers/employees';
+import { extractionDraftsRouter } from './routers/extraction-drafts';
 import { healthRouter } from './routers/health';
 import { insurersRouter } from './routers/insurers';
 import { placementSlipsRouter } from './routers/placement-slips';
@@ -44,6 +45,7 @@ export const appRouter = router({
   productEligibility: productEligibilityRouter,
   premiumRates: premiumRatesRouter,
   placementSlips: placementSlipsRouter,
+  extractionDrafts: extractionDraftsRouter,
   employees: employeesRouter,
   claimsFeed: claimsFeedRouter,
   review: reviewRouter,

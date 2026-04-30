@@ -5,6 +5,7 @@
 'use client';
 
 import { ScreenShell } from '@/components/ui';
+import { readFileAsBase64 } from '@/lib/file';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -20,24 +21,6 @@ const statusPill = (status: string) => {
   if (status === 'FAILED') return 'pill pill-muted';
   return 'pill pill-muted';
 };
-
-// Reads a File as a base64 string. Strips the data: prefix.
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== 'string') {
-        reject(new Error('Unexpected file read result.'));
-        return;
-      }
-      const idx = result.indexOf(',');
-      resolve(idx === -1 ? result : result.slice(idx + 1));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('File read failed.'));
-    reader.readAsDataURL(file);
-  });
-}
 
 export function ImportsScreen({ clientId }: { clientId: string }) {
   const utils = trpc.useUtils();

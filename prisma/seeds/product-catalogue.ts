@@ -17,9 +17,25 @@ import { PRODUCT_TYPE_CODES, type ProductTypeCode } from '@insurance-saas/shared
 import type { PrismaClient } from '@prisma/client';
 
 // Reusable schema fragments — these recur across every product type.
+//
+// The wizard's product details auto-form renders every property here as
+// an editable field. Adding a property = adding a field everywhere.
+// Removing a property = removing it from the wizard form on the next seed
+// run. Tenant-specific overrides live on the per-product schema (the
+// `extra` arg to productSchema()), not here.
 const PRODUCT_BASE_PROPERTIES = {
   insurer: { type: 'string', description: 'Insurer code (matches Insurer.code)' },
   policy_number: { type: 'string', description: 'Insurer-issued policy number' },
+  // Currencies default to the tenant's primary currency at apply time;
+  // explicit fields support multi-currency clients without code branches.
+  sum_assured_currency: {
+    type: 'string',
+    description: 'ISO 4217 currency code for sum-assured amounts (default: tenant primary)',
+  },
+  premium_currency: {
+    type: 'string',
+    description: 'ISO 4217 currency code for premium amounts (default: tenant primary)',
+  },
   eligibility_text: { type: 'string', description: 'Plain-English eligibility blurb' },
   age_limits: {
     type: 'object',
@@ -27,6 +43,11 @@ const PRODUCT_BASE_PROPERTIES = {
       min_age_at_entry: { type: 'integer', minimum: 0, maximum: 120 },
       max_age_at_entry: { type: 'integer', minimum: 0, maximum: 120 },
       max_age_at_renewal: { type: 'integer', minimum: 0, maximum: 120 },
+      // Age above which an employee requires medical underwriting,
+      // regardless of sum insured. Inspro's "Age Limit for No
+      // Underwriting" — distinct from `evidence_of_health_threshold`,
+      // which is the SI cutoff.
+      no_underwriting_max_age: { type: 'integer', minimum: 0, maximum: 120 },
     },
   },
   member_cover: {
@@ -37,9 +58,16 @@ const PRODUCT_BASE_PROPERTIES = {
   benefit_period: { type: 'string', description: 'Coverage period (e.g. "12 months")' },
   free_cover_limit: { type: 'number', minimum: 0 },
   evidence_of_health_threshold: { type: 'number', minimum: 0 },
+  // Free-form broker remarks. The slip's `comments` sheet feeds this
+  // when nothing structured matches; structured items go to plan-level
+  // endorsements/exclusions instead.
+  notes: { type: 'string', description: 'Broker remarks not captured elsewhere' },
 } as const;
 
-// Plan-level fields shared by every product type.
+// Plan-level fields shared by every product type. Endorsements and
+// exclusions live inside `Plan.schedule.{endorsements, exclusions}`
+// per the schedule schema below — not here — so per-product-type
+// schedule generators can keep the same envelope.
 const PLAN_BASE_PROPERTIES = {
   code: { type: 'string', pattern: '^P[A-Z0-9]+$' },
   name: { type: 'string' },
@@ -53,6 +81,37 @@ const PLAN_BASE_PROPERTIES = {
   },
   effectiveFrom: { type: ['string', 'null'], format: 'date' },
   effectiveTo: { type: ['string', 'null'], format: 'date' },
+} as const;
+
+// Endorsement / Exclusion sub-schema — appended to every per-product
+// schedule properties block via SCHEDULE_PLUS_REMARKS(). Codes reference
+// the tenant's EndorsementCatalogue / ExclusionCatalogue; description
+// is free-form for nuance the catalogue label can't carry.
+const SCHEDULE_REMARK_PROPERTIES = {
+  endorsements: {
+    type: 'array',
+    description: 'Plan-level cover additions; codes match EndorsementCatalogue.code',
+    items: {
+      type: 'object',
+      properties: {
+        code: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['code'],
+    },
+  },
+  exclusions: {
+    type: 'array',
+    description: 'Plan-level cover carve-outs; codes match ExclusionCatalogue.code',
+    items: {
+      type: 'object',
+      properties: {
+        code: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['code'],
+    },
+  },
 } as const;
 
 // ── Per-product schedule property sets ─────────────────────────────────
@@ -124,6 +183,9 @@ const SCHEDULE_WICI = {
 };
 
 // Helper to assemble a planSchema from per-product schedule properties.
+// Every schedule automatically gains the shared remarks block
+// (endorsements + exclusions) so the wizard renders the same UI
+// across product types.
 const planSchemaFor = (
   scheduleProps: Record<string, unknown>,
   schedRequired: string[] = [],
@@ -136,7 +198,7 @@ const planSchemaFor = (
     ...(coverBasisOverride ? { coverBasis: { enum: [coverBasisOverride] } } : {}),
     schedule: {
       type: 'object',
-      properties: scheduleProps,
+      properties: { ...scheduleProps, ...SCHEDULE_REMARK_PROPERTIES },
       ...(schedRequired.length > 0 ? { required: schedRequired } : {}),
     },
   },
