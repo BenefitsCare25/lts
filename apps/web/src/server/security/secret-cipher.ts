@@ -36,27 +36,41 @@ const SALT = Buffer.from('insurance-saas:secret-cipher:v1');
 
 const VERSION_PREFIX = 'v1.';
 
+// Production minimum key length. Validated at boot in env.ts; this
+// constant is the lower bound enforced inside the cipher so a stray
+// caller importing the module before instrumentation runs still gets
+// a sane error.
+const APP_SECRET_KEY_MIN_LENGTH = 32;
+
 let _masterKey: Buffer | null = null;
 
 function getMasterKey(): Buffer {
   if (_masterKey) return _masterKey;
   const raw = process.env.APP_SECRET_KEY;
-  if (raw && raw.length >= 16) {
+  const isProd = process.env.NODE_ENV === 'production';
+  if (raw && raw.length >= APP_SECRET_KEY_MIN_LENGTH) {
     _masterKey = scryptSync(raw, SALT, KEY_LENGTH);
     return _masterKey;
   }
-  if (process.env.NODE_ENV === 'production') {
+  if (isProd) {
     throw new Error(
-      'APP_SECRET_KEY is missing or too short. Set a 32+ char random string in your environment before persisting any encrypted secrets.',
+      `APP_SECRET_KEY is missing or shorter than ${APP_SECRET_KEY_MIN_LENGTH} characters. Set a strong random string (e.g. \`openssl rand -base64 48\`) before persisting any encrypted secrets.`,
     );
   }
   // Dev fallback: deterministic so secrets survive restart, but
   // explicitly logged so it can never accidentally ship.
   process.stderr.write(
-    '[secret-cipher] APP_SECRET_KEY not set — using dev-only fallback key. Encrypted values will NOT decrypt in another environment.\n',
+    '[secret-cipher] APP_SECRET_KEY not set or too short — using dev-only fallback key. Encrypted values will NOT decrypt in another environment.\n',
   );
   _masterKey = scryptSync('insurance-saas-dev-fallback', SALT, KEY_LENGTH);
   return _masterKey;
+}
+
+// H6: instrumentation hook calls this once at server start so the
+// scrypt KDF doesn't block the event loop on the first request that
+// happens to encrypt or decrypt a tenant-supplied secret.
+export function warmMasterKey(): void {
+  getMasterKey();
 }
 
 export function encryptSecret(plaintext: string): string {

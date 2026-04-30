@@ -40,8 +40,14 @@ const datesSchema = z
 // Read the caller's role from the user record. The session token
 // carries it too, but going to the DB keeps this router independent
 // of the session shape and survives mid-session role changes.
-async function loadCallerRole(userId: string): Promise<UserRole> {
-  const user = await prisma.user.findUnique({
+async function loadCallerRole(
+  db: import('@/server/db/tenant').TenantDb,
+  userId: string,
+): Promise<UserRole> {
+  // findFirst (not findUnique) so the tenant-scoped extension applies
+  // — defends against a stale session JWT for a user moved/deleted
+  // outside the current tenant.
+  const user = await db.user.findFirst({
     where: { id: userId },
     select: { role: true },
   });
@@ -182,7 +188,7 @@ export const benefitYearsRouter = router({
         input.state === BenefitYearState.PUBLISHED ||
         (by.state === BenefitYearState.PUBLISHED && input.state === BenefitYearState.ARCHIVED);
       if (movingToPublishedOrArchivingPublished) {
-        const role = await loadCallerRole(ctx.userId);
+        const role = await loadCallerRole(ctx.db, ctx.userId);
         if (!PUBLISH_ROLES.has(role)) {
           throw new TRPCError({
             code: 'FORBIDDEN',

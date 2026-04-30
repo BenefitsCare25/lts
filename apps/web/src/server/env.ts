@@ -1,20 +1,30 @@
 // =============================================================
 // Server-side environment access.
 //
-// Phase 1 auth path: Auth.js with credentials. Two env vars matter:
-//   AUTH_SECRET     — JWT signing secret (32+ random chars).
-//   AUTH_TRUST_HOST — must be "true" when running behind a reverse
-//                     proxy/ingress (Container Apps, Vercel preview,
-//                     Cloudflare). Auth.js refuses unknown hosts
-//                     otherwise.
+// Two production-required secrets matter for boot:
+//   AUTH_SECRET      — Auth.js JWT signing secret (32+ random chars).
+//   APP_SECRET_KEY   — master key feeding `secret-cipher.ts` (AES-256-GCM
+//                      for tenant BYOK creds). Min 32 chars. Rotating
+//                      it without re-encrypting `TenantAiProvider.encryptedKey`
+//                      makes every existing row undecryptable, so treat
+//                      it as a one-time-set value.
+//   AUTH_TRUST_HOST  — must be "true" when running behind a reverse
+//                      proxy/ingress (Container Apps, Vercel preview,
+//                      Cloudflare). Auth.js refuses unknown hosts
+//                      otherwise. Not required at boot — Auth.js reads
+//                      it directly.
 //
-// Production must boot only when AUTH_SECRET is present. Local dev
-// boots without it and Auth.js will generate an ephemeral secret —
-// fine for one-off testing, NEVER for shared dev DBs because the
-// JWT cookies invalidate every restart.
+// Production must boot only when AUTH_SECRET and APP_SECRET_KEY are
+// both present and APP_SECRET_KEY is at least 32 characters. Local
+// dev boots with warnings — Auth.js generates an ephemeral secret
+// and `secret-cipher.ts` falls back to a deterministic dev key.
 // =============================================================
 
 const PROD_REQUIRED = ['AUTH_SECRET'] as const;
+// Minimum APP_SECRET_KEY length. 32 chars ≈ 192 bits of entropy if
+// the key was generated with `openssl rand -base64 48` and base64-
+// encoded. The cipher itself is AES-256-GCM via scrypt KDF.
+const APP_SECRET_KEY_MIN_LENGTH = 32;
 
 type RequiredKey = (typeof PROD_REQUIRED)[number];
 
@@ -44,17 +54,53 @@ export function getAuthEnv(): Record<RequiredKey, string> {
 }
 
 // Called once at module init to surface misconfiguration early.
-// In production we throw immediately. In development we log a
-// warning and let Auth.js fall back to its dev-only ephemeral secret.
+// In production we throw immediately. In development we log a warning
+// for each missing item and let the relevant subsystem fall back.
+//
+// Wired from `instrumentation.ts` so this fires at server start in all
+// runtimes (Next.js, BullMQ workers, Container App boot).
 export function validateEnvOnBoot(): void {
   const isProd = process.env.NODE_ENV === 'production';
-  if (isAuthConfigured()) return;
 
-  const missing = PROD_REQUIRED.filter((key) => read(key) === undefined);
+  const missingAuth = PROD_REQUIRED.filter((key) => read(key) === undefined);
+  const appSecretKey = read('APP_SECRET_KEY');
+  const appSecretMissing = appSecretKey === undefined;
+  const appSecretTooShort =
+    appSecretKey !== undefined && appSecretKey.length < APP_SECRET_KEY_MIN_LENGTH;
+
+  const fatal: string[] = [];
   if (isProd) {
-    throw new Error(`Production startup blocked. Missing env vars: ${missing.join(', ')}.`);
+    if (missingAuth.length > 0) {
+      fatal.push(`Missing required auth env vars: ${missingAuth.join(', ')}.`);
+    }
+    if (appSecretMissing) {
+      fatal.push(
+        'APP_SECRET_KEY is required in production. Generate with `openssl rand -base64 48`.',
+      );
+    } else if (appSecretTooShort) {
+      fatal.push(
+        `APP_SECRET_KEY must be at least ${APP_SECRET_KEY_MIN_LENGTH} characters (got ${appSecretKey.length}).`,
+      );
+    }
+    if (fatal.length > 0) {
+      throw new Error(`Production startup blocked. ${fatal.join(' ')}`);
+    }
+    return;
   }
-  console.warn(
-    `[env] AUTH_SECRET not set — Auth.js will generate an ephemeral signing secret for this process. Sessions will invalidate on restart. Missing: ${missing.join(', ')}.`,
-  );
+
+  // Dev path — non-fatal warnings.
+  if (missingAuth.length > 0) {
+    console.warn(
+      '[env] AUTH_SECRET not set — Auth.js will generate an ephemeral signing secret for this process. Sessions will invalidate on restart.',
+    );
+  }
+  if (appSecretMissing) {
+    console.warn(
+      '[env] APP_SECRET_KEY not set — secret-cipher will use the dev fallback key. Encrypted tenant credentials will NOT decrypt across machines.',
+    );
+  } else if (appSecretTooShort) {
+    console.warn(
+      `[env] APP_SECRET_KEY is shorter than ${APP_SECRET_KEY_MIN_LENGTH} characters. Production will refuse to boot — fix before deploying.`,
+    );
+  }
 }

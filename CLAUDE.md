@@ -48,9 +48,9 @@ apps/web/              Next.js app
     tenant/            middleware + scoping helpers
     trpc/              router composition + role guards
   src/components/      React components
-    ui/                centralised primitives (ScreenShell, Breadcrumbs,
-                       Card, Field, ConfidenceBadge, Form). New screens
-                       MUST consume these instead of inventing layouts.
+    ui/                centralised primitives (ScreenShell, Card, Field,
+                       ConfidenceBadge, Form). New screens MUST consume
+                       these instead of inventing layouts.
   src/lib/             shared client+server utilities
   tests/               unit, integration, e2e
 docker/                container entrypoint scripts
@@ -92,7 +92,9 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Data access.** Prisma for all database access. Never write raw SQL except in rare performance-driven cases, which must come with a comment explaining why and an ADR under `docs/ADRs/`.
 
-**Tenant scoping.** Every tenant-scoped Prisma query goes through `requireTenantContext()` which returns a tenant-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack a `tenantId` filter — bypass is not possible. Postgres row-level security policies enforce the same boundary at the database layer (defence-in-depth). If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use.
+**Tenant scoping.** Every tenant-scoped Prisma query goes through `requireTenantContext()` which returns a tenant-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack a `tenantId` filter — bypass is not possible. Postgres row-level security policies enforce the same boundary at the database layer (defence-in-depth). If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use. **Inside routers always reach for `ctx.db` (the tenant-scoped extension), never the bare `prisma` client, when touching one of the 10 TENANT_MODELS** (User, EmployeeSchema, Insurer, TPA, Pool, ProductType, Client, AuditLog, TenantAiProvider, ExtractionDraft) — the bare client bypasses the auto-injected tenantId filter and is reserved for non-tenant-scoped models which gate via parent FK joins.
+
+**Connection pooling — pooler mode matters.** RLS scope is set per connection via `SELECT set_config('app.current_tenant_id', …, false)` (session-level). The application connects through Azure Database for PostgreSQL with the bundled connection pooler (Supavisor / pgBouncer). **The pooler MUST run in `session` mode, not `transaction` mode** — in transaction mode the connection bound to a request can be released back to the pool and re-issued to the next request with the previous tenant's GUC still set, leaking RLS scope across tenants. The Bicep templates pin session mode; if you ever override the connection string by hand (or migrate to a different pooler), verify mode before pointing prod at it. Production should additionally connect as the non-superuser `app_user` role (created in migration `20260430120000_app_user_role_and_force_rls`) so RLS policies actually apply — superusers bypass RLS regardless of mode.
 
 **API routes.** Every server action and route handler:
   1. Resolves the tenant context from the session (via `requireTenantContext()`).
@@ -108,7 +110,9 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Forms.** Admin forms are generated from catalogue JSON Schemas via `@rjsf/core` for product-specific data. Hand-written forms are only for metadata (Client name + UEN, User profile, Insurer label, AI provider config) — and those use the `<Form>` + `<Field>` primitives in `apps/web/src/components/ui/` (react-hook-form + Zod under the hood). Do not invent a third form pattern; do not roll `useState`-driven forms in new code.
 
-**UI primitives.** Every new admin screen consumes the `components/ui/` layer: `<ScreenShell>` for header + content padding, `<Breadcrumbs>` (auto-rendered in `admin/layout.tsx`, do not duplicate per page), `<Card>` for surfaces, `<Field>` for labelled inputs, `<ConfidenceBadge>` for AI-extraction confidence chips, `<Form>` for hand-written forms. Spacing comes from utility classes (`gap-*`, `mb-*`, `p-*`, `flex`, `items-center`, `justify-between`) mapped to `--space-*` tokens — do not reach for inline `style={{}}`.
+**UI primitives.** Every new admin screen consumes the `components/ui/` layer: `<ScreenShell>` for compact page header (title + optional one-line context + right-docked actions; no descriptive paragraph slot — the rail tells users where they are), `<Card>` for surfaces, `<Field>` for labelled inputs, `<ConfidenceBadge>` for AI-extraction confidence chips, `<Form>` for hand-written forms. Spacing comes from utility classes (`gap-*`, `mb-*`, `p-*`, `flex`, `items-center`, `justify-between`) mapped to `--space-*` tokens — do not reach for inline `style={{}}`. There is no app-wide breadcrumb — pages that need a back link use a contextual `<Link>` inside the page (e.g. a `Cancel` button on edit forms).
+
+**Navigation.** Top nav has three sections — **Clients**, **Catalogue**, **Settings** — rendered by `<TopNav>` in `apps/web/src/components/admin/top-nav.tsx`. A persistent left rail (`<SectionRail>` in `apps/web/src/components/admin/section-rail.tsx`) auto-renders the sub-page list for the current section: Catalogue rail lists Employee Schema / Product Types / Insurers / TPAs / Pools; Settings rail lists AI Provider; Clients rail shows "All clients" on the list page and switches to per-client sub-pages (Policies / Imports / Employees / Claims / Edit details) with the client name as a heading on detail pages. To add a new sub-page, register it in the relevant nav array — do not invent per-page nav widgets.
 
 **Error handling.** Server-side errors log with structured context (tenant id, user id, request id, action). Client-side error boundaries present a friendly message and a reference id. Never expose raw error messages to end users.
 
@@ -141,7 +145,8 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 - Store secrets in code, env files committed to git, or Prisma seed scripts. Everything sensitive goes in Key Vault, the Container App secret bag (referenced via `secretref:`), or — for tenant-supplied secrets — the AES-256-GCM column via `secret-cipher`.
 - Rotate `APP_SECRET_KEY` without a re-encryption migration — every existing `TenantAiProvider.encryptedKey` row will become undecryptable. Treat it as a one-time-set value.
 - Provision Azure resources via the portal or CLI without backing them up in Bicep — the next full Bicep deploy will diverge or worse, drop your manually-set Container App secrets.
-- Render hardcoded back-link eyebrows (`<p className="eyebrow"><Link>← X</Link></p>`) in admin screens — `<Breadcrumbs>` is rendered once in `admin/layout.tsx` and handles navigation.
+- Render decorative eyebrows (`<p className="eyebrow">Onboarding · Screen 1</p>`, `<p className="eyebrow">{client.legalName}</p>`) at the top of admin screens — the section rail tells users where they are and the screen-shell head shows what page they're on. For per-page context (e.g. benefit year state, version), use the `context` slot on `<ScreenShell>`.
+- Render long descriptive paragraphs above the page header explaining what an entity is ("Each client is a legal entity..."). Admins are power users; the labels speak for themselves. Reserve prose for inline `field-help` next to specific inputs only.
 - Catch-and-ignore errors. Either handle them meaningfully or let them propagate with context.
 - Modify migrations that have been applied to any environment beyond local dev. Create a new migration instead.
 - Use raw SQL without an ADR justifying it.

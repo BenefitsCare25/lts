@@ -13,6 +13,7 @@
 // =============================================================
 
 import { prisma } from '@/server/db/client';
+import type { TenantDb } from '@/server/db/tenant';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
@@ -83,9 +84,9 @@ const HANDLERS: Record<string, (rows: Record<string, string>[]) => ClaimRow[]> =
   // TMLS, DIRECT_API land when their formats are spec'd.
 };
 
-async function assertInsurer(tenantId: string, insurerId: string) {
-  const insurer = await prisma.insurer.findFirst({
-    where: { id: insurerId, tenantId },
+async function assertInsurer(db: TenantDb, insurerId: string) {
+  const insurer = await db.insurer.findFirst({
+    where: { id: insurerId },
     select: { id: true, name: true, claimFeedProtocol: true },
   });
   if (!insurer) {
@@ -94,9 +95,9 @@ async function assertInsurer(tenantId: string, insurerId: string) {
   return insurer;
 }
 
-async function assertClient(tenantId: string, clientId: string): Promise<void> {
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, tenantId },
+async function assertClient(db: TenantDb, clientId: string): Promise<void> {
+  const client = await db.client.findFirst({
+    where: { id: clientId },
     select: { id: true },
   });
   if (!client) {
@@ -121,8 +122,8 @@ export const claimsFeedRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Tenant-gate both ends — without this, the unmatched.reason
       // strings could enumerate other tenants' employees by id.
-      await assertClient(ctx.tenantId, input.clientId);
-      const insurer = await assertInsurer(ctx.tenantId, input.insurerId);
+      await assertClient(ctx.db, input.clientId);
+      const insurer = await assertInsurer(ctx.db, input.insurerId);
       if (!insurer.claimFeedProtocol) {
         throw new TRPCError({
           code: 'BAD_REQUEST',

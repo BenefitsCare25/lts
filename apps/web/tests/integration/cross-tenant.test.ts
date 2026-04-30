@@ -157,9 +157,9 @@ describeIf('cross-tenant isolation (DB-backed)', () => {
 
     itIf('byId throws NOT_FOUND for another tenant employee id', async () => {
       const a = callerFor(tenants.a.userId);
-      await expect(a.employees.byId({ id: tenants.b.employeeId })).rejects.toBeInstanceOf(
-        TRPCError,
-      );
+      await expect(a.employees.byId({ id: tenants.b.employeeId })).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
     });
   });
 

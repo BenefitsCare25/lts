@@ -54,7 +54,7 @@ async function loadProductWithBenefitYear(tenantId: string, productId: string) {
     select: {
       id: true,
       benefitYear: { select: { state: true } },
-      productType: { select: { planSchema: true, code: true } },
+      productType: { select: { id: true, planSchema: true, code: true, version: true } },
     },
   });
   if (!product) {
@@ -75,7 +75,7 @@ async function loadPlanWithProduct(tenantId: string, planId: string) {
       product: {
         select: {
           benefitYear: { select: { state: true } },
-          productType: { select: { planSchema: true } },
+          productType: { select: { id: true, planSchema: true, version: true } },
         },
       },
     },
@@ -87,9 +87,11 @@ async function loadPlanWithProduct(tenantId: string, planId: string) {
 }
 
 // Validates the (possibly-new) plan's full row against productType.planSchema.
-// Throws BAD_REQUEST with all paths + reasons on failure.
-function validateAgainstPlanSchema(input: PlanInput, planSchema: unknown): void {
-  const compiled = safeCompile(planSchema);
+// Throws BAD_REQUEST with all paths + reasons on failure. The
+// `cacheKey` should match the format used in review.ts so a single
+// compile is shared across the validator + review.validate hits.
+function validateAgainstPlanSchema(input: PlanInput, planSchema: unknown, cacheKey?: string): void {
+  const compiled = safeCompile(planSchema, cacheKey);
   if (!compiled.ok) {
     throw new TRPCError({
       code: 'INTERNAL_SERVER_ERROR',
@@ -222,7 +224,11 @@ export const plansRouter = router({
           message: 'Plans can only be edited on DRAFT benefit years.',
         });
       }
-      validateAgainstPlanSchema(input, product.productType.planSchema);
+      validateAgainstPlanSchema(
+        input,
+        product.productType.planSchema,
+        `product-type:${product.productType.id}:${product.productType.version}:planSchema`,
+      );
       await validateStacksOn(input.productId, input.stacksOn);
       try {
         return await prisma.plan.create({
@@ -259,7 +265,11 @@ export const plansRouter = router({
           message: 'Plans on a published benefit year are immutable.',
         });
       }
-      validateAgainstPlanSchema(input, existing.product.productType.planSchema);
+      validateAgainstPlanSchema(
+        input,
+        existing.product.productType.planSchema,
+        `product-type:${existing.product.productType.id}:${existing.product.productType.version}:planSchema`,
+      );
       await validateStacksOn(existing.productId, input.stacksOn, input.id);
       try {
         return await prisma.plan.update({

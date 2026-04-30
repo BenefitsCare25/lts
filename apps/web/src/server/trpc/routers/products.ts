@@ -17,6 +17,7 @@
 
 import { formatAjvError, safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
+import type { TenantDb } from '@/server/db/tenant';
 import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -68,17 +69,17 @@ async function loadProduct(tenantId: string, productId: string) {
 // that the insurer supports the product type. Throws BAD_REQUEST on
 // mismatch with a UI-friendly message.
 async function assertInsurerSupportsProductType(
-  tenantId: string,
+  db: TenantDb,
   productTypeId: string,
   insurerId: string,
 ): Promise<{ productTypeCode: string; insurerName: string }> {
   const [productType, insurer] = await Promise.all([
-    prisma.productType.findFirst({
-      where: { id: productTypeId, tenantId },
+    db.productType.findFirst({
+      where: { id: productTypeId },
       select: { code: true, name: true },
     }),
-    prisma.insurer.findFirst({
-      where: { id: insurerId, tenantId },
+    db.insurer.findFirst({
+      where: { id: insurerId },
       select: { name: true, productsSupported: true, active: true },
     }),
   ]);
@@ -105,13 +106,13 @@ async function assertInsurerSupportsProductType(
 
 // Optional FK validations for Pool and TPA — both must belong to the tenant.
 async function assertOptionalPoolAndTpa(
-  tenantId: string,
+  db: TenantDb,
   poolId: string | null,
   tpaId: string | null,
 ): Promise<void> {
   if (poolId) {
-    const pool = await prisma.pool.findFirst({
-      where: { id: poolId, tenantId },
+    const pool = await db.pool.findFirst({
+      where: { id: poolId },
       select: { id: true },
     });
     if (!pool) {
@@ -119,8 +120,8 @@ async function assertOptionalPoolAndTpa(
     }
   }
   if (tpaId) {
-    const tpa = await prisma.tPA.findFirst({
-      where: { id: tpaId, tenantId },
+    const tpa = await db.tPA.findFirst({
+      where: { id: tpaId },
       select: { id: true, supportedInsurerIds: true, active: true },
     });
     if (!tpa) {
@@ -162,14 +163,14 @@ export const productsRouter = router({
       );
       const [insurers, tpas] = await Promise.all([
         insurerIds.length > 0
-          ? prisma.insurer.findMany({
-              where: { id: { in: insurerIds }, tenantId: ctx.tenantId },
+          ? ctx.db.insurer.findMany({
+              where: { id: { in: insurerIds } },
               select: { id: true, code: true, name: true },
             })
           : Promise.resolve([]),
         tpaIds.length > 0
-          ? prisma.tPA.findMany({
-              where: { id: { in: tpaIds }, tenantId: ctx.tenantId },
+          ? ctx.db.tPA.findMany({
+              where: { id: { in: tpaIds } },
               select: { id: true, code: true, name: true },
             })
           : Promise.resolve([]),
@@ -190,8 +191,8 @@ export const productsRouter = router({
     .input(z.object({ benefitYearId: z.string().min(1) }).and(productInputSchema))
     .mutation(async ({ ctx, input }) => {
       await assertEditableBenefitYear(ctx.tenantId, input.benefitYearId);
-      await assertInsurerSupportsProductType(ctx.tenantId, input.productTypeId, input.insurerId);
-      await assertOptionalPoolAndTpa(ctx.tenantId, input.poolId, input.tpaId);
+      await assertInsurerSupportsProductType(ctx.db, input.productTypeId, input.insurerId);
+      await assertOptionalPoolAndTpa(ctx.db, input.poolId, input.tpaId);
       // No unique constraint on (benefitYearId, productTypeId) — the
       // same product type can appear twice (e.g. a primary GHS + a
       // top-up GHS) under different insurers. Add deduplication later
@@ -238,19 +239,19 @@ export const productsRouter = router({
     }
     // Hand-fetch insurer + tpa names like listByBenefitYear does.
     const [insurer, tpa, pool] = await Promise.all([
-      prisma.insurer.findFirst({
-        where: { id: product.insurerId, tenantId: ctx.tenantId },
+      ctx.db.insurer.findFirst({
+        where: { id: product.insurerId },
         select: { id: true, code: true, name: true, productsSupported: true, active: true },
       }),
       product.tpaId
-        ? prisma.tPA.findFirst({
-            where: { id: product.tpaId, tenantId: ctx.tenantId },
+        ? ctx.db.tPA.findFirst({
+            where: { id: product.tpaId },
             select: { id: true, code: true, name: true },
           })
         : Promise.resolve(null),
       product.poolId
-        ? prisma.pool.findFirst({
-            where: { id: product.poolId, tenantId: ctx.tenantId },
+        ? ctx.db.pool.findFirst({
+            where: { id: product.poolId },
             select: { id: true, name: true },
           })
         : Promise.resolve(null),
@@ -268,8 +269,8 @@ export const productsRouter = router({
           message: 'Products on a published benefit year are immutable.',
         });
       }
-      await assertInsurerSupportsProductType(ctx.tenantId, input.productTypeId, input.insurerId);
-      await assertOptionalPoolAndTpa(ctx.tenantId, input.poolId, input.tpaId);
+      await assertInsurerSupportsProductType(ctx.db, input.productTypeId, input.insurerId);
+      await assertOptionalPoolAndTpa(ctx.db, input.poolId, input.tpaId);
       return prisma.product.update({
         where: { id: input.id },
         data: {
@@ -305,7 +306,7 @@ export const productsRouter = router({
         select: {
           id: true,
           benefitYear: { select: { state: true } },
-          productType: { select: { schema: true, code: true } },
+          productType: { select: { id: true, schema: true, code: true, version: true } },
         },
       });
       if (!existing) {
@@ -318,7 +319,12 @@ export const productsRouter = router({
         });
       }
 
-      const compiled = safeCompile(existing.productType.schema);
+      // Cache key matches review.ts so a single compile is shared
+      // across update + review.validate hits in the hot path.
+      const compiled = safeCompile(
+        existing.productType.schema,
+        `product-type:${existing.productType.id}:${existing.productType.version}:schema`,
+      );
       if (!compiled.ok) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',

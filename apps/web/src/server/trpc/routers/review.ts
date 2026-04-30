@@ -15,6 +15,7 @@
 import { auditEvent } from '@/server/audit';
 import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
+import type { TenantDb } from '@/server/db/tenant';
 import { UserRole } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -23,8 +24,10 @@ import { adminProcedure, router, tenantProcedure } from '../init';
 // Same role gate as benefit-years.setState — only admin roles publish.
 const PUBLISH_ROLES = new Set<UserRole>([UserRole.TENANT_ADMIN, UserRole.BROKER_ADMIN]);
 
-async function loadCallerRole(userId: string): Promise<UserRole> {
-  const user = await prisma.user.findUnique({
+async function loadCallerRole(db: TenantDb, userId: string): Promise<UserRole> {
+  // findFirst with the tenant-scoped extension so the lookup can't
+  // resolve a User row from another tenant on a stale session token.
+  const user = await db.user.findFirst({
     where: { id: userId },
     select: { role: true },
   });
@@ -41,6 +44,162 @@ export type ReviewIssue = {
   // Where the issue is — products tab, group editor, etc.
   surface?: string;
 };
+
+// Stable Ajv compile-cache keys for product-data and plan-data
+// validation. ProductType.version increments on every catalogue
+// edit (immutable per CLAUDE.md), so the key changes whenever the
+// schema does — no manual invalidation needed.
+function productSchemaCacheKey(productTypeId: string, version: number): string {
+  return `product-type:${productTypeId}:${version}:schema`;
+}
+function planSchemaCacheKey(productTypeId: string, version: number): string {
+  return `product-type:${productTypeId}:${version}:planSchema`;
+}
+
+type LoadedBenefitYear = Awaited<ReturnType<typeof loadBenefitYearForReview>>;
+
+// Single source of truth for review validation. Both `validate`
+// (read-only summary) and `publish` (write gate) call this so they
+// can never drift. Returns the full issue list; callers filter for
+// blockers / warnings + format counts.
+function runValidation(by: LoadedBenefitYear): ReviewIssue[] {
+  const issues: ReviewIssue[] = [];
+
+  // ── BenefitYear-level checks ────────────────────────────
+  if (by.products.length === 0) {
+    issues.push({
+      severity: 'blocker',
+      code: 'NO_PRODUCTS',
+      message: 'No products configured for this benefit year.',
+      surface: 'products',
+    });
+  }
+
+  if (by.policy.entities.length > 0) {
+    const hasMaster = by.policy.entities.some((e) => e.isMaster);
+    if (!hasMaster) {
+      issues.push({
+        severity: 'warning',
+        code: 'NO_MASTER_ENTITY',
+        message: 'Policy has entities but none is marked as the master policyholder.',
+        surface: 'policy',
+      });
+    }
+  } else {
+    issues.push({
+      severity: 'blocker',
+      code: 'NO_ENTITIES',
+      message: 'Policy has no entities defined.',
+      surface: 'policy',
+    });
+  }
+
+  // ── Per-product checks ─────────────────────────────────
+  for (const product of by.products) {
+    const ctx = `${product.productType.code} (${product.productType.name})`;
+
+    // Ajv-validate Product.data against ProductType.schema.
+    try {
+      const compiled = safeCompile(
+        product.productType.schema,
+        productSchemaCacheKey(product.productType.id, product.productType.version),
+      );
+      if (!compiled.ok) {
+        issues.push({
+          severity: 'warning',
+          code: 'PRODUCT_SCHEMA_UNCOMPILABLE',
+          message: `${ctx}: schema didn't compile (${compiled.error}).`,
+          surface: `product:${product.id}:details`,
+        });
+      } else if (!compiled.validate(product.data)) {
+        for (const err of compiled.validate.errors ?? []) {
+          issues.push({
+            severity: 'blocker',
+            code: 'PRODUCT_DATA_INVALID',
+            message: `${ctx}: ${err.instancePath || '/'} ${err.message ?? 'is invalid'}`,
+            surface: `product:${product.id}:details`,
+          });
+        }
+      }
+    } catch (err) {
+      issues.push({
+        severity: 'warning',
+        code: 'PRODUCT_SCHEMA_UNCOMPILABLE',
+        message: `${ctx}: schema didn't compile (${err instanceof Error ? err.message : 'unknown'}).`,
+        surface: `product:${product.id}:details`,
+      });
+    }
+
+    // No plans? Blocker.
+    if (product.plans.length === 0) {
+      issues.push({
+        severity: 'blocker',
+        code: 'NO_PLANS',
+        message: `${ctx}: no plans defined.`,
+        surface: `product:${product.id}:plans`,
+      });
+    } else {
+      // Validate stacksOn references.
+      const planIds = new Set(product.plans.map((p) => p.id));
+      for (const plan of product.plans) {
+        if (plan.stacksOn && !planIds.has(plan.stacksOn)) {
+          issues.push({
+            severity: 'blocker',
+            code: 'BROKEN_STACKS_ON',
+            message: `${ctx}: plan ${plan.code} stacksOn references a missing plan.`,
+            surface: `product:${product.id}:plans`,
+          });
+        }
+        // Validate plan data against planSchema.
+        try {
+          const compiled = safeCompile(
+            product.productType.planSchema,
+            planSchemaCacheKey(product.productType.id, product.productType.version),
+          );
+          if (!compiled.ok) continue; // already reported above
+          const candidate = {
+            code: plan.code,
+            name: plan.name,
+            coverBasis: plan.coverBasis,
+            stacksOn: plan.stacksOn,
+            selectionMode: plan.selectionMode,
+            schedule: plan.schedule,
+            effectiveFrom: plan.effectiveFrom?.toISOString().slice(0, 10) ?? null,
+            effectiveTo: plan.effectiveTo?.toISOString().slice(0, 10) ?? null,
+          };
+          if (!compiled.validate(candidate)) {
+            for (const err of compiled.validate.errors ?? []) {
+              issues.push({
+                severity: 'blocker',
+                code: 'PLAN_INVALID',
+                message: `${ctx} plan ${plan.code}: ${err.instancePath || '/'} ${err.message ?? 'is invalid'}`,
+                surface: `product:${product.id}:plans`,
+              });
+            }
+          }
+        } catch {
+          // already reported via PRODUCT_SCHEMA_UNCOMPILABLE
+        }
+      }
+    }
+
+    // Eligibility coverage — every benefit group should map to a plan
+    // (or be intentionally absent). Any group without a row is a warning.
+    const eligibleGroupIds = new Set(product.eligibility.map((e) => e.benefitGroupId));
+    for (const g of by.policy.benefitGroups) {
+      if (!eligibleGroupIds.has(g.id)) {
+        issues.push({
+          severity: 'warning',
+          code: 'MISSING_ELIGIBILITY',
+          message: `${ctx}: group "${g.name}" has no plan assignment (treated as ineligible).`,
+          surface: `product:${product.id}:eligibility`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
 
 async function loadBenefitYearForReview(tenantId: string, benefitYearId: string) {
   const by = await prisma.benefitYear.findFirst({
@@ -63,6 +222,7 @@ async function loadBenefitYearForReview(tenantId: string, benefitYearId: string)
               schema: true,
               planSchema: true,
               premiumStrategy: true,
+              version: true,
             },
           },
           plans: true,
@@ -92,14 +252,14 @@ export const reviewRouter = router({
       );
       const [insurers, tpas] = await Promise.all([
         insurerIds.length > 0
-          ? prisma.insurer.findMany({
-              where: { id: { in: insurerIds }, tenantId: ctx.tenantId },
+          ? ctx.db.insurer.findMany({
+              where: { id: { in: insurerIds } },
               select: { id: true, code: true, name: true },
             })
           : Promise.resolve([]),
         tpaIds.length > 0
-          ? prisma.tPA.findMany({
-              where: { id: { in: tpaIds }, tenantId: ctx.tenantId },
+          ? ctx.db.tPA.findMany({
+              where: { id: { in: tpaIds } },
               select: { id: true, code: true, name: true },
             })
           : Promise.resolve([]),
@@ -145,136 +305,7 @@ export const reviewRouter = router({
     .input(z.object({ benefitYearId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const by = await loadBenefitYearForReview(ctx.tenantId, input.benefitYearId);
-      const issues: ReviewIssue[] = [];
-
-      // ── BenefitYear-level checks ────────────────────────────
-      if (by.products.length === 0) {
-        issues.push({
-          severity: 'blocker',
-          code: 'NO_PRODUCTS',
-          message: 'No products configured for this benefit year.',
-          surface: 'products',
-        });
-      }
-
-      // Missing master entity warning
-      if (by.policy.entities.length > 0) {
-        const hasMaster = by.policy.entities.some((e) => e.isMaster);
-        if (!hasMaster) {
-          issues.push({
-            severity: 'warning',
-            code: 'NO_MASTER_ENTITY',
-            message: 'Policy has entities but none is marked as the master policyholder.',
-            surface: 'policy',
-          });
-        }
-      } else {
-        issues.push({
-          severity: 'blocker',
-          code: 'NO_ENTITIES',
-          message: 'Policy has no entities defined.',
-          surface: 'policy',
-        });
-      }
-
-      // ── Per-product checks ─────────────────────────────────
-      for (const product of by.products) {
-        const ctx = `${product.productType.code} (${product.productType.name})`;
-
-        // Ajv-validate Product.data against ProductType.schema.
-        try {
-          const compiled = safeCompile(product.productType.schema);
-          if (!compiled.ok) {
-            issues.push({
-              severity: 'warning',
-              code: 'PRODUCT_SCHEMA_UNCOMPILABLE',
-              message: `${ctx}: schema didn't compile (${compiled.error}).`,
-              surface: `product:${product.id}:details`,
-            });
-          } else if (!compiled.validate(product.data)) {
-            for (const err of compiled.validate.errors ?? []) {
-              issues.push({
-                severity: 'blocker',
-                code: 'PRODUCT_DATA_INVALID',
-                message: `${ctx}: ${err.instancePath || '/'} ${err.message ?? 'is invalid'}`,
-                surface: `product:${product.id}:details`,
-              });
-            }
-          }
-        } catch (err) {
-          issues.push({
-            severity: 'warning',
-            code: 'PRODUCT_SCHEMA_UNCOMPILABLE',
-            message: `${ctx}: schema didn't compile (${err instanceof Error ? err.message : 'unknown'}).`,
-            surface: `product:${product.id}:details`,
-          });
-        }
-
-        // No plans? Blocker.
-        if (product.plans.length === 0) {
-          issues.push({
-            severity: 'blocker',
-            code: 'NO_PLANS',
-            message: `${ctx}: no plans defined.`,
-            surface: `product:${product.id}:plans`,
-          });
-        } else {
-          // Validate stacksOn references.
-          const planIds = new Set(product.plans.map((p) => p.id));
-          for (const plan of product.plans) {
-            if (plan.stacksOn && !planIds.has(plan.stacksOn)) {
-              issues.push({
-                severity: 'blocker',
-                code: 'BROKEN_STACKS_ON',
-                message: `${ctx}: plan ${plan.code} stacksOn references a missing plan.`,
-                surface: `product:${product.id}:plans`,
-              });
-            }
-            // Validate plan data against planSchema.
-            try {
-              const compiled = safeCompile(product.productType.planSchema);
-              if (!compiled.ok) continue; // already reported above
-              const candidate = {
-                code: plan.code,
-                name: plan.name,
-                coverBasis: plan.coverBasis,
-                stacksOn: plan.stacksOn,
-                selectionMode: plan.selectionMode,
-                schedule: plan.schedule,
-                effectiveFrom: plan.effectiveFrom?.toISOString().slice(0, 10) ?? null,
-                effectiveTo: plan.effectiveTo?.toISOString().slice(0, 10) ?? null,
-              };
-              if (!compiled.validate(candidate)) {
-                for (const err of compiled.validate.errors ?? []) {
-                  issues.push({
-                    severity: 'blocker',
-                    code: 'PLAN_INVALID',
-                    message: `${ctx} plan ${plan.code}: ${err.instancePath || '/'} ${err.message ?? 'is invalid'}`,
-                    surface: `product:${product.id}:plans`,
-                  });
-                }
-              }
-            } catch {
-              // already reported via PRODUCT_SCHEMA_UNCOMPILABLE
-            }
-          }
-        }
-
-        // Eligibility coverage — every benefit group should map to a plan
-        // (or be intentionally absent). Any group without a row is a warning.
-        const eligibleGroupIds = new Set(product.eligibility.map((e) => e.benefitGroupId));
-        for (const g of by.policy.benefitGroups) {
-          if (!eligibleGroupIds.has(g.id)) {
-            issues.push({
-              severity: 'warning',
-              code: 'MISSING_ELIGIBILITY',
-              message: `${ctx}: group "${g.name}" has no plan assignment (treated as ineligible).`,
-              surface: `product:${product.id}:eligibility`,
-            });
-          }
-        }
-      }
-
+      const issues = runValidation(by);
       const blockers = issues.filter((i) => i.severity === 'blocker').length;
       const warnings = issues.filter((i) => i.severity === 'warning').length;
       return { issues, blockers, warnings, canPublish: blockers === 0 };
@@ -298,7 +329,7 @@ export const reviewRouter = router({
       // Role gate — same shape as benefitYears.setState. We re-check
       // here even though the UI hides Publish for non-admins because
       // the API surface is callable directly.
-      const role = await loadCallerRole(ctx.userId);
+      const role = await loadCallerRole(ctx.db, ctx.userId);
       if (!PUBLISH_ROLES.has(role)) {
         throw new TRPCError({
           code: 'FORBIDDEN',
@@ -323,44 +354,11 @@ export const reviewRouter = router({
         });
       }
 
-      // Re-run validation server-side. Trust nothing the client sent.
-      // Inline duplicate of the validate procedure body — keeps each
-      // procedure self-contained and avoids fetching the same data twice.
-      const issues: ReviewIssue[] = [];
-      if (by.products.length === 0) {
-        issues.push({
-          severity: 'blocker',
-          code: 'NO_PRODUCTS',
-          message: 'No products configured.',
-        });
-      }
-      if (by.policy.entities.length === 0) {
-        issues.push({
-          severity: 'blocker',
-          code: 'NO_ENTITIES',
-          message: 'Policy has no entities defined.',
-        });
-      }
-      for (const product of by.products) {
-        if (product.plans.length === 0) {
-          issues.push({
-            severity: 'blocker',
-            code: 'NO_PLANS',
-            message: `${product.productType.code}: no plans defined.`,
-          });
-        }
-        const planIds = new Set(product.plans.map((p) => p.id));
-        for (const plan of product.plans) {
-          if (plan.stacksOn && !planIds.has(plan.stacksOn)) {
-            issues.push({
-              severity: 'blocker',
-              code: 'BROKEN_STACKS_ON',
-              message: `${product.productType.code}: plan ${plan.code} stacksOn references a missing plan.`,
-            });
-          }
-        }
-      }
-
+      // Re-run validation server-side via the shared `runValidation`
+      // helper — same source of truth as the read-only `validate`
+      // procedure, so the publish gate cannot drift from what the
+      // UI told the user. Trust nothing the client sent.
+      const issues = runValidation(by);
       const remainingBlockers = issues.filter((i) => i.severity === 'blocker');
       if (remainingBlockers.length > 0) {
         throw new TRPCError({

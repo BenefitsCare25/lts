@@ -10,6 +10,7 @@
 
 import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
+import type { TenantDb } from '@/server/db/tenant';
 import type { EmployeeField } from '@insurance-saas/shared-types';
 import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
@@ -57,9 +58,9 @@ function fieldsToJsonSchema(fields: EmployeeField[]): Record<string, unknown> {
   return { type: 'object', properties, required };
 }
 
-async function assertClient(tenantId: string, clientId: string) {
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, tenantId },
+async function assertClient(db: TenantDb, clientId: string) {
+  const client = await db.client.findFirst({
+    where: { id: clientId },
     select: { id: true },
   });
   if (!client) {
@@ -67,10 +68,14 @@ async function assertClient(tenantId: string, clientId: string) {
   }
 }
 
-async function loadTenantEmployeeFields(tenantId: string): Promise<EmployeeField[]> {
-  const schema = await prisma.employeeSchema.findUnique({
-    where: { tenantId },
-    select: { fields: true },
+async function loadTenantEmployeeFields(
+  db: TenantDb,
+): Promise<{ fields: EmployeeField[]; version: number; tenantId: string }> {
+  // findFirst (rather than findUnique) so the tenant-scoped extension
+  // injects tenantId — there's only ever one schema per tenant so the
+  // result shape is identical.
+  const schema = await db.employeeSchema.findFirst({
+    select: { fields: true, version: true, tenantId: true },
   });
   if (!schema) {
     throw new TRPCError({
@@ -78,7 +83,18 @@ async function loadTenantEmployeeFields(tenantId: string): Promise<EmployeeField
       message: 'Tenant has no employee schema configured.',
     });
   }
-  return (schema.fields as EmployeeField[]) ?? [];
+  return {
+    fields: (schema.fields as EmployeeField[]) ?? [],
+    version: schema.version,
+    tenantId: schema.tenantId,
+  };
+}
+
+// Stable cache key for the Ajv compile cache. Versions increment on
+// every employee-schema save (per S11), so the key changes whenever
+// the schema does — no manual invalidation needed.
+function employeeSchemaCacheKey(tenantId: string, version: number): string {
+  return `employee-schema:${tenantId}:${version}`;
 }
 
 const employeeDataSchema = z.record(z.unknown());
@@ -119,7 +135,7 @@ export const employeesRouter = router({
   listByClient: tenantProcedure
     .input(z.object({ clientId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      await assertClient(ctx.tenantId, input.clientId);
+      await assertClient(ctx.db, input.clientId);
       const employees = await prisma.employee.findMany({
         where: { clientId: input.clientId },
         orderBy: { hireDate: 'desc' },
@@ -139,7 +155,7 @@ export const employeesRouter = router({
     if (!employee) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
     }
-    await assertClient(ctx.tenantId, employee.clientId);
+    await assertClient(ctx.db, employee.clientId);
     const matches = await matchGroupsForEmployee(
       employee.clientId,
       employee.data as Record<string, unknown>,
@@ -149,16 +165,19 @@ export const employeesRouter = router({
 
   // Returns the EmployeeSchema as a JSON Schema for @rjsf to render.
   schemaForForm: tenantProcedure.query(async ({ ctx }) => {
-    const fields = await loadTenantEmployeeFields(ctx.tenantId);
+    const { fields } = await loadTenantEmployeeFields(ctx.db);
     return fieldsToJsonSchema(fields);
   }),
 
   create: adminProcedure
     .input(z.object({ clientId: z.string().min(1) }).and(employeeInputSchema))
     .mutation(async ({ ctx, input }) => {
-      await assertClient(ctx.tenantId, input.clientId);
-      const fields = await loadTenantEmployeeFields(ctx.tenantId);
-      const compiled = safeCompile(fieldsToJsonSchema(fields));
+      await assertClient(ctx.db, input.clientId);
+      const { fields, version, tenantId } = await loadTenantEmployeeFields(ctx.db);
+      const compiled = safeCompile(
+        fieldsToJsonSchema(fields),
+        employeeSchemaCacheKey(tenantId, version),
+      );
       if (!compiled.ok) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -194,9 +213,12 @@ export const employeesRouter = router({
       if (!existing) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
       }
-      await assertClient(ctx.tenantId, existing.clientId);
-      const fields = await loadTenantEmployeeFields(ctx.tenantId);
-      const compiled = safeCompile(fieldsToJsonSchema(fields));
+      await assertClient(ctx.db, existing.clientId);
+      const { fields, version, tenantId } = await loadTenantEmployeeFields(ctx.db);
+      const compiled = safeCompile(
+        fieldsToJsonSchema(fields),
+        employeeSchemaCacheKey(tenantId, version),
+      );
       if (!compiled.ok) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
@@ -230,7 +252,7 @@ export const employeesRouter = router({
       if (!existing) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
       }
-      await assertClient(ctx.tenantId, existing.clientId);
+      await assertClient(ctx.db, existing.clientId);
       await prisma.employee.delete({ where: { id: input.id } });
       return { id: input.id };
     }),
@@ -251,9 +273,12 @@ export const employeesRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      await assertClient(ctx.tenantId, input.clientId);
-      const fields = await loadTenantEmployeeFields(ctx.tenantId);
-      const compiled = safeCompile(fieldsToJsonSchema(fields));
+      await assertClient(ctx.db, input.clientId);
+      const { fields, version, tenantId } = await loadTenantEmployeeFields(ctx.db);
+      const compiled = safeCompile(
+        fieldsToJsonSchema(fields),
+        employeeSchemaCacheKey(tenantId, version),
+      );
       if (!compiled.ok) {
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
