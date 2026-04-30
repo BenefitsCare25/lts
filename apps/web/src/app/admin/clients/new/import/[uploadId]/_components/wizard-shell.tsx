@@ -30,11 +30,25 @@ import {
   emptyDraftFormState,
 } from './sections/_registry';
 import { SECTION_COMPONENTS } from './sections/section-components';
+import { aiBundleFromDraft } from './sections/_types';
 
 type Props = { uploadId: string };
 
 export function WizardShell({ uploadId }: Props) {
-  const draft = trpc.extractionDrafts.byUploadId.useQuery({ uploadId });
+  // Refetch every 2s while the extraction worker is running so the
+  // wizard's status pill, source-section AI panel, and downstream
+  // section seeding all flip to the populated state without the
+  // broker having to manually reload.
+  const draft = trpc.extractionDrafts.byUploadId.useQuery(
+    { uploadId },
+    {
+      refetchInterval: (query) => {
+        const data = query.state.data;
+        return data?.status === 'EXTRACTING' ? 2_000 : false;
+      },
+      refetchOnWindowFocus: false,
+    },
+  );
 
   const [activeSection, setActiveSection] = useState<SectionId>('source');
   const [form, setForm] = useState<DraftFormState>(() => emptyDraftFormState());
@@ -81,6 +95,25 @@ export function WizardShell({ uploadId }: Props) {
     });
   }, [draft.data]);
 
+  // AI seeding: separate ref so the heuristic seed (above) and the AI
+  // seed (below) don't fight. AI seeding runs the first time the draft
+  // is observed in READY state with proposed.* populated. After that,
+  // edits are the broker's; refetches don't re-seed.
+  const aiSeededDraftIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draft.data) return;
+    if (draft.data.status !== 'READY') return;
+    const bundle = aiBundleFromDraft(draft.data.progress);
+    const hasAiPayload =
+      bundle.proposedClient != null ||
+      bundle.proposedPolicyEntities.length > 0 ||
+      bundle.proposedBenefitYear != null;
+    if (!hasAiPayload) return;
+    if (aiSeededDraftIdRef.current === draft.data.id) return;
+    aiSeededDraftIdRef.current = draft.data.id;
+    setForm((prev) => seedFormFromAi(prev, bundle));
+  }, [draft.data]);
+
   const sectionStatus = useMemo(() => computeSectionStatus(form, draft.data), [form, draft.data]);
   const applyReadiness = useMemo(() => {
     const total = SECTIONS.length;
@@ -107,6 +140,8 @@ export function WizardShell({ uploadId }: Props) {
   }
   if (!draft.data) return null;
   const upload = draft.data.upload;
+  const aiBundle = aiBundleFromDraft(draft.data.progress);
+  const aiBanner = renderAiBanner(draft.data.status, aiBundle);
 
   return (
     <main className="wizard-shell">
@@ -125,6 +160,7 @@ export function WizardShell({ uploadId }: Props) {
           </Link>
         </div>
       </header>
+      {aiBanner}
 
       <div className="wizard-shell__body">
         <nav className="wizard-shell__rail" aria-label="Wizard sections">
@@ -210,6 +246,128 @@ function PrevNextNav({
       </div>
     </div>
   );
+}
+
+// Banner under the header. Live updates while EXTRACTING (the shell
+// polls byUploadId every 2s); collapses to a quiet success or
+// dismissable error once the run completes.
+function renderAiBanner(
+  status: string,
+  bundle: ReturnType<typeof aiBundleFromDraft>,
+): React.ReactNode {
+  if (status === 'EXTRACTING') {
+    const stage = bundle.stage ?? 'QUEUED';
+    const stageCopy =
+      stage === 'CALLING_AI'
+        ? 'Calling the AI provider — this usually takes 30–90 seconds.'
+        : stage === 'MERGING'
+          ? 'Merging the AI output with the heuristic baseline…'
+          : stage === 'QUEUED'
+            ? 'Queued — waiting for a worker to pick this up.'
+            : `Stage: ${stage}`;
+    return (
+      <div
+        className="card card-padded"
+        style={{ borderColor: 'var(--accent-border)', background: 'var(--accent-tint)' }}
+      >
+        <p className="mb-0">
+          <strong>AI extraction in progress.</strong> {stageCopy} You can keep editing other
+          sections while this runs.
+        </p>
+      </div>
+    );
+  }
+  if (status === 'FAILED' && bundle.failure) {
+    return (
+      <div className="card card-padded" style={{ borderColor: 'var(--color-error)' }}>
+        <p className="mb-2">
+          <strong>AI extraction failed</strong> at stage{' '}
+          <code>{bundle.failure.stage}</code>.
+        </p>
+        <p className="field-help mb-0">{bundle.failure.message}</p>
+      </div>
+    );
+  }
+  if (status === 'READY' && bundle.warnings.length > 0) {
+    return (
+      <div className="card card-padded" style={{ borderColor: 'var(--color-warn)' }}>
+        <p className="mb-2">
+          <strong>AI extraction completed with warnings:</strong>
+        </p>
+        <ul className="kv-list mb-0">
+          {bundle.warnings.slice(0, 6).map((w, i) => (
+            <li key={`warn-${i}-${w.slice(0, 30)}`}>{w}</li>
+          ))}
+          {bundle.warnings.length > 6 ? (
+            <li>
+              <em>… and {bundle.warnings.length - 6} more.</em>
+            </li>
+          ) : null}
+        </ul>
+      </div>
+    );
+  }
+  return null;
+}
+
+// Seed the form state from the AI extraction bundle. Pure function —
+// the ref guard in the caller ensures it only runs once per draft.
+//
+// Rule: only fill empty form fields. If the broker has typed
+// something, we never overwrite. This makes the AI run safe to
+// re-trigger after manual edits without losing the broker's work.
+function seedFormFromAi(
+  prev: DraftFormState,
+  bundle: ReturnType<typeof aiBundleFromDraft>,
+): DraftFormState {
+  const next: DraftFormState = {
+    client: { ...prev.client },
+    policyEntities: prev.policyEntities,
+    policy: { ...prev.policy },
+    benefitYear: { ...prev.benefitYear },
+  };
+
+  const c = bundle.proposedClient;
+  if (c) {
+    if (!next.client.legalName && c.legalName) next.client.legalName = c.legalName;
+    if (!next.client.tradingName && c.tradingName) next.client.tradingName = c.tradingName;
+    if (!next.client.uen && c.uen) next.client.uen = c.uen;
+    if (!next.client.address && c.address) next.client.address = c.address;
+    // Country defaults to "SG" in emptyDraftFormState; treat the seed
+    // as authoritative when AI proposed a different value.
+    if (c.countryOfIncorporation && next.client.countryOfIncorporation === 'SG') {
+      next.client.countryOfIncorporation = c.countryOfIncorporation;
+    }
+    if (!next.client.industry && c.industry) next.client.industry = c.industry;
+    if (!next.client.primaryContactName && c.primaryContactName) {
+      next.client.primaryContactName = c.primaryContactName;
+    }
+    if (!next.client.primaryContactEmail && c.primaryContactEmail) {
+      next.client.primaryContactEmail = c.primaryContactEmail;
+    }
+  }
+
+  if (next.policyEntities.length === 0 && bundle.proposedPolicyEntities.length > 0) {
+    next.policyEntities = bundle.proposedPolicyEntities.map((e, i) => ({
+      legalName: e.legalName,
+      policyNumber: e.policyNumber ?? '',
+      address: e.address ?? '',
+      headcountEstimate: e.headcountEstimate,
+      // Guarantee exactly one master flag — defer to AI's claim, falling
+      // back to the first row when AI couldn't tell.
+      isMaster: e.isMaster || (bundle.proposedPolicyEntities.every((x) => !x.isMaster) && i === 0),
+    }));
+  }
+
+  const by = bundle.proposedBenefitYear;
+  if (by) {
+    if (!next.policy.name && by.policyName) next.policy.name = by.policyName;
+    if (by.ageBasis) next.policy.ageBasis = by.ageBasis;
+    if (!next.benefitYear.startDate && by.startDate) next.benefitYear.startDate = by.startDate;
+    if (!next.benefitYear.endDate && by.endDate) next.benefitYear.endDate = by.endDate;
+  }
+
+  return next;
 }
 
 // Naive section-status derivation. Each section reports its own

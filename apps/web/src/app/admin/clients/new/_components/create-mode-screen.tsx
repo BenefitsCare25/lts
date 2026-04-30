@@ -141,6 +141,26 @@ function ImportPanel({ onCancel }: { onCancel: () => void }) {
     e.preventDefault();
     if (!selected) return;
     setError(null);
+    // Frontend size guard mirrors the backend's assertExcelBuffer
+    // 25 MB cap. Catching it here avoids a wasted base64-encode-then-
+    // upload round trip and gives the broker a clear error before the
+    // request leaves the browser.
+    const MAX_BYTES = 25 * 1024 * 1024;
+    if (selected.size > MAX_BYTES) {
+      setError(
+        `File is ${(selected.size / 1024 / 1024).toFixed(1)} MB — exceeds the 25 MB limit. Trim unused sheets or split into multiple uploads.`,
+      );
+      return;
+    }
+    if (selected.size === 0) {
+      setError('File is empty.');
+      return;
+    }
+    // Light extension guard. The server still magic-byte-sniffs.
+    if (!/\.(xls|xlsx)$/i.test(selected.name)) {
+      setError('Only .xls or .xlsx workbooks are accepted.');
+      return;
+    }
     try {
       const contentBase64 = await readFileAsBase64(selected);
       uploadOrphan.mutate({ filename: selected.name, contentBase64 });

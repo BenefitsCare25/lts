@@ -117,6 +117,118 @@ export type WizardSuggestions = {
   };
 };
 
+// AI-proposed section payloads. Written by the BullMQ extraction
+// worker into ExtractionDraft.progress alongside the existing
+// `suggestions` blob. Sections 2/3/4/5 read these to seed their form
+// state on first load (one-shot, ref-guarded so a poll refetch can't
+// re-seed and overwrite a broker who already edited a field).
+
+export type ProposedClient = {
+  legalName: string | null;
+  tradingName: string | null;
+  uen: string | null;
+  countryOfIncorporation: string | null;
+  address: string | null;
+  industry: string | null;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  confidence: number;
+  sourceRef?: SourceRef;
+};
+
+export type ProposedPolicyEntity = {
+  legalName: string;
+  policyNumber: string | null;
+  address: string | null;
+  headcountEstimate: number | null;
+  isMaster: boolean;
+  confidence: number;
+  sourceRef?: SourceRef;
+};
+
+export type ProposedBenefitYear = {
+  policyName: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  ageBasis: 'POLICY_START' | 'HIRE_DATE' | 'AS_AT_EVENT' | null;
+  confidence: number;
+  sourceRef?: SourceRef;
+};
+
+export type ProposedInsurer = {
+  code: string;
+  rawLabel: string;
+  productCount: number;
+  confidence: number;
+};
+
+export type ProposedPool = {
+  name: string | null;
+  poolId: string | null;
+  rawLabel: string | null;
+  confidence: number;
+  sourceRef?: SourceRef;
+} | null;
+
+export type WizardAiBundle = {
+  proposedClient: ProposedClient | null;
+  proposedPolicyEntities: ProposedPolicyEntity[];
+  proposedBenefitYear: ProposedBenefitYear | null;
+  proposedInsurers: ProposedInsurer[];
+  proposedPool: ProposedPool;
+  warnings: string[];
+  // Wizard's status pill copy. Mirrors ExtractionDraft.status but
+  // also surfaces the per-stage hint (CALLING_AI / MERGING / FAILED).
+  stage: string | null;
+  failure: { stage: string; message: string; at?: string } | null;
+  ai: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    latencyMs: number;
+    workbookTruncated: boolean;
+    sheetsCount: number;
+    completedAt?: string;
+  } | null;
+};
+
+export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
+  const empty: WizardAiBundle = {
+    proposedClient: null,
+    proposedPolicyEntities: [],
+    proposedBenefitYear: null,
+    proposedInsurers: [],
+    proposedPool: null,
+    warnings: [],
+    stage: null,
+    failure: null,
+    ai: null,
+  };
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) return empty;
+  const p = progress as {
+    proposedClient?: ProposedClient;
+    proposedPolicyEntities?: ProposedPolicyEntity[];
+    proposedBenefitYear?: ProposedBenefitYear;
+    proposedInsurers?: ProposedInsurer[];
+    proposedPool?: ProposedPool;
+    warnings?: string[];
+    stage?: string;
+    failure?: { stage: string; message: string; at?: string };
+    ai?: WizardAiBundle['ai'];
+  };
+  return {
+    proposedClient: p.proposedClient ?? null,
+    proposedPolicyEntities: p.proposedPolicyEntities ?? [],
+    proposedBenefitYear: p.proposedBenefitYear ?? null,
+    proposedInsurers: p.proposedInsurers ?? [],
+    proposedPool: p.proposedPool ?? null,
+    warnings: p.warnings ?? [],
+    stage: p.stage ?? null,
+    failure: p.failure ?? null,
+    ai: p.ai ?? null,
+  };
+}
+
 // Read suggestions off the draft.progress JSON, defending against
 // older drafts created before the suggestions blob landed.
 export function suggestionsFromDraft(progress: unknown): WizardSuggestions {
