@@ -121,11 +121,14 @@ export type RunnerProgressEvent =
   | { kind: 'discovery_started' }
   | {
       kind: 'discovery_done';
-      productsRequested: number;
+      // Full manifest of (productType, insurer) keys in the order they
+      // came back from discovery. The job persists this so the wizard
+      // can render a per-product progress list.
+      productKeys: string[];
       latencyMs: number;
       retried: boolean;
     }
-  | { kind: 'product_started'; productKey: string; index: number; total: number }
+  | { kind: 'product_started'; productKey: string; total: number }
   | {
       kind: 'product_done';
       productKey: string;
@@ -241,7 +244,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
 
   await safeProgress(onProgress, {
     kind: 'discovery_done',
-    productsRequested: discovery.output.productManifest.length,
+    productKeys: discovery.output.productManifest.map((m) => productKey(m)),
     latencyMs: discovery.latencyMs,
     retried: discovery.retried,
   });
@@ -293,6 +296,14 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     manifests,
     concurrency: 3,
     onProgress: async (event: ProgressEvent) => {
+      if (event.kind === 'started') {
+        await safeProgress(onProgress, {
+          kind: 'product_started',
+          productKey: event.productKey,
+          total: event.total,
+        });
+        return;
+      }
       const ok = event.result.ok;
       // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
       console.log(

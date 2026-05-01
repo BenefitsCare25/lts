@@ -181,13 +181,16 @@ export type WizardAiBundle = {
   // also surfaces the per-stage hint (AI_DISCOVERY / AI_PRODUCTS /
   // CALLING_AI / MERGING / FAILED).
   stage: string | null;
-  // Live per-product progress, populated during AI_PRODUCTS stage by
-  // the fan-out streaming callback. Null when not in that stage.
-  liveProgress: {
-    totalProducts: number;
-    completedProducts: number;
-    lastProductKey: string | null;
-    lastProductOk: boolean | null;
+  // Rich live extraction progress, populated by the runner's
+  // streaming callback. Null when no run is active. Drives the
+  // ExtractionProgress card.
+  live: {
+    stage: 'AI_DISCOVERY' | 'AI_PRODUCTS' | string;
+    startedAt: string | null; // ISO timestamp; client computes elapsed
+    productKeys: string[]; // full manifest order, set on discovery_done
+    statuses: Record<string, 'queued' | 'running' | 'ok' | 'failed'>;
+    completedCount: number;
+    lastCompleted: { key: string; ok: boolean } | null;
   } | null;
   failure: { stage: string; message: string; at?: string } | null;
   ai: {
@@ -213,7 +216,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedPool: null,
     warnings: [],
     stage: null,
-    liveProgress: null,
+    live: null,
     failure: null,
     ai: null,
   };
@@ -226,25 +229,27 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedPool?: ProposedPool;
     warnings?: string[];
     stage?: string;
-    totalProducts?: number;
-    completedProducts?: number;
-    lastProductKey?: string;
-    lastProductOk?: boolean;
+    live?: {
+      stage?: string;
+      startedAt?: string;
+      productKeys?: string[];
+      statuses?: Record<string, 'queued' | 'running' | 'ok' | 'failed'>;
+      completedCount?: number;
+      lastCompleted?: { key: string; ok: boolean };
+    };
     failure?: { stage: string; message: string; at?: string };
     ai?: WizardAiBundle['ai'];
   };
-  // Live per-product progress is only meaningful during AI_PRODUCTS.
-  // Once the run completes (status flips to READY/FAILED) the bundle
-  // shows the final tallies from `ai.productsExtracted` etc. instead.
-  const liveProgress: WizardAiBundle['liveProgress'] =
-    p.stage === 'AI_PRODUCTS' && typeof p.totalProducts === 'number'
-      ? {
-          totalProducts: p.totalProducts,
-          completedProducts: p.completedProducts ?? 0,
-          lastProductKey: p.lastProductKey ?? null,
-          lastProductOk: p.lastProductOk ?? null,
-        }
-      : null;
+  const live: WizardAiBundle['live'] = p.live
+    ? {
+        stage: p.live.stage ?? p.stage ?? 'AI_DISCOVERY',
+        startedAt: p.live.startedAt ?? null,
+        productKeys: p.live.productKeys ?? [],
+        statuses: p.live.statuses ?? {},
+        completedCount: p.live.completedCount ?? 0,
+        lastCompleted: p.live.lastCompleted ?? null,
+      }
+    : null;
   return {
     proposedClient: p.proposedClient ?? null,
     proposedPolicyEntities: p.proposedPolicyEntities ?? [],
@@ -253,7 +258,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedPool: p.proposedPool ?? null,
     warnings: p.warnings ?? [],
     stage: p.stage ?? null,
-    liveProgress,
+    live,
     failure: p.failure ?? null,
     ai: p.ai ?? null,
   };

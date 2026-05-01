@@ -23,6 +23,7 @@
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ExtractionProgress } from './extraction-progress';
 import {
   type DraftFormState,
   SECTIONS,
@@ -95,24 +96,10 @@ export function WizardShell({ uploadId }: Props) {
     });
   }, [draft.data]);
 
-  // AI seeding: separate ref so the heuristic seed (above) and the AI
-  // seed (below) don't fight. AI seeding runs the first time the draft
-  // is observed in READY state with proposed.* populated. After that,
-  // edits are the broker's; refetches don't re-seed.
-  const aiSeededDraftIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!draft.data) return;
-    if (draft.data.status !== 'READY') return;
-    const bundle = aiBundleFromDraft(draft.data.progress);
-    const hasAiPayload =
-      bundle.proposedClient != null ||
-      bundle.proposedPolicyEntities.length > 0 ||
-      bundle.proposedBenefitYear != null;
-    if (!hasAiPayload) return;
-    if (aiSeededDraftIdRef.current === draft.data.id) return;
-    aiSeededDraftIdRef.current = draft.data.id;
-    setForm((prev) => seedFormFromAi(prev, bundle));
-  }, [draft.data]);
+  // AI seeding lives per-section (ClientSection, PolicyEntitiesSection,
+  // BenefitYearSection each own their useEffect that reads
+  // aiBundle.proposed* and seeds the form once when AI proposals land).
+  // The shell does not re-seed centrally — single ownership.
 
   const sectionStatus = useMemo(() => computeSectionStatus(form, draft.data), [form, draft.data]);
   const applyReadiness = useMemo(() => {
@@ -256,34 +243,26 @@ function renderAiBanner(
   bundle: ReturnType<typeof aiBundleFromDraft>,
 ): React.ReactNode {
   if (status === 'EXTRACTING') {
+    // Rich progress card — only when we have streamed events (the
+    // runner has started and persisted progress.live). Falls back to
+    // a simple banner during the brief queued/early-startup window
+    // before any events arrive.
+    if (bundle.live) {
+      return <ExtractionProgress live={bundle.live} />;
+    }
     const stage = bundle.stage ?? 'QUEUED';
-    const live = bundle.liveProgress;
-    const stageCopy = (() => {
-      if (stage === 'AI_DISCOVERY') {
-        return 'Identifying products in the workbook (discovery pass)…';
-      }
-      if (stage === 'AI_PRODUCTS' && live) {
-        const lastLabel = live.lastProductKey ? ` · last: ${live.lastProductKey}` : '';
-        return `Extracting product ${live.completedProducts} of ${live.totalProducts}${lastLabel}`;
-      }
-      if (stage === 'AI_PRODUCTS') {
-        return 'Running per-product extraction passes (in parallel)…';
-      }
-      if (stage === 'CALLING_AI') {
-        return 'Calling the AI provider — this usually takes 30–90 seconds.';
-      }
-      if (stage === 'MERGING') {
-        return 'Merging the AI output with the heuristic baseline…';
-      }
-      if (stage === 'QUEUED') {
-        return 'Queued — waiting for a worker to pick this up.';
-      }
-      return `Stage: ${stage}`;
-    })();
+    const stageCopy =
+      stage === 'CALLING_AI'
+        ? 'Calling the AI provider — this usually takes 30–90 seconds.'
+        : stage === 'MERGING'
+          ? 'Merging the AI output with the heuristic baseline…'
+          : stage === 'QUEUED'
+            ? 'Queued — waiting for a worker to pick this up.'
+            : 'Starting AI extraction…';
     return (
       <div
         className="card card-padded"
-        style={{ borderColor: 'var(--accent-border)', background: 'var(--accent-tint)' }}
+        style={{ borderColor: 'var(--accent-soft)', background: 'var(--accent-tint)' }}
       >
         <p className="mb-0">
           <strong>AI extraction in progress.</strong> {stageCopy} You can keep editing other
@@ -330,59 +309,10 @@ function renderAiBanner(
 // Rule: only fill empty form fields. If the broker has typed
 // something, we never overwrite. This makes the AI run safe to
 // re-trigger after manual edits without losing the broker's work.
-function seedFormFromAi(
-  prev: DraftFormState,
-  bundle: ReturnType<typeof aiBundleFromDraft>,
-): DraftFormState {
-  const next: DraftFormState = {
-    client: { ...prev.client },
-    policyEntities: prev.policyEntities,
-    policy: { ...prev.policy },
-    benefitYear: { ...prev.benefitYear },
-  };
-
-  const c = bundle.proposedClient;
-  if (c) {
-    if (!next.client.legalName && c.legalName) next.client.legalName = c.legalName;
-    if (!next.client.tradingName && c.tradingName) next.client.tradingName = c.tradingName;
-    if (!next.client.uen && c.uen) next.client.uen = c.uen;
-    if (!next.client.address && c.address) next.client.address = c.address;
-    // Country defaults to "SG" in emptyDraftFormState; treat the seed
-    // as authoritative when AI proposed a different value.
-    if (c.countryOfIncorporation && next.client.countryOfIncorporation === 'SG') {
-      next.client.countryOfIncorporation = c.countryOfIncorporation;
-    }
-    if (!next.client.industry && c.industry) next.client.industry = c.industry;
-    if (!next.client.primaryContactName && c.primaryContactName) {
-      next.client.primaryContactName = c.primaryContactName;
-    }
-    if (!next.client.primaryContactEmail && c.primaryContactEmail) {
-      next.client.primaryContactEmail = c.primaryContactEmail;
-    }
-  }
-
-  if (next.policyEntities.length === 0 && bundle.proposedPolicyEntities.length > 0) {
-    next.policyEntities = bundle.proposedPolicyEntities.map((e, i) => ({
-      legalName: e.legalName,
-      policyNumber: e.policyNumber ?? '',
-      address: e.address ?? '',
-      headcountEstimate: e.headcountEstimate,
-      // Guarantee exactly one master flag — defer to AI's claim, falling
-      // back to the first row when AI couldn't tell.
-      isMaster: e.isMaster || (bundle.proposedPolicyEntities.every((x) => !x.isMaster) && i === 0),
-    }));
-  }
-
-  const by = bundle.proposedBenefitYear;
-  if (by) {
-    if (!next.policy.name && by.policyName) next.policy.name = by.policyName;
-    if (by.ageBasis) next.policy.ageBasis = by.ageBasis;
-    if (!next.benefitYear.startDate && by.startDate) next.benefitYear.startDate = by.startDate;
-    if (!next.benefitYear.endDate && by.endDate) next.benefitYear.endDate = by.endDate;
-  }
-
-  return next;
-}
+// Per-section ownership: ClientSection, PolicyEntitiesSection, and
+// BenefitYearSection each seed their own slice of the form from
+// aiBundle.proposed* via their own useEffect. The shell no longer
+// owns the seed logic.
 
 // Naive section-status derivation. Each section reports its own
 // completeness against `form` (broker-edited) and the draft (AI-

@@ -184,23 +184,27 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     heuristicProducts: heuristic.extractedProducts,
     onProgress: async (event) => {
       // Stream live status to ExtractionDraft.progress so the wizard's
-      // poll picks it up. Each event mutates a small slice of the
-      // JSONB; we never overwrite earlier broker-visible state.
+      // poll picks it up. The job maintains a per-key status map under
+      // `progress.live` that the wizard renders as a per-product list.
       if (event.kind === 'discovery_started') {
-        await markProgress(uploadId, { stage: 'AI_DISCOVERY' });
+        await mergeLiveProgress(uploadId, {
+          stage: 'AI_DISCOVERY',
+          startedAt: new Date().toISOString(),
+        });
       } else if (event.kind === 'discovery_done') {
-        await markProgressDetailed(uploadId, {
+        await mergeLiveProgress(uploadId, {
           stage: 'AI_PRODUCTS',
-          totalProducts: event.productsRequested,
-          completedProducts: 0,
+          productKeys: event.productKeys,
+        });
+      } else if (event.kind === 'product_started') {
+        await mergeLiveProgress(uploadId, {
+          stage: 'AI_PRODUCTS',
+          productInFlight: event.productKey,
         });
       } else if (event.kind === 'product_done') {
-        await markProgressDetailed(uploadId, {
+        await mergeLiveProgress(uploadId, {
           stage: 'AI_PRODUCTS',
-          totalProducts: event.total,
-          completedProducts: event.index,
-          lastProductKey: event.productKey,
-          lastProductOk: event.ok,
+          productCompleted: { key: event.productKey, ok: event.ok },
         });
       }
     },
@@ -345,39 +349,98 @@ async function markProgress(
   });
 }
 
-// Detailed progress update used by the per-product fan-out streaming
-// callback. Mirrors markProgress but carries per-product counters and
-// the last completed product's key for the wizard's status line.
-async function markProgressDetailed(
-  uploadId: string,
-  progress: {
-    stage: string;
-    totalProducts: number;
-    completedProducts: number;
-    lastProductKey?: string;
-    lastProductOk?: boolean;
-  },
-): Promise<void> {
+// Live progress merger used by the runner's onProgress callback.
+// Maintains a per-key status map under `progress.live` so the wizard
+// can render the full per-product list with running / ok / failed /
+// queued indicators.
+//
+// Shape persisted under progress.live:
+//   {
+//     stage:          'AI_DISCOVERY' | 'AI_PRODUCTS',
+//     startedAt:      ISO string set on discovery_started,
+//     productKeys:    string[]     // full manifest order
+//     statuses:       Record<key, 'queued'|'running'|'ok'|'failed'>
+//     completedCount: number       // ok+failed only
+//     lastCompleted:  { key, ok } | null
+//   }
+//
+// Each call mutates the slice it owns and leaves everything else
+// untouched. Idempotent under the wizard's 2s poll.
+type LiveProgressUpdate = {
+  stage: string;
+  startedAt?: string;
+  productKeys?: string[];
+  productInFlight?: string;
+  productCompleted?: { key: string; ok: boolean };
+};
+
+type LiveProgressShape = {
+  stage: string;
+  startedAt?: string;
+  productKeys?: string[];
+  statuses?: Record<string, 'queued' | 'running' | 'ok' | 'failed'>;
+  completedCount?: number;
+  lastCompleted?: { key: string; ok: boolean };
+};
+
+async function mergeLiveProgress(uploadId: string, update: LiveProgressUpdate): Promise<void> {
   const draft = await prisma.extractionDraft.findUnique({
     where: { uploadId },
     select: { id: true, progress: true, status: true },
   });
   if (!draft) return;
   if (draft.status !== 'EXTRACTING') return;
+
   const existing =
     draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
       ? (draft.progress as Record<string, unknown>)
       : {};
+  const existingLive: LiveProgressShape =
+    existing.live && typeof existing.live === 'object' && !Array.isArray(existing.live)
+      ? (existing.live as LiveProgressShape)
+      : { stage: update.stage };
+
+  const nextStatuses: Record<string, 'queued' | 'running' | 'ok' | 'failed'> = {
+    ...(existingLive.statuses ?? {}),
+  };
+
+  // discovery_done seeded the manifest; mark every key as queued so
+  // the UI renders the full list immediately.
+  if (update.productKeys) {
+    for (const k of update.productKeys) {
+      if (!nextStatuses[k]) nextStatuses[k] = 'queued';
+    }
+  }
+  if (update.productInFlight) {
+    nextStatuses[update.productInFlight] = 'running';
+  }
+  if (update.productCompleted) {
+    nextStatuses[update.productCompleted.key] = update.productCompleted.ok ? 'ok' : 'failed';
+  }
+
+  const completedCount = Object.values(nextStatuses).filter(
+    (s) => s === 'ok' || s === 'failed',
+  ).length;
+
+  const startedAt = update.startedAt ?? existingLive.startedAt;
+  const productKeys = update.productKeys ?? existingLive.productKeys;
+  const lastCompleted = update.productCompleted ?? existingLive.lastCompleted;
+  const nextLive: LiveProgressShape = {
+    stage: update.stage,
+    statuses: nextStatuses,
+    completedCount,
+    ...(startedAt !== undefined ? { startedAt } : {}),
+    ...(productKeys !== undefined ? { productKeys } : {}),
+    ...(lastCompleted !== undefined ? { lastCompleted } : {}),
+  };
+
   await prisma.extractionDraft.update({
     where: { id: draft.id },
     data: {
       progress: {
         ...existing,
-        stage: progress.stage,
-        totalProducts: progress.totalProducts,
-        completedProducts: progress.completedProducts,
-        ...(progress.lastProductKey ? { lastProductKey: progress.lastProductKey } : {}),
-        ...(progress.lastProductOk !== undefined ? { lastProductOk: progress.lastProductOk } : {}),
+        stage: update.stage,
+        live: nextLive,
       } as unknown as Prisma.InputJsonValue,
     },
   });
