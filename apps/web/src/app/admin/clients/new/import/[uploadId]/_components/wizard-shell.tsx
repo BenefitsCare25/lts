@@ -159,11 +159,34 @@ export function WizardShell({ uploadId }: Props) {
       <header className="wizard-shell__head">
         <div>
           <h1>{upload.filename}</h1>
-          <p className="field-help">
-            Status <strong>{draft.data.status}</strong>
-            {upload.insurerTemplate ? ` · ${upload.insurerTemplate}` : ''}
-            {' · '}Apply readiness <strong>{applyReadiness}%</strong>
+          <p className="wizard-shell__meta">
+            <span>
+              Status <strong>{draft.data.status}</strong>
+            </span>
+            {upload.insurerTemplate ? (
+              <>
+                <span className="wizard-shell__meta-sep">·</span>
+                <span>{upload.insurerTemplate}</span>
+              </>
+            ) : null}
           </p>
+          <div className="wizard-shell__readiness" aria-label="Apply readiness">
+            <span>Apply readiness</span>
+            <div
+              className="wizard-shell__readiness-bar"
+              role="progressbar"
+              tabIndex={0}
+              aria-valuenow={applyReadiness}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className="wizard-shell__readiness-fill"
+                style={{ width: `${applyReadiness}%` }}
+              />
+            </div>
+            <strong>{applyReadiness}%</strong>
+          </div>
         </div>
         <div className="row">
           <Link href="/admin/clients/new" className="btn btn-ghost btn-sm">
@@ -189,17 +212,21 @@ export function WizardShell({ uploadId }: Props) {
                     .join(' ')}
                   onClick={() => goTo(s.id)}
                 >
-                  <span className="wizard-rail__num">{idx + 1}</span>
+                  <span className="wizard-rail__num" aria-hidden="true">
+                    {sectionStatus[s.id] === 'complete' ? '✓' : idx + 1}
+                  </span>
                   <span className="wizard-rail__label">{s.label}</span>
-                  <RailSourceBadge aiFilled={aiFilled[s.id]} edited={dirtyFlags[s.id]} />
-                  <span className="wizard-rail__status" aria-label={sectionStatus[s.id]}>
-                    {sectionStatus[s.id] === 'complete'
-                      ? '✓'
-                      : sectionStatus[s.id] === 'has_issues'
+                  <span className="wizard-rail__meta">
+                    <RailSourceBadge aiFilled={aiFilled[s.id]} edited={dirtyFlags[s.id]} />
+                    <span className="wizard-rail__status" aria-label={sectionStatus[s.id]}>
+                      {sectionStatus[s.id] === 'has_issues'
                         ? '⚠'
                         : sectionStatus[s.id] === 'in_progress'
                           ? '●'
-                          : '○'}
+                          : sectionStatus[s.id] === 'pending'
+                            ? '○'
+                            : ''}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -244,7 +271,7 @@ function PrevNextNav({
   const prev = idx > 0 ? SECTIONS[idx - 1] : null;
   const next = idx >= 0 && idx < SECTIONS.length - 1 ? SECTIONS[idx + 1] : null;
   return (
-    <div className="row" style={{ justifyContent: 'space-between' }}>
+    <div className="flex items-center justify-between">
       <div>
         {prev ? (
           <button type="button" className="btn btn-ghost" onClick={() => onChange(prev.id)}>
@@ -288,11 +315,8 @@ function renderAiBanner(
             ? 'Queued — waiting for a worker to pick this up.'
             : 'Starting AI extraction…';
     return (
-      <div
-        className="card card-padded"
-        style={{ borderColor: 'var(--accent-soft)', background: 'var(--accent-tint)' }}
-      >
-        <p className="mb-0">
+      <div className="wizard-banner wizard-banner--info">
+        <p>
           <strong>AI extraction in progress.</strong> {stageCopy} You can keep editing other
           sections while this runs.
         </p>
@@ -301,21 +325,21 @@ function renderAiBanner(
   }
   if (status === 'FAILED' && bundle.failure) {
     return (
-      <div className="card card-padded" style={{ borderColor: 'var(--color-danger)' }}>
-        <p className="mb-2">
+      <div className="wizard-banner wizard-banner--error">
+        <p>
           <strong>AI extraction failed</strong> at stage <code>{bundle.failure.stage}</code>.
         </p>
-        <p className="field-help mb-0">{bundle.failure.message}</p>
+        <p className="field-help">{bundle.failure.message}</p>
       </div>
     );
   }
   if (status === 'READY' && bundle.warnings.length > 0) {
     return (
-      <div className="card card-padded" style={{ borderColor: 'var(--color-warning)' }}>
-        <p className="mb-2">
+      <div className="wizard-banner wizard-banner--warn">
+        <p>
           <strong>AI extraction completed with warnings:</strong>
         </p>
-        <ul className="kv-list mb-0">
+        <ul className="wizard-banner__list">
           {bundle.warnings.slice(0, 6).map((w, i) => (
             <li key={`warn-${i}-${w.slice(0, 30)}`}>{w}</li>
           ))}
@@ -343,39 +367,15 @@ function renderAiBanner(
 // owns the seed logic.
 
 // Small inline badge in the rail showing data provenance:
-//   🤖 AI    — section auto-filled by AI/heuristic, broker hasn't touched it
-//   ✏️ Edit  — broker edited at least one field in the section
-//   (none)  — section never had auto-fill data (or section is read-only)
+//   AI     — section auto-filled by AI/heuristic, broker hasn't touched it
+//   Edited — broker edited at least one field in the section
+//   (none) — section never had auto-fill data (or section is read-only)
 function RailSourceBadge({ aiFilled, edited }: { aiFilled: boolean; edited: boolean }) {
   if (edited) {
-    return (
-      <span
-        style={{
-          fontSize: 'var(--text-2xs)',
-          color: 'var(--text-tertiary)',
-          marginLeft: 'auto',
-          marginRight: 'var(--space-1)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        ✏️ Edited
-      </span>
-    );
+    return <span className="wizard-rail__provenance wizard-rail__provenance--edited">Edited</span>;
   }
   if (aiFilled) {
-    return (
-      <span
-        style={{
-          fontSize: 'var(--text-2xs)',
-          color: 'var(--accent)',
-          marginLeft: 'auto',
-          marginRight: 'var(--space-1)',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        🤖 AI-filled
-      </span>
-    );
+    return <span className="wizard-rail__provenance wizard-rail__provenance--ai">AI</span>;
   }
   return null;
 }
