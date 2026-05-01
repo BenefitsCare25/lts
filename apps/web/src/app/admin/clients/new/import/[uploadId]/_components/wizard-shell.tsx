@@ -122,8 +122,8 @@ export function WizardShell({ uploadId }: Props) {
   // The shell does not re-seed centrally — single ownership.
 
   const sectionStatus = useMemo(() => computeSectionStatus(form, draft.data), [form, draft.data]);
-  const aiFilled = useMemo(
-    () => computeAiFilled(form, draft.data, dirtyFlags),
+  const provenance = useMemo(
+    () => computeProvenance(form, draft.data, dirtyFlags),
     [form, draft.data, dirtyFlags],
   );
   const applyReadiness = useMemo(() => {
@@ -217,7 +217,7 @@ export function WizardShell({ uploadId }: Props) {
                   </span>
                   <span className="wizard-rail__label">{s.label}</span>
                   <span className="wizard-rail__meta">
-                    <RailSourceBadge aiFilled={aiFilled[s.id]} edited={dirtyFlags[s.id]} />
+                    <RailSourceBadge provenance={provenance[s.id]} edited={dirtyFlags[s.id]} />
                     <span className="wizard-rail__status" aria-label={sectionStatus[s.id]}>
                       {sectionStatus[s.id] === 'has_issues'
                         ? '⚠'
@@ -244,7 +244,7 @@ export function WizardShell({ uploadId }: Props) {
                 setForm={setForm}
                 sectionStatus={sectionStatus}
                 applyReadiness={applyReadiness}
-                aiFilled={aiFilled[activeSection]}
+                aiFilled={provenance[activeSection] === 'ai'}
                 edited={dirtyFlags[activeSection]}
                 markSectionDirty={markSectionDirty}
               />
@@ -367,31 +367,70 @@ function renderAiBanner(
 // owns the seed logic.
 
 // Small inline badge in the rail showing data provenance:
-//   AI     — section auto-filled by AI/heuristic, broker hasn't touched it
+//   AI     — broker hasn't touched it AND the AI extraction ran AND
+//            filled this section
+//   Parsed — broker hasn't touched it AND the deterministic Excel
+//            parser seeded this section at upload time (AI not yet run)
 //   Edited — broker edited at least one field in the section
-//   (none) — section never had auto-fill data (or section is read-only)
-function RailSourceBadge({ aiFilled, edited }: { aiFilled: boolean; edited: boolean }) {
+//   (none) — section never had any auto-fill data (or it's read-only)
+//
+// "Edited" outranks "AI"/"Parsed" — if the broker has touched a field
+// the provenance is no longer meaningful.
+type SectionProvenance = 'ai' | 'parsed' | null;
+function RailSourceBadge({
+  provenance,
+  edited,
+}: {
+  provenance: SectionProvenance;
+  edited: boolean;
+}) {
   if (edited) {
     return <span className="wizard-rail__provenance wizard-rail__provenance--edited">Edited</span>;
   }
-  if (aiFilled) {
+  if (provenance === 'ai') {
     return <span className="wizard-rail__provenance wizard-rail__provenance--ai">AI</span>;
+  }
+  if (provenance === 'parsed') {
+    return <span className="wizard-rail__provenance wizard-rail__provenance--parsed">Parsed</span>;
   }
   return null;
 }
 
-function computeAiFilled(
+// Compute per-section data provenance for the rail badge.
+//
+// The platform has two distinct fill paths:
+//  1. The deterministic Excel parser runs at upload time and writes
+//     `extractedProducts`, `progress.suggestions.*`, and (via the
+//     wizard's seeders) populates Client / Entities form rows. This is
+//     "Parsed" — broker still gets pre-filled data, but no LLM was
+//     involved.
+//  2. The AI runner (only when the broker clicks "Run AI extraction")
+//     overwrites `extractedProducts` and writes `progress.proposed*`,
+//     `progress.ai`, and `progress.warnings`. This is "AI".
+//
+// The discriminator for "AI ran" is `progress.ai !== null` plus the
+// section-specific `proposed*` payloads. Without those, any data the
+// section already has must have come from the heuristic parser.
+function computeProvenance(
   form: DraftFormState,
   draft: DraftLike,
   dirty: Record<SectionId, boolean>,
-): Record<SectionId, boolean> {
+): Record<SectionId, SectionProvenance> {
   const extracted = (draft?.extractedProducts as Array<unknown> | null) ?? [];
   const progress = draft?.progress as {
+    ai?: unknown | null;
+    proposedClient?: unknown | null;
+    proposedBenefitYear?: unknown | null;
+    proposedPolicyEntities?: unknown[];
     proposedInsurers?: unknown[];
     suggestions?: { missingPredicateFields?: unknown[]; benefitGroups?: unknown[] };
   } | null;
+  const aiRan = progress?.ai != null;
   const proposedInsurersCount = Array.isArray(progress?.proposedInsurers)
     ? progress.proposedInsurers.length
+    : 0;
+  const proposedEntitiesCount = Array.isArray(progress?.proposedPolicyEntities)
+    ? progress.proposedPolicyEntities.length
     : 0;
   const benefitGroupsCount = Array.isArray(progress?.suggestions?.benefitGroups)
     ? progress.suggestions.benefitGroups.length
@@ -400,24 +439,45 @@ function computeAiFilled(
     ? progress.suggestions.missingPredicateFields.length
     : 0;
 
-  // A section is "AI-filled" when it has auto-fill data AND the
-  // broker hasn't touched it. Read-only sections (1, 10) never get
-  // the badge — the broker has nothing to "edit" there.
-  return {
-    source: false,
-    review: false,
-    client:
-      !dirty.client && Boolean(form.client.legalName || form.client.uen || form.client.address),
-    entities: !dirty.entities && form.policyEntities.length > 0,
-    benefit_year:
-      !dirty.benefit_year &&
+  // Pick the right tag for a section that does have auto-filled data.
+  // `aiContributed` is per-section: the AI run may have filled the
+  // benefit-year proposal but left the heuristic-derived reconciliation
+  // alone, so we read each section's specific signal.
+  const tag = (hasContent: boolean, aiContributed: boolean): SectionProvenance =>
+    !hasContent ? null : aiContributed ? 'ai' : 'parsed';
+
+  const result: Record<SectionId, SectionProvenance> = {
+    source: null, // read-only summary; never auto-fill-tagged
+    review: null, // gated on broker action; never auto-fill-tagged
+    client: tag(
+      Boolean(form.client.legalName || form.client.uen || form.client.address),
+      progress?.proposedClient != null,
+    ),
+    entities: tag(form.policyEntities.length > 0, proposedEntitiesCount > 0),
+    benefit_year: tag(
       Boolean(form.benefitYear.startDate || form.benefitYear.endDate || form.policy.name),
-    insurers: extracted.length > 0 || proposedInsurersCount > 0,
-    products: extracted.length > 0,
-    eligibility: extracted.length > 0 || benefitGroupsCount > 0,
-    schema_additions: missingFieldsCount > 0 || extracted.length > 0,
-    reconciliation: extracted.length > 0,
+      progress?.proposedBenefitYear != null,
+    ),
+    // Insurers can come from either the heuristic (template-matched
+    // insurer codes inside extractedProducts) or the AI's discovery
+    // pass (proposedInsurers). The AI tag wins when AI proposed any.
+    insurers: tag(extracted.length > 0 || proposedInsurersCount > 0, proposedInsurersCount > 0),
+    // Products / eligibility / schema additions / reconciliation all
+    // read off `extractedProducts` and `suggestions`. Both paths write
+    // there — the heuristic at upload, the AI when it runs.
+    products: tag(extracted.length > 0, aiRan),
+    eligibility: tag(extracted.length > 0 || benefitGroupsCount > 0, aiRan),
+    schema_additions: tag(missingFieldsCount > 0 || extracted.length > 0, aiRan),
+    reconciliation: tag(extracted.length > 0, aiRan),
   };
+
+  // Broker edits outrank provenance — once they've touched a section,
+  // the rail switches to "Edited" and the per-section AI banner has
+  // already self-dismissed.
+  for (const id of Object.keys(result) as SectionId[]) {
+    if (dirty[id]) result[id] = null;
+  }
+  return result;
 }
 
 // Naive section-status derivation. Each section reports its own
