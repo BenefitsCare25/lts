@@ -19,15 +19,7 @@
 // e.g. proposedClient.legalName is nice-to-have, not required.
 // =============================================================
 
-import Ajv, { type ValidateFunction } from 'ajv';
-import addFormats from 'ajv-formats';
-
-const ajv = new Ajv({
-  allErrors: true,
-  removeAdditional: false,
-  strict: false,
-});
-addFormats(ajv);
+import { type ValidateFunction, formatAjvError, safeCompile } from '@/server/catalogue/ajv';
 
 // Inline because Anthropic's tool-use endpoint does not resolve
 // external $refs — the schema sent to the model must be self-
@@ -204,12 +196,12 @@ export const discoveryOutputSchema = {
   },
 } as const;
 
-let _validator: ValidateFunction | null = null;
 export function getDiscoveryValidator(): ValidateFunction {
-  if (!_validator) {
-    _validator = ajv.compile(discoveryOutputSchema);
+  const result = safeCompile(discoveryOutputSchema, 'extraction:discovery-v1');
+  if (!result.ok) {
+    throw new Error(`Discovery schema failed to compile: ${result.error}`);
   }
-  return _validator;
+  return result.validate;
 }
 
 export type ProductManifestEntry = {
@@ -279,10 +271,7 @@ export type DiscoveryOutput = {
 
 export function formatDiscoveryAjvErrors(errors: ValidateFunction['errors']): string {
   if (!errors || errors.length === 0) return '(no error details)';
-  return errors
-    .slice(0, 12)
-    .map((e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`)
-    .join('\n');
+  return errors.slice(0, 12).map(formatAjvError).join('\n');
 }
 
 export const DISCOVERY_TOOL_NAME = 'emit_discovery';

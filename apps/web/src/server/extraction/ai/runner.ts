@@ -33,8 +33,10 @@ import { type ProgressEvent, runProductPasses } from './fan-out';
 import {
   type FoundryProvider,
   type FoundryUsage,
+  addUsage,
   decryptProviderKey,
   detectModelFamily,
+  emptyUsage,
   loadActiveProvider,
 } from './foundry-client';
 import { buildSharedSystemPrompt } from './prompt-shared';
@@ -144,7 +146,15 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
   const { db, tenantSlug, workbookBuffer, heuristicProducts, onProgress } = input;
   const wallStart = Date.now();
 
-  const provider = await loadActiveProvider(db);
+  // Provider, workbook serialization, and catalogue context are
+  // independent. Run them concurrently — workbookToText on a 25 MB
+  // buffer can take 1-3s on its own, the other two are short DB hops.
+  const [provider, workbookResult, catalogue] = await Promise.all([
+    loadActiveProvider(db),
+    serializeWorkbookSafely(workbookBuffer),
+    loadCatalogueContext(db, tenantSlug),
+  ]);
+
   if (!provider) {
     return {
       ok: false,
@@ -154,25 +164,16 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
       meta: {},
     };
   }
+  if (!workbookResult.ok) {
+    return { ok: false, retryable: false, error: workbookResult.error, meta: {} };
+  }
+  const workbookText = workbookResult.text;
 
   const family = detectModelFamily(provider.deploymentName);
   // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
   console.log(
     `[ai-extraction] provider deployment=${provider.deploymentName} family=${family} endpoint=${provider.endpoint}`,
   );
-
-  let workbookText: WorkbookText;
-  try {
-    workbookText = await workbookToText(workbookBuffer);
-  } catch (err) {
-    return {
-      ok: false,
-      retryable: false,
-      error: `Workbook could not be serialized: ${err instanceof Error ? err.message : 'unknown error'}`,
-      meta: {},
-    };
-  }
-
   // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
   console.log(
     `[ai-extraction] workbook sheets=${workbookText.sheets.length} chars=${workbookText.totalChars} truncated=${workbookText.truncated}`,
@@ -204,7 +205,6 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     };
   }
 
-  const catalogue = await loadCatalogueContext(db, tenantSlug);
   const systemPrompt = buildSharedSystemPrompt(catalogue);
   const flattened = flattenWorkbookText(workbookText);
 
@@ -357,17 +357,17 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
 
   // Aggregate token usage and latency.
   const discoveryUsage = discovery.usage;
-  const productUsage = fanOut.successes.reduce<FoundryUsage>((acc, s) => sumUsage(acc, s.usage), {
+  const productUsage = fanOut.successes.reduce<FoundryUsage>((acc, s) => addUsage(acc, s.usage), {
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
   });
   const failedProductUsage = fanOut.failures.reduce<FoundryUsage>(
-    (acc, f) => sumUsage(acc, f.usage ?? emptyUsage()),
+    (acc, f) => addUsage(acc, f.usage ?? emptyUsage()),
     emptyUsage(),
   );
-  const totalUsage = sumUsage(sumUsage(discoveryUsage, productUsage), failedProductUsage);
+  const totalUsage = addUsage(addUsage(discoveryUsage, productUsage), failedProductUsage);
 
   const partialFailureWarnings = fanOut.failures.map(
     (f) =>
@@ -416,6 +416,19 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
+async function serializeWorkbookSafely(
+  buffer: Buffer,
+): Promise<{ ok: true; text: WorkbookText } | { ok: false; error: string }> {
+  try {
+    return { ok: true, text: await workbookToText(buffer) };
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Workbook could not be serialized: ${err instanceof Error ? err.message : 'unknown error'}`,
+    };
+  }
+}
+
 async function safeProgress(
   handler: RunnerProgressHandler | undefined,
   event: RunnerProgressEvent,
@@ -438,24 +451,6 @@ function indexHeuristic(products: ExtractedProduct[]): Map<string, ExtractedProd
   const map = new Map<string, ExtractedProduct>();
   for (const p of products) map.set(productKey(p), p);
   return map;
-}
-
-function emptyUsage(): FoundryUsage {
-  return {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-  };
-}
-
-function sumUsage(a: FoundryUsage, b: FoundryUsage): FoundryUsage {
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
-    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
-    cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
-  };
 }
 
 function truncate(s: string, max: number): string {

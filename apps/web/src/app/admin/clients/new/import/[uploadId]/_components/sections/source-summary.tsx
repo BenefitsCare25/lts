@@ -126,21 +126,7 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
             <>
               <p className="field-help mb-3">
                 {aiBundle.ai
-                  ? (() => {
-                      const ai = aiBundle.ai;
-                      const productsLine =
-                        typeof ai.productsExtracted === 'number' &&
-                        typeof ai.productsRequested === 'number'
-                          ? ` · ${ai.productsExtracted}/${ai.productsRequested} products extracted${
-                              ai.productsFailed && ai.productsFailed > 0
-                                ? ` (${ai.productsFailed} failed — see warnings)`
-                                : ''
-                            }`
-                          : '';
-                      return `Last run: ${ai.model} · ${ai.sheetsCount} sheet${
-                        ai.sheetsCount === 1 ? '' : 's'
-                      } in ${(ai.latencyMs / 1000).toFixed(1)}s · ${ai.inputTokens.toLocaleString()} input + ${ai.outputTokens.toLocaleString()} output tokens${productsLine}.`;
-                    })()
+                  ? formatLastRunLine(aiBundle.ai)
                   : 'AI extraction reads the workbook with your tenant’s configured Claude/Foundry deployment and pre-fills the wizard’s sections (client details, policy entities, benefit year, products, plans, premium rates, eligibility). Heuristic-extracted cells with full confidence are preserved; the AI fills the rest.'}
               </p>
               {aiBundle.ai?.workbookTruncated ? (
@@ -250,4 +236,18 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
       ) : null}
     </>
   );
+}
+
+function formatLastRunLine(ai: NonNullable<ReturnType<typeof aiBundleFromDraft>['ai']>): string {
+  const sheetWord = ai.sheetsCount === 1 ? 'sheet' : 'sheets';
+  const seconds = (ai.latencyMs / 1000).toFixed(1);
+  const tokens = `${ai.inputTokens.toLocaleString()} input + ${ai.outputTokens.toLocaleString()} output tokens`;
+  let products = '';
+  if (typeof ai.productsExtracted === 'number' && typeof ai.productsRequested === 'number') {
+    products = ` · ${ai.productsExtracted}/${ai.productsRequested} products extracted`;
+    if (ai.productsFailed && ai.productsFailed > 0) {
+      products += ` (${ai.productsFailed} failed — see warnings)`;
+    }
+  }
+  return `Last run: ${ai.model} · ${ai.sheetsCount} ${sheetWord} in ${seconds}s · ${tokens}${products}.`;
 }

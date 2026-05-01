@@ -20,7 +20,9 @@ import {
   DEFAULT_OUTPUT_TOKENS,
   type FoundryProvider,
   type FoundryUsage,
+  addUsage,
   callFoundry,
+  stripSchemaMeta,
 } from './foundry-client';
 import { buildDiscoveryUserPrompt } from './prompt-discovery';
 import {
@@ -114,14 +116,14 @@ export async function runDiscoveryPass(input: DiscoveryPassInput): Promise<Disco
       truncated: false,
       error: `Discovery output failed schema validation twice. Final errors:\n${second.validationError}`,
       latencyMs: first.latencyMs + second.latencyMs,
-      usage: sumUsage(first.usage, second.usage),
+      usage: addUsage(first.usage, second.usage),
     };
   }
 
   return {
     ok: true,
     output: second.output,
-    usage: sumUsage(first.usage, second.usage),
+    usage: addUsage(first.usage, second.usage),
     model: second.model,
     stopReason: second.stopReason,
     latencyMs: first.latencyMs + second.latencyMs,
@@ -206,21 +208,5 @@ async function singleAttempt(args: {
     model: result.model,
     stopReason: result.stopReason,
     latencyMs: result.latencyMs,
-  };
-}
-
-function stripSchemaMeta(schema: Record<string, unknown>): Record<string, unknown> {
-  const { $schema, $id, ...rest } = schema;
-  void $schema;
-  void $id;
-  return rest;
-}
-
-function sumUsage(a: FoundryUsage, b: FoundryUsage): FoundryUsage {
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
-    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
-    cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
   };
 }
