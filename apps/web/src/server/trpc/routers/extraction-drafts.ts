@@ -18,6 +18,10 @@
 import { prisma } from '@/server/db/client';
 import { enqueueAiExtraction } from '@/server/jobs/extraction';
 import { isRedisConfigured } from '@/server/jobs/redis';
+import {
+  deleteFile as deleteFromSharePoint,
+  isSharePointConfigured,
+} from '@/server/storage/sharepoint';
 import { ClientStatus, Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -254,6 +258,55 @@ export const extractionDraftsRouter = router({
       });
 
       return { ok: true, jobId };
+    }),
+
+  // Hard-delete an orphan draft and its underlying upload. Used by the
+  // "Resume in-progress imports" list when the broker no longer wants
+  // the row at all (cancelled deal, wrong file, etc.). Refuses APPLIED
+  // drafts because at that point the upload is bound to a real client
+  // and lives under that client's imports list — the broker should
+  // delete it from there if they really want it gone.
+  //
+  // SharePoint cleanup is best-effort: a missing remote file shouldn't
+  // block the DB delete (mirrors placementSlips.delete behaviour).
+  deleteOrphan: adminProcedure
+    .input(z.object({ draftId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const draft = await loadDraftForTenant(ctx.tenantId, input.draftId);
+      if (draft.upload.clientId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message:
+            "Upload is already bound to a client — delete it from that client's imports list.",
+        });
+      }
+      if (draft.status === 'APPLIED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot delete an already-applied draft.',
+        });
+      }
+
+      if (draft.upload.storageKey.startsWith('sharepoint:') && isSharePointConfigured()) {
+        const path = draft.upload.storageKey.replace(/^sharepoint:/, '');
+        try {
+          await deleteFromSharePoint(path);
+        } catch (err) {
+          console.warn(
+            `[extraction-drafts] SharePoint delete failed for ${path}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+
+      // ExtractionDraft → PlacementSlipUpload FK has no cascade, so
+      // delete the draft first then the upload, in one transaction.
+      await prisma.$transaction(async (tx) => {
+        await tx.extractionDraft.delete({ where: { id: draft.id } });
+        await tx.placementSlipUpload.delete({ where: { id: draft.uploadId } });
+      });
+
+      return { id: draft.id };
     }),
 
   // Discard a draft without applying. The upload row is kept (audit
