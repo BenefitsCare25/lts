@@ -1131,9 +1131,13 @@ main {
   background: var(--accent-soft);
   color: var(--accent);
 }
-.wizard-rail__provenance--edited {
+.wizard-rail__provenance--parsed {
   background: var(--bg-hover);
   color: var(--text-tertiary);
+}
+.wizard-rail__provenance--edited {
+  background: rgba(255, 159, 10, 0.16);
+  color: #a86200;
 }
 
 .wizard-rail__status {
