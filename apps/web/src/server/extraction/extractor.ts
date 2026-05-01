@@ -119,18 +119,19 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
   // Default plan eligibility matrix: each group label → first plan
   // whose name shares the most tokens with the group label, per product.
   // Naive but useful — the broker confirms in the Eligibility section.
-  const eligibilityMatrix = benefitGroups.map((g) => ({
-    groupRawLabel: g.sourcePlanLabel,
-    perProduct: extractedProducts.map((p) => {
-      const match = p.plans.find((pl) =>
-        pl.rawName.toLowerCase().includes(g.sourcePlanLabel.toLowerCase().slice(0, 8)),
-      );
-      return {
-        productTypeCode: p.productTypeCode,
-        defaultPlanRawCode: match?.rawCode ?? null,
-      };
-    }),
-  }));
+  const eligibilityMatrix = benefitGroups.map((g) => {
+    const prefix = g.sourcePlanLabel.toLowerCase().slice(0, 8);
+    return {
+      groupRawLabel: g.sourcePlanLabel,
+      perProduct: extractedProducts.map((p) => {
+        const match = p.plans.find((pl) => pl.rawName.toLowerCase().includes(prefix));
+        return {
+          productTypeCode: p.productTypeCode,
+          defaultPlanRawCode: match?.rawCode ?? null,
+        };
+      }),
+    };
+  });
 
   // Stage 3c — missing predicate fields. Walk each suggested
   // predicate and collect var-paths that don't exist in the schema.
@@ -146,34 +147,28 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
     }
   >();
   for (const g of benefitGroups) {
-    const enumsFromPredicate = collectEnumValues(g.predicate);
-    for (const ref of collectVarRefs(g.predicate)) {
+    const { varRefs, enumValues: enumsFromPredicate } = walkJsonLogic(g.predicate);
+    for (const ref of varRefs) {
       if (knownFieldNames.has(ref)) continue;
-      if (!missingMap.has(ref)) {
-        const enumVals = enumsFromPredicate.get(ref);
+      const enumVals = enumsFromPredicate.get(ref);
+      let entry = missingMap.get(ref);
+      if (!entry) {
         const suggestedType = enumVals ? 'enum' : guessFieldTypeFromName(ref);
-        missingMap.set(ref, {
+        entry = {
           fieldPath: ref,
           suggestedType,
           suggestedLabel: humanizeFieldName(ref),
           referencedBy: [],
           ...(enumVals ? { enumValues: enumVals } : {}),
-        });
-      } else {
-        // Merge any additional enum values discovered in later predicates.
-        const existing = missingMap.get(ref);
-        if (existing) {
-          const moreVals = enumsFromPredicate.get(ref);
-          if (moreVals) {
-            const merged = new Set([...(existing.enumValues ?? []), ...moreVals]);
-            existing.enumValues = Array.from(merged);
-            existing.suggestedType = 'enum';
-          }
-        }
+        };
+        missingMap.set(ref, entry);
+      } else if (enumVals) {
+        const merged = new Set([...(entry.enumValues ?? []), ...enumVals]);
+        entry.enumValues = Array.from(merged);
+        entry.suggestedType = 'enum';
       }
-      const existing = missingMap.get(ref);
-      if (existing && !existing.referencedBy.includes(g.sourcePlanLabel)) {
-        existing.referencedBy.push(g.sourcePlanLabel);
+      if (!entry.referencedBy.includes(g.sourcePlanLabel)) {
+        entry.referencedBy.push(g.sourcePlanLabel);
       }
     }
   }
@@ -193,60 +188,6 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
   };
 }
 
-// Walk a JSONLogic predicate and extract enum values associated with each
-// var-path from `==` and `in` operators.
-// e.g. { '==': [{ var: 'employee.employment_type' }, 'BARGAINABLE'] }
-//      → Map { 'employee.employment_type' => ['BARGAINABLE'] }
-function collectEnumValues(node: unknown): Map<string, string[]> {
-  const out = new Map<string, string[]>();
-  const visit = (n: unknown) => {
-    if (n == null || typeof n !== 'object') return;
-    if (Array.isArray(n)) {
-      for (const child of n) visit(child);
-      return;
-    }
-    const obj = n as Record<string, unknown>;
-    // { '==': [{ var: 'path' }, 'VALUE'] }
-    if ('==' in obj) {
-      const pair = obj['=='];
-      if (Array.isArray(pair) && pair.length === 2) {
-        const [a, b] = pair;
-        const varPath = extractVarPath(a);
-        const val = typeof b === 'string' ? b : null;
-        if (varPath && val) {
-          const existing = out.get(varPath) ?? [];
-          if (!existing.includes(val)) existing.push(val);
-          out.set(varPath, existing);
-        }
-      }
-      return;
-    }
-    // { in: [{ var: 'path' }, ['V1', 'V2']] }
-    if ('in' in obj) {
-      const pair = obj.in;
-      if (Array.isArray(pair) && pair.length === 2) {
-        const [a, b] = pair;
-        const varPath = extractVarPath(a);
-        if (varPath && Array.isArray(b)) {
-          const vals = b.filter((v): v is string => typeof v === 'string');
-          if (vals.length > 0) {
-            const existing = out.get(varPath) ?? [];
-            for (const v of vals) {
-              if (!existing.includes(v)) existing.push(v);
-            }
-            out.set(varPath, existing);
-          }
-        }
-      }
-      return;
-    }
-    // Recurse into `and` / `or` / etc.
-    for (const v of Object.values(obj)) visit(v);
-  };
-  visit(node);
-  return out;
-}
-
 function extractVarPath(node: unknown): string | null {
   if (node && typeof node === 'object' && !Array.isArray(node)) {
     const obj = node as Record<string, unknown>;
@@ -255,25 +196,63 @@ function extractVarPath(node: unknown): string | null {
   return null;
 }
 
-// Walk a JSONLogic predicate, yielding every "var": "path" reference.
-function collectVarRefs(node: unknown): string[] {
-  const out: string[] = [];
+// Single-pass JSONLogic walker: collects every var-path reference AND
+// enum values from `==` / `in` operators in one traversal.
+function walkJsonLogic(node: unknown): { varRefs: string[]; enumValues: Map<string, string[]> } {
+  const varRefs: string[] = [];
+  const enumValues = new Map<string, string[]>();
   const visit = (n: unknown) => {
-    if (n == null) return;
+    if (n == null || typeof n !== 'object') return;
     if (Array.isArray(n)) {
       for (const child of n) visit(child);
       return;
     }
-    if (typeof n !== 'object') return;
     const obj = n as Record<string, unknown>;
     if ('var' in obj && typeof obj.var === 'string') {
-      out.push(obj.var);
+      varRefs.push(obj.var);
+      return;
+    }
+    if ('==' in obj) {
+      const pair = obj['=='];
+      if (Array.isArray(pair) && pair.length === 2) {
+        const [a, b] = pair;
+        const varPath = extractVarPath(a);
+        if (varPath) {
+          varRefs.push(varPath);
+          if (typeof b === 'string') {
+            const existing = enumValues.get(varPath) ?? [];
+            if (!existing.includes(b)) existing.push(b);
+            enumValues.set(varPath, existing);
+          }
+        }
+      }
+      return;
+    }
+    if ('in' in obj) {
+      const pair = obj.in;
+      if (Array.isArray(pair) && pair.length === 2) {
+        const [a, b] = pair;
+        const varPath = extractVarPath(a);
+        if (varPath) {
+          varRefs.push(varPath);
+          if (Array.isArray(b)) {
+            const vals = b.filter((v): v is string => typeof v === 'string');
+            if (vals.length > 0) {
+              const existing = enumValues.get(varPath) ?? [];
+              for (const v of vals) {
+                if (!existing.includes(v)) existing.push(v);
+              }
+              enumValues.set(varPath, existing);
+            }
+          }
+        }
+      }
       return;
     }
     for (const v of Object.values(obj)) visit(v);
   };
   visit(node);
-  return out;
+  return { varRefs, enumValues };
 }
 
 function guessFieldTypeFromName(

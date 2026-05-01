@@ -71,7 +71,7 @@ const PRODUCT_BASE_PROPERTIES = {
 const PLAN_BASE_PROPERTIES = {
   code: { type: 'string', pattern: '^P[A-Z0-9]+$' },
   name: { type: 'string' },
-  coverBasis: { enum: ['per_cover_tier', 'salary_multiple', 'fixed_amount', 'per_region'] },
+  coverBasis: { enum: ['per_cover_tier', 'salary_multiple', 'fixed_amount', 'per_region', 'earnings_based', 'per_employee_flat'] },
   // Stacked rider plans: STM Plan C/D layer on top of Plan B.
   stacksOn: { type: ['string', 'null'] },
   // Flex picker mode: "broker_default" or "employee_flex" (STM Flex S/M/MC/MC2).

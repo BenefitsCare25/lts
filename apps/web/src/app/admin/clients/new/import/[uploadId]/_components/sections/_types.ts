@@ -31,7 +31,7 @@ export type WizardPlanField = {
   rawName: string;
   code: string;
   name: string;
-  coverBasis: 'per_cover_tier' | 'salary_multiple' | 'fixed_amount' | 'per_region';
+  coverBasis: 'per_cover_tier' | 'salary_multiple' | 'fixed_amount' | 'per_region' | 'earnings_based' | 'per_employee_flat';
   stacksOnRawCode: string | null;
   selectionMode: 'broker_default' | 'employee_flex';
   schedule: Record<string, unknown>;

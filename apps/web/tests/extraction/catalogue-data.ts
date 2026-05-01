@@ -38,7 +38,7 @@ const TM_GENERIC_RULES: ParsingRules = {
   rates_block: { sheet: 'Rates', startRow: 4, endRow: 200 },
 };
 
-function ge(
+function buildGeLifeRules(
   sheet: string,
   plansBlock: { startRow: number; endRow: number; codeColumn: string },
   ratesBlock: { startRow: number; endRow: number },
@@ -68,14 +68,14 @@ function ge(
   };
 }
 
-const GE_GTL_RULES = ge(
+const GE_GTL_RULES = buildGeLifeRules(
   'GEL-GTL',
   { startRow: 21, endRow: 24, codeColumn: 'D' },
   { startRow: 29, endRow: 32 },
   { planMatch: 'D', ratePerThousand: 'F' },
 );
 
-const GE_GHS_RULES = ge(
+const GE_GHS_RULES = buildGeLifeRules(
   'GEL-GHS',
   { startRow: 22, endRow: 27, codeColumn: 'I' },
   { startRow: 32, endRow: 37 },
@@ -90,7 +90,7 @@ const GE_GHS_RULES = ge(
   },
 );
 
-const GE_GMM_RULES = ge(
+const GE_GMM_RULES = buildGeLifeRules(
   'GEL-GMM',
   { startRow: 22, endRow: 24, codeColumn: 'D' },
   { startRow: 30, endRow: 32 },
@@ -105,7 +105,7 @@ const GE_GMM_RULES = ge(
   },
 );
 
-const GE_SP_RULES = ge(
+const GE_SP_RULES = buildGeLifeRules(
   'GEL-SP',
   { startRow: 21, endRow: 23, codeColumn: 'D' },
   { startRow: 29, endRow: 31 },

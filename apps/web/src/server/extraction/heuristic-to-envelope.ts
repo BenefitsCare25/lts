@@ -18,7 +18,7 @@
 // have content".
 // =============================================================
 
-import { COVER_BASIS_BY_STRATEGY, excelColumnIndex } from '@/server/catalogue/premium-strategy';
+import { type CoverBasis, COVER_BASIS_BY_STRATEGY, excelColumnIndex } from '@/server/catalogue/premium-strategy';
 import type {
   ParseResult,
   ParsedPolicyEntity,
@@ -68,13 +68,7 @@ export type PlanField = {
   rawName: string;
   code: string;
   name: string;
-  coverBasis:
-    | 'per_cover_tier'
-    | 'salary_multiple'
-    | 'fixed_amount'
-    | 'per_region'
-    | 'earnings_based'
-    | 'per_employee_flat';
+  coverBasis: CoverBasis;
   /** @deprecated use stacksOnRawCodes (array) */
   stacksOnRawCode: string | null;
   stacksOnRawCodes: string[];
@@ -422,12 +416,12 @@ function envelopeProduct(
 
     // Schedule: try the comprehensive formula parser first (works on the
     // full label text), then fall back to the product-level coverBasis.
-    const parsed2 = parseScheduleFromFormula(label);
+    const scheduleResult = parseScheduleFromFormula(label);
     let effectiveCoverBasis = coverBasis;
     let schedule: Record<string, unknown> = {};
-    if (parsed2) {
-      effectiveCoverBasis = parsed2.basis;
-      schedule = parsed2.schedule;
+    if (scheduleResult) {
+      effectiveCoverBasis = scheduleResult.basis;
+      schedule = scheduleResult.schedule;
     }
 
     return {

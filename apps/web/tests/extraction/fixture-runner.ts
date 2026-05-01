@@ -29,17 +29,14 @@ export type ActualExtraction = {
   reconciliation: unknown;
 };
 
-// Build the CatalogueLookup from static catalogue data — no DB needed.
-function buildCatalogue(): CatalogueLookup {
-  const catalogue: CatalogueLookup = {
-    productTypeStrategy: { ...PRODUCT_TYPE_STRATEGIES },
-    parsingRules: {},
-  };
-  for (const { productTypeCode, rules } of PARSING_RULES_PER_PRODUCT) {
-    catalogue.parsingRules[productTypeCode] = rules;
-  }
-  return catalogue;
-}
+const DEFAULT_COUNTRY = 'SG';
+
+const CATALOGUE: CatalogueLookup = {
+  productTypeStrategy: { ...PRODUCT_TYPE_STRATEGIES },
+  parsingRules: Object.fromEntries(
+    PARSING_RULES_PER_PRODUCT.map(({ productTypeCode, rules }) => [productTypeCode, rules]),
+  ),
+};
 
 // Synthesise the discovery-pass cross-cutting fields from heuristic
 // ExtractedProduct[] — no AI needed. Uses first product as authority
@@ -70,7 +67,7 @@ function synthesiseCrossCutting(products: ExtractedProduct[]): {
     legalName: first.policyholder.legalName.value,
     tradingName: null,
     uen: first.policyholder.uen.value,
-    countryOfIncorporation: 'SG',
+    countryOfIncorporation: DEFAULT_COUNTRY,
     address: first.policyholder.address.value,
     industry: null,
     primaryContactName: null,
@@ -143,10 +140,8 @@ function synthesiseCrossCutting(products: ExtractedProduct[]): {
 // Run the heuristic extractor against a slip buffer.
 // Returns ActualExtraction for use with compareToExpected().
 export async function runHeuristicFixture(slipBuffer: Buffer): Promise<ActualExtraction> {
-  const catalogue = buildCatalogue();
-
   const parseResult = await parsePlacementSlip(slipBuffer, PARSING_RULES_PER_PRODUCT);
-  const extractedProducts = envelopeFromParseResult(parseResult, catalogue);
+  const extractedProducts = envelopeFromParseResult(parseResult, CATALOGUE);
 
   const crossCutting = synthesiseCrossCutting(extractedProducts);
   const reconciliation = reconcile(extractedProducts);

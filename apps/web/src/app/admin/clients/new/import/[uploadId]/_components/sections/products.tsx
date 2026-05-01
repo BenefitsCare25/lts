@@ -58,6 +58,8 @@ const COVER_BASIS_OPTIONS: WizardPlanField['coverBasis'][] = [
   'salary_multiple',
   'fixed_amount',
   'per_region',
+  'earnings_based',
+  'per_employee_flat',
 ];
 
 const COMMON_COVER_TIERS = ['EO', 'EF', 'E1C', 'E2C', 'E3C', 'E4C'];
