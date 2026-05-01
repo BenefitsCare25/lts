@@ -1,0 +1,552 @@
+{
+  "fixture": "hartree-2026",
+  "source_filename": "Hartree Partners & CHC Energy - Placement slips 2026 - 2027 (1).xlsx",
+  "dest_filename": "slip.xlsx",
+  "rules_applied": {
+    "string_replacements": 43,
+    "cell_overrides": 0,
+    "numeric_scalings": 0
+  },
+  "total_changes": 77,
+  "changes": [
+    {
+      "sheet": "*",
+      "cell": "*",
+      "kind": "flatten_formulas",
+      "before": "48 formula cells",
+      "after": "literal cached values"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 Orchard Road #20-02, Wheelock Place Singapore 238880",
+      "after": "7 Test Boulevard #20-02, Singapore 100007"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "Wholesale Of Fuels And Related Products",
+      "after": "Wholesale of fuels"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "BGDC211000450-04-000",
+      "after": "TEST/HSBC/2026-001"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B26",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C33",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B56",
+      "kind": "string_replace",
+      "before": "This Policy is extended to cover Gao Xiaofeng (S****174C) who is currently residing in China up to 30 April 2024.",
+      "after": "This Policy is extended to cover [Employee 1] ([NRIC]) who is currently residing in China up to 30 April 2024."
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B57",
+      "kind": "string_replace",
+      "before": "Insured Member, Gao Xiaofeng (S****174C), is excluded under this Policy for the sum insured in excess of S$250,000, since 27 July 2020",
+      "after": "Insured Member, [Employee 1] ([NRIC]), is excluded under this Policy for the sum insured in excess of S$250,000, since 27 July 2020"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B58",
+      "kind": "string_replace",
+      "before": "Insured Member, Chong Siew Nan (S****143E), is excluded under this Policy for the sum insured in excess of S$250,000 since from 05 August 2022",
+      "after": "Insured Member, [Employee 2] ([NRIC]), is excluded under this Policy for the sum insured in excess of S$250,000 since from 05 August 2022"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B59",
+      "kind": "string_replace",
+      "before": "Insured Member, Yukiko Murasaki (G****316P), is excluded under this Policy for the sum insured in excess of S$250,000 since 07 March 2023",
+      "after": "Insured Member, [Employee 3] ([NRIC]), is excluded under this Policy for the sum insured in excess of S$250,000 since 07 March 2023"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B60",
+      "kind": "string_replace",
+      "before": "Insured Member, Sioe Hong Tan (S****616D), is excluded under this Policy for the sum insured in excess of S$250,000 since 06 April 2023.",
+      "after": "Insured Member, [Employee 4] ([NRIC]), is excluded under this Policy for the sum insured in excess of S$250,000 since 06 April 2023."
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B61",
+      "kind": "string_replace",
+      "before": "Insured Member, En En Joanna Lee (S****697I), is excluded under this Policy for the sum insured in excess of S$250,000 since 14 April 2023",
+      "after": "Insured Member, [Employee 5] ([NRIC]), is excluded under this Policy for the sum insured in excess of S$250,000 since 14 April 2023"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B62",
+      "kind": "string_replace",
+      "before": "Insured Member, Marlon Wong (S****288A), is excluded under this Policy for the sum insured in excess of S$312,000 since 14 September 2023",
+      "after": "Insured Member, [Employee 6] ([NRIC]), is excluded under this Policy for the sum insured in excess of S$312,000 since 14 September 2023"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B63",
+      "kind": "string_replace",
+      "before": "Insured Member, Tay Edwin (S****835F), is excluded under this Policy for Total and Permanent Disability Benefits for any claims \narising directly or indirectly from any disease or disorder of the left knee including any complications thereof for the sum insured in excess of S$250,000, since 20 August 2020.",
+      "after": "Insured Member, [Employee 7] ([NRIC]), is excluded under this Policy for Total and Permanent Disability Benefits for any claims \narising directly or indirectly from any disease or disorder of the left knee including any complications thereof for the sum insured in excess of S$250,000, since 20 August 2020."
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B64",
+      "kind": "string_replace",
+      "before": "Insured Member, Ahmed Al-Awa (G****226M), is excluded under this Policy for Total and Permanent Disability Benefits for any claims \narising directly or indirectly from any disease or disorder of the (i) gall bladder or biliary tract, and (ii) right knee, including the joint, \nmuscles, cartilage, ligaments and tendons or related treatment or surgery for the sum insured in excess of S$250,000, since 06 October 2020.",
+      "after": "Insured Member, [Employee 8] ([NRIC]), is excluded under this Policy for Total and Permanent Disability Benefits for any claims \narising directly or indirectly from any disease or disorder of the (i) gall bladder or biliary tract, and (ii) right knee, including the joint, \nmuscles, cartilage, ligaments and tendons or related treatment or surgery for the sum insured in excess of S$250,000, since 06 October 2020."
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B65",
+      "kind": "string_replace",
+      "before": "Insured Member, Ahmed Al-Awa (G****226M), is excluded under this Policy for Total and Permanent Disability Benefits for any claims arising directly or indirectly from disease or disorder of left knee, including the joint, muscles, cartilage, ligaments and tendons or related treatment or surgery for the sum insured in excess of S$981,120, since 03 October 2022.",
+      "after": "Insured Member, [Employee 8] ([NRIC]), is excluded under this Policy for Total and Permanent Disability Benefits for any claims arising directly or indirectly from disease or disorder of left knee, including the joint, muscles, cartilage, ligaments and tendons or related treatment or surgery for the sum insured in excess of S$981,120, since 03 October 2022."
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B66",
+      "kind": "string_replace",
+      "before": "Insured Member, Loic Brachet (S****334F), is excluded under this Policy for Total and Permanent Disability Benefits for the sum insured in excess of S$250,000, since 01 February 2021",
+      "after": "Insured Member, [Employee 9] ([NRIC]), is excluded under this Policy for Total and Permanent Disability Benefits for the sum insured in excess of S$250,000, since 01 February 2021"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B67",
+      "kind": "string_replace",
+      "before": "Insured Member, Yuanjun Chen (S****373G), is excluded under this Policy for Total and Permanent Disability Benefits for any claims \narising directly or indirectly from any curvature or other disorder of the spine or related respiratory or extra articular complications for the sum insured in excess of S$250,000, since 15 November 2022.",
+      "after": "Insured Member, [Employee 10] ([NRIC]), is excluded under this Policy for Total and Permanent Disability Benefits for any claims \narising directly or indirectly from any curvature or other disorder of the spine or related respiratory or extra articular complications for the sum insured in excess of S$250,000, since 15 November 2022."
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B68",
+      "kind": "string_replace",
+      "before": "Special rates for member(s) under Benefits+ Term Life (Group) and Disability Income (Group) with effect from 01 May 2024:-\n\nWong Marlon GDIB 22,250 sum assured amount @ $1.4600\nAhmed Al-Awa GDIB 95,000 sum assured amount @ $15.0950\nLoic Brachet GTLB 1,050,000 sum assured amount @ $1.7250\nChoon Boon Ng GDIB 56,000 sum assured amount @ $3.5600 , GTLB 182,000 sum assured amount @ $0.3625\nXu Min GDIB 92,000 sum assured amount @ $3.0650, GTLB 374,000 sum assured amount @ $0.2000\nShannenjeet Kaur GDIB 33,500 sum assured amount @ $3.6200, GTLB 62,000 sum assured amount @ $0.3000\nJian Zheng GDIB 36,700 sum assured amount @ $4.6500, GTLB 42,400 sum assured amount @ $0.3825\nZhengyan Leng GDIB 55,000 sum assured amount @ $5.8125, GTLB 380,000 sum assured amount @ $0.3825\nJang Hyun Kim GDIB 55,000 sum assured amount @ $6.0225, GTLB 412,000 sum assured amount @ $0.5750\nShu Hui Lim GDIB 2,500 sum assured amount @ $2.5350",
+      "after": "Special rates for member(s) under Benefits+ Term Life (Group) and Disability Income (Group) with effect from 01 May 2024:-\n\n[Employee 6] GDIB 22,250 sum assured amount @ $1.4600\n[Employee 8] GDIB 95,000 sum assured amount @ $15.0950\n[Employee 9] GTLB 1,050,000 sum assured amount @ $1.7250\n[Employee 11] GDIB 56,000 sum assured amount @ $3.5600 , GTLB 182,000 sum assured amount @ $0.3625\n[Employee 12] GDIB 92,000 sum assured amount @ $3.0650, GTLB 374,000 sum assured amount @ $0.2000\n[Employee 13] GDIB 33,500 sum assured amount @ $3.6200, GTLB 62,000 sum assured amount @ $0.3000\n[Employee 14] GDIB 36,700 sum assured amount @ $4.6500, GTLB 42,400 sum assured amount @ $0.3825\n[Employee 15] GDIB 55,000 sum assured amount @ $5.8125, GTLB 380,000 sum assured amount @ $0.3825\n[Employee 16] GDIB 55,000 sum assured amount @ $6.0225, GTLB 412,000 sum assured amount @ $0.5750\n[Employee 17] GDIB 2,500 sum assured amount @ $2.5350"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B69",
+      "kind": "string_replace",
+      "before": "Dong, Kai Kai, is a secondee working from China WEF 1 Aug 24",
+      "after": "[Employee 18], is a secondee working from China WEF 1 Aug 24"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 Orchard Road #20-02, Wheelock Place Singapore 238880",
+      "after": "7 Test Boulevard #20-02, Singapore 100007"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "Wholesale Of Fuels And Related Products",
+      "after": "Wholesale of fuels"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "BGDC211000450-04-000",
+      "after": "TEST/HSBC/2026-001"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GCI",
+      "cell": "B26",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 ORCHARD ROAD, #20-02, WHEELOCK PLACE, SINGAPORE 238880",
+      "after": "7 TEST BOULEVARD #20-02, SINGAPORE 100007"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "ACTIVITIES OF HEAD AND REGIONAL HEAD OFFICES; CENTRALISED ADMINISTRATIVE OFFICES AND SUBSIDIARY MANAGEMENT OFFICES",
+      "after": "Head office activities"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "BGDC211000450-04-000",
+      "after": "TEST/HSBC/2026-001"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "B24",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C38",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "B77",
+      "kind": "string_replace",
+      "before": "Dong, Kai Kai, is a secondee working from China WEF 1 Aug 24",
+      "after": "[Employee 18], is a secondee working from China WEF 1 Aug 24"
+    },
+    {
+      "sheet": "GP",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "GP",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GP",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 ORCHARD ROAD, #20-02, WHEELOCK PLACE, SINGAPORE 238880",
+      "after": "7 TEST BOULEVARD #20-02, SINGAPORE 100007"
+    },
+    {
+      "sheet": "GP",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "ACTIVITIES OF HEAD AND REGIONAL HEAD OFFICES; CENTRALISED ADMINISTRATIVE OFFICES AND SUBSIDIARY MANAGEMENT OFFICES",
+      "after": "Head office activities"
+    },
+    {
+      "sheet": "GP",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "BGDC211000450-04-000",
+      "after": "TEST/HSBC/2026-001"
+    },
+    {
+      "sheet": "GP",
+      "cell": "B25",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GP",
+      "cell": "C39",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GP",
+      "cell": "B93",
+      "kind": "string_replace",
+      "before": "Dong, Kai Kai, is a secondee working from China WEF 1 Aug 24",
+      "after": "[Employee 18], is a secondee working from China WEF 1 Aug 24"
+    },
+    {
+      "sheet": "SP",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "SP",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "SP",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 ORCHARD ROAD, #20-02, WHEELOCK PLACE, SINGAPORE 238880",
+      "after": "7 TEST BOULEVARD #20-02, SINGAPORE 100007"
+    },
+    {
+      "sheet": "SP",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "ACTIVITIES OF HEAD AND REGIONAL HEAD OFFICES; CENTRALISED ADMINISTRATIVE OFFICES AND SUBSIDIARY MANAGEMENT OFFICES",
+      "after": "Head office activities"
+    },
+    {
+      "sheet": "SP",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "BGDC211000450-04-000",
+      "after": "TEST/HSBC/2026-001"
+    },
+    {
+      "sheet": "SP",
+      "cell": "B24",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "SP",
+      "cell": "B31",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "SP",
+      "cell": "C38",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "SP",
+      "cell": "B105",
+      "kind": "string_replace",
+      "before": "Dong, Kai Kai, is a secondee working from China WEF 1 Aug 24",
+      "after": "[Employee 18], is a secondee working from China WEF 1 Aug 24"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited",
+      "after": "Test E Pte Ltd"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 ORCHARD ROAD, #20-02, WHEELOCK PLACE, SINGAPORE 238880",
+      "after": "7 TEST BOULEVARD #20-02, SINGAPORE 100007"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "ACTIVITIES OF HEAD AND REGIONAL HEAD OFFICES; CENTRALISED ADMINISTRATIVE OFFICES AND SUBSIDIARY MANAGEMENT OFFICES",
+      "after": "Head office activities"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "BGDC211000450-04-000",
+      "after": "TEST/HSBC/2026-001"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "B23",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "B29",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "C36",
+      "kind": "string_replace",
+      "before": "Hartree Partners Singapore Pte Limited , CHC Energy Pte Ltd",
+      "after": "Test E Pte Ltd , Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "Dental",
+      "cell": "B96",
+      "kind": "string_replace",
+      "before": "Dong, Kai Kai, is a secondee working from China WEF 1 Aug 24",
+      "after": "[Employee 18], is a secondee working from China WEF 1 Aug 24"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 ORCHARD ROAD, #20-02, WHEELOCK PLACE, SINGAPORE 238880",
+      "after": "7 TEST BOULEVARD #20-02, SINGAPORE 100007"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "ACTIVITIES OF HEAD AND REGIONAL HEAD OFFICES; CENTRALISED ADMINISTRATIVE OFFICES AND SUBSIDIARY MANAGEMENT OFFICES",
+      "after": "Head office activities"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "B177",
+      "kind": "string_replace",
+      "before": "Extend to cover 7 Japanese in CHC Japan K.K. (Kabushiki-Kaisha) under Group Parent Protection endorsement. Out of the 7 Japanese, 2 are covered under the international plan and 5 are covered under regional plan",
+      "after": "Extend to cover 7 Japanese in Test E Japan K.K. under Group Parent Protection endorsement. Out of the 7 Japanese, 2 are covered under the international plan and 5 are covered under regional plan"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd",
+      "after": "Test E Energy Pte Ltd"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "501 Orchard Road #18-02 Wheelock Place Singapore 238880",
+      "after": "7 Test Boulevard #18-02, Singapore 100007"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "Battery Energy Storage Systems",
+      "after": "Energy products and services"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B20",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd\n(UEN: 202239963W)",
+      "after": "Test E Energy Pte Ltd\n(UEN: T26TST0001A)"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B28",
+      "kind": "string_replace",
+      "before": "CHC Energy Pte Ltd\n(UEN: 202239963W)",
+      "after": "Test E Energy Pte Ltd\n(UEN: T26TST0001A)"
+    }
+  ]
+}

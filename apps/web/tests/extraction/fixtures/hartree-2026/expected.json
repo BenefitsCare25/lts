@@ -1,0 +1,173 @@
+{
+  "schema": "expected.v1",
+  "slip": {
+    "filename": "slip.xlsx",
+    "anonymizedFrom": "Hartree Partners Singapore + CHC Energy (Singapore commodity trader + battery storage subsidiary)",
+    "anonymizedAt": "2026-05-01"
+  },
+  "tolerances": {
+    "ratePerThousand": 0.01,
+    "headcount": 0,
+    "sumAssured": 1,
+    "grandComputedPct": 5
+  },
+
+  "_min_score_comment": "Conservative floor; raise to 0.92 once extractor is wired in Phase 0 final.",
+  "_minScore": 0.85,
+
+  "client": {
+    "legalName": "Test E Pte Ltd",
+    "address": "7 Test Boulevard #20-02, Singapore 100007",
+    "uen": null,
+    "industry": null,
+    "countryOfIncorporation": "SG",
+    "_broker_fills": ["uen", "industry", "primaryContactName", "primaryContactEmail"]
+  },
+
+  "_policyEntities_comment": "Two entities: Test E Pte Ltd (parent, master) + Test E Energy Pte Ltd (subsidiary). The slip's per-sheet Insured field varies — GTL/GCI list both, GHS/GP/SP/Dental list only Test E Energy, GBT/WICA list only Test E Energy as Policyholder. Real-world inconsistency. Fixture captures the union.",
+  "policyEntities": [
+    {
+      "legalName": "Test E Pte Ltd",
+      "policyNumber": null,
+      "isMaster": true
+    },
+    {
+      "legalName": "Test E Energy Pte Ltd",
+      "policyNumber": null,
+      "isMaster": false
+    }
+  ],
+
+  "benefitYear": {
+    "startDate": "2026-05-01",
+    "endDate": "2027-04-30"
+  },
+
+  "_insurers_comment": "Three insurers: HSBC Life Insurance (6 products, all share one Insurope Pool policy), Zurich Insurance Company Ltd (GBT only), Income Insurance Limited (WICA only). HSBC_LIFE and INCOME are NOT in the seed catalogue — Phase 1 follow-up (same gap pattern as Allied World on PNG, Berkshire on VDL).",
+  "insurers": [
+    { "code": "HSBC_LIFE", "productCount": 6 },
+    { "code": "ZURICH", "productCount": 1 },
+    { "code": "INCOME", "productCount": 1 }
+  ],
+
+  "_pool_comment": "FIRST FIXTURE WITH NON-NULL POOL. Insurope Pool is one of the major SG group-insurance pools alongside Generali. Only GTL + GCI sheets carry the pool reference; the other 4 HSBC sheets (GHS/GP/SP/Dental) have blank Pool fields. Extractor should attach pool to the policy, not to individual products.",
+  "pool": "Insurope Pool",
+
+  "products": [
+    {
+      "productTypeCode": "GTL",
+      "insurerCode": "HSBC_LIFE",
+      "declaredPremium": 59777.65,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "salary_multiple" }],
+      "_categories_comment": "GTL uses 36x basic monthly salary cover. SI cells are aggregates."
+    },
+    {
+      "_bundling_comment": "GCI title literally says 'Additional from Group Term Life' — it's a top-up to GTL. Whether the extractor treats this as bundled (bundledWithProductCode='GTL') or as a standalone product is an open question. Phase 1 will introduce the field; for now accept either.",
+      "productTypeCode": "GCI",
+      "insurerCode": "HSBC_LIFE",
+      "declaredPremium": 56370.52,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "salary_multiple" }]
+    },
+    {
+      "productTypeCode": "GHS",
+      "insurerCode": "HSBC_LIFE",
+      "declaredPremium": 21270,
+      "_planCount": 2,
+      "_plans_comment": "GHS has 2 plans (CEO tier + All Other Employees tier) per the slip's basis-of-cover table. Cover-tier rates likely per-employee.",
+      "plans": [
+        { "code": "P1", "coverBasis": "per_cover_tier" },
+        { "code": "P2", "coverBasis": "per_cover_tier" }
+      ]
+    },
+    {
+      "productTypeCode": "GP",
+      "insurerCode": "HSBC_LIFE",
+      "declaredPremium": 3234,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }]
+    },
+    {
+      "productTypeCode": "SP",
+      "insurerCode": "HSBC_LIFE",
+      "declaredPremium": 5096,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }]
+    },
+    {
+      "productTypeCode": "Dental",
+      "insurerCode": "HSBC_LIFE",
+      "declaredPremium": 2408,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }],
+      "expectedWarnings": ["16135"]
+    },
+    {
+      "_gbt_comment": "Group Business Travel — annual flat premium per region/plan. The B177 endorsement extends Group Parent Protection to 7 employees in Test E Japan K.K. (anonymized — was CHC Japan K.K.). Tests whether AI surfaces multi-jurisdiction GBT extension as a workbook warning.",
+      "productTypeCode": "GBT",
+      "insurerCode": "ZURICH",
+      "declaredPremium": 1640,
+      "_planCount": 1,
+      "plans": [{ "code": "PlanA", "coverBasis": "per_region" }],
+      "expectedWarnings": ["japan", "group parent"]
+    },
+    {
+      "_wica_comment": "Annual Premium cell C32 is a #VALUE! formula error in the source slip. Real data quality issue — extractor must NOT crash, must surface as a warning, must allow broker to manually enter the figure during review. WICA also has the 16136-col edge case that stresses workbook-to-text serialization.",
+      "productTypeCode": "WICI",
+      "insurerCode": "INCOME",
+      "declaredPremium": null,
+      "_planCount": 2,
+      "_plans_comment": "Two classes (Technical Manager / Office Staff). Earnings-based.",
+      "plans": [
+        { "code": "Class1", "coverBasis": "earnings_based" },
+        { "code": "Class2", "coverBasis": "earnings_based" }
+      ],
+      "expectedWarnings": ["#value", "16136", "annual premium"]
+    }
+  ],
+
+  "reconciliation": {
+    "_grand_comment": "HSBC products sum to 148,156.17. Plus Zurich GBT 1,640. WICA Income premium is #VALUE! in source — uncountable. Grand declared excludes WICA; allow wide range to absorb GCI/GTL bundling ambiguity and the missing WICA total.",
+    "grandDeclared": 149796.17,
+    "grandComputed_min": 145000,
+    "grandComputed_max": 200000,
+    "perProduct": [
+      { "productTypeCode": "GTL", "insurerCode": "HSBC_LIFE", "status": ["OK"] },
+      { "productTypeCode": "GCI", "insurerCode": "HSBC_LIFE", "status": ["OK", "BUNDLED"] },
+      {
+        "productTypeCode": "GHS",
+        "insurerCode": "HSBC_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "GP",
+        "insurerCode": "HSBC_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "SP",
+        "insurerCode": "HSBC_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "Dental",
+        "insurerCode": "HSBC_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "GBT",
+        "insurerCode": "ZURICH",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "WICI",
+        "insurerCode": "INCOME",
+        "status": ["OK", "AI_EXTRACTION_FAILED", "INCOMPLETE_SCHEDULE"]
+      }
+    ]
+  },
+
+  "_expectedWarnings_comment": "Workbook-level warnings — substring match, case-insensitive.",
+  "expectedWarnings": ["hsbc", "income", "insurope", "japan", "16135", "#value"]
+}

@@ -210,8 +210,67 @@ FIXTURES: dict[str, dict[str, Any]] = {
         },
         "scale_numeric": [],
     },
+    "hartree-2026": {
+        "source": r"C:\Users\huien\Desktop\slips\Hartree Partners & CHC Energy - Placement slips 2026 - 2027 (1).xlsx",
+        "replace_strings": {
+            # ── Entity names (longer-first; Japan affiliate before bare CHC) ──
+            "Hartree Partners Singapore Pte Limited": "Test E Pte Ltd",
+            "CHC Japan K.K. (Kabushiki-Kaisha)": "Test E Japan K.K.",
+            "CHC Japan K.K.": "Test E Japan K.K.",
+            "CHC Energy Pte Ltd": "Test E Energy Pte Ltd",
+            # ── Address (3 case/format variants of the same physical address) ──
+            "501 Orchard Road #20-02, Wheelock Place Singapore 238880": "7 Test Boulevard #20-02, Singapore 100007",
+            "501 ORCHARD ROAD, #20-02, WHEELOCK PLACE, SINGAPORE 238880": "7 TEST BOULEVARD #20-02, SINGAPORE 100007",
+            "501 Orchard Road #18-02 Wheelock Place Singapore 238880": "7 Test Boulevard #18-02, Singapore 100007",
+            # ── UEN (SG company registration ID — fully identifying) ──
+            "202239963W": "T26TST0001A",
+            # ── Business descriptions (3 different — generalize SSIC categories) ──
+            "Wholesale Of Fuels And Related Products": "Wholesale of fuels",
+            "ACTIVITIES OF HEAD AND REGIONAL HEAD OFFICES; CENTRALISED ADMINISTRATIVE OFFICES AND SUBSIDIARY MANAGEMENT OFFICES": "Head office activities",
+            "Battery Energy Storage Systems": "Energy products and services",
+            # ── Policy number (HSBC Life string on 6 sheets at C11) ──
+            "BGDC211000450-04-000": "TEST/HSBC/2026-001",
+            # ── Employee names (PII — 18 real people on the slip) ──
+            # NOTE: longer / fuller names FIRST so substring overlap binds correctly.
+            # E.g. "En En Joanna Lee" must replace before bare "Lee" or "Joanna".
+            "Dong, Kai Kai": "[Employee 18]",
+            "En En Joanna Lee": "[Employee 5]",
+            "Shannenjeet Kaur": "[Employee 13]",
+            "Yukiko Murasaki": "[Employee 3]",
+            "Sioe Hong Tan": "[Employee 4]",
+            "Yuanjun Chen": "[Employee 10]",
+            "Zhengyan Leng": "[Employee 15]",
+            "Ahmed Al-Awa": "[Employee 8]",
+            "Choon Boon Ng": "[Employee 11]",
+            "Jang Hyun Kim": "[Employee 16]",
+            "Chong Siew Nan": "[Employee 2]",
+            "Loic Brachet": "[Employee 9]",
+            "Gao Xiaofeng": "[Employee 1]",
+            "Marlon Wong": "[Employee 6]",
+            "Wong Marlon": "[Employee 6]",
+            "Shu Hui Lim": "[Employee 17]",
+            "Tay Edwin": "[Employee 7]",
+            "Jian Zheng": "[Employee 14]",
+            "Xu Min": "[Employee 12]",
+            # ── Masked NRICs (slip already partially-masks them; full redact) ──
+            "S****174C": "[NRIC]",
+            "S****143E": "[NRIC]",
+            "G****316P": "[NRIC]",
+            "S****616D": "[NRIC]",
+            "S****697I": "[NRIC]",
+            "S****288A": "[NRIC]",
+            "S****835F": "[NRIC]",
+            "G****226M": "[NRIC]",
+            "S****334F": "[NRIC]",
+            "S****373G": "[NRIC]",
+            # ── Catch-alls for remaining bare references (run LAST) ──
+            "Hartree": "Test E",
+            "CHC": "Test E",
+        },
+        "cell_overrides": {},
+        "scale_numeric": [],
+    },
     # Other fixtures appended in subsequent sessions:
-    # 'hartree-2026': { ... },
     # 'stmicro-2026': { ... },
 }
 
