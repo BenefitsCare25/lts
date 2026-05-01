@@ -104,7 +104,18 @@ export function buildProductAssignments(
     nameToLabel.set(g.suggestedName, g.sourcePlanLabel);
   }
 
-  const included = categories.filter((c) => overrides[c.key]?.included ?? c.tokenMatches > 0);
+  const included = categories.filter((c) => {
+    if (overrides[c.key]?.included !== undefined) return overrides[c.key]?.included;
+    if (c.tokenMatches > 0) return true;
+    for (const srcName of c.sourceSuggestions) {
+      const label = nameToLabel.get(srcName);
+      if (!label) continue;
+      const perProduct = matrixByLabel.get(label);
+      if (!perProduct) continue;
+      if (Object.values(perProduct).some((v) => v != null)) return true;
+    }
+    return false;
+  });
 
   return products.map((p) => ({
     productTypeCode: p.productTypeCode,

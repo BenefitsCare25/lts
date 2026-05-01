@@ -86,6 +86,7 @@ export type WizardExtractedProduct = {
       headcount: number | null;
       sumInsuredFormula: string | null;
       participation: string | null;
+      defaultPlanRawCode: string | null;
       confidence: number;
     }>;
   };

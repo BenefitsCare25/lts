@@ -1,5 +1,5 @@
 // =============================================================
-// predicate-suggester — eligibility text → JSONLogic predicate
+// predicate-suggester — eligibility categories → JSONLogic predicate
 // referencing the tenant's actual EmployeeSchema fields.
 //
 // Pattern matching is delegated to predicate-patterns.ts so the
@@ -18,53 +18,66 @@ import type { ExtractedProduct } from './heuristic-to-envelope';
 import { inferPredicateFromText } from './predicate-patterns';
 
 export type BenefitGroupSuggestion = {
-  // The plan whose label seeded the suggestion.
   sourcePlanLabel: string;
-  // Suggested name for the eventual BenefitGroup row.
   suggestedName: string;
-  // Suggested description / source breadcrumb.
   description: string;
-  // JSONLogic. {} means "no confident pattern matched — write by hand".
   predicate: Record<string, unknown>;
-  // Number of recognised tokens; loosely a confidence proxy.
   tokenMatches: number;
 };
 
-// Top-level — one suggestion per unique plan label across all
-// extracted products. Cross-product de-dupe on label so STM's
-// GHS / GMM / SP / GPA carrying the same "Hay Job Grade 18+"
-// label only emit one BenefitGroup row.
+// Derives benefit group suggestions from the per-product
+// eligibility.categories field. Cross-product de-dupe by
+// normalised category label so "Board of Directors" appearing
+// on GTL, GHS, GMM, GPA only emits one BenefitGroup row.
 export function suggestBenefitGroups(
   extractedProducts: ExtractedProduct[],
-  // Reserved for the LLM stage: when employee fields differ from the
-  // pattern-table assumptions, the LLM remaps. Today unused.
   _employeeFields: unknown[],
 ): BenefitGroupSuggestion[] {
   const seen = new Map<string, BenefitGroupSuggestion>();
+
   for (const product of extractedProducts) {
-    for (const plan of product.plans) {
-      const label = plan.rawName.replace(/\s+/g, ' ').trim();
-      if (!label || seen.has(label)) continue;
+    const categories = product.eligibility?.categories ?? [];
+    for (const cat of categories) {
+      const label = cat.category.replace(/\s+/g, ' ').trim();
+      if (!label) continue;
+      const normalised = label.toLowerCase();
+      if (seen.has(normalised)) continue;
       const { predicate, matchCount } = inferPredicateFromText(label);
-      seen.set(label, {
+      seen.set(normalised, {
         sourcePlanLabel: label,
-        suggestedName: deriveGroupName(label),
-        description: label,
+        suggestedName: label,
+        description: `Category: ${label}${cat.sumInsuredFormula ? ` (${cat.sumInsuredFormula})` : ''}`,
         predicate,
         tokenMatches: matchCount,
       });
+    }
+
+    // Fallback: if a product has no categories but has plans, use plan
+    // labels as benefit group hints (backward-compat with older extractions).
+    if (categories.length === 0) {
+      for (const plan of product.plans) {
+        const label = plan.rawName.replace(/\s+/g, ' ').trim();
+        if (!label) continue;
+        const normalised = label.toLowerCase();
+        if (seen.has(normalised)) continue;
+        const { predicate, matchCount } = inferPredicateFromText(label);
+        seen.set(normalised, {
+          sourcePlanLabel: label,
+          suggestedName: deriveGroupName(label),
+          description: label,
+          predicate,
+          tokenMatches: matchCount,
+        });
+      }
     }
   }
   return Array.from(seen.values());
 }
 
 function deriveGroupName(label: string): string {
-  // "Plan A: Hay Job Grade 16 and above" → "Plan A eligible"
   const planMatch = label.match(/^Plan\s+([A-Z0-9]+)/i);
   if (planMatch) return `Plan ${planMatch[1]?.toUpperCase()} eligible`;
-  // numeric prefix "1 ..." → "Plan 1 eligible"
   const numMatch = label.match(/^(\d+)\b/);
   if (numMatch) return `Plan ${numMatch[1]} eligible`;
-  // Fallback — first 40 chars.
   return label.slice(0, 40);
 }

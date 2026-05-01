@@ -116,22 +116,10 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
   // Stage 3 — suggestions layered on top.
   const benefitGroups = suggestBenefitGroups(extractedProducts, employeeFields);
 
-  // Default plan eligibility matrix: each group label → first plan
-  // whose name shares the most tokens with the group label, per product.
-  // Naive but useful — the broker confirms in the Eligibility section.
-  const eligibilityMatrix = benefitGroups.map((g) => {
-    const prefix = g.sourcePlanLabel.toLowerCase().slice(0, 8);
-    return {
-      groupRawLabel: g.sourcePlanLabel,
-      perProduct: extractedProducts.map((p) => {
-        const match = p.plans.find((pl) => pl.rawName.toLowerCase().includes(prefix));
-        return {
-          productTypeCode: p.productTypeCode,
-          defaultPlanRawCode: match?.rawCode ?? null,
-        };
-      }),
-    };
-  });
+  // Default plan eligibility matrix: maps each benefit group to its
+  // default plan per product using the category→plan mapping from
+  // eligibility.categories[].defaultPlanRawCode.
+  const eligibilityMatrix = buildEligibilityMatrix(benefitGroups, extractedProducts);
 
   // Stage 3c — missing predicate fields. Walk each suggested
   // predicate and collect var-paths that don't exist in the schema.
@@ -186,6 +174,42 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
       reconciliation,
     },
   };
+}
+
+// Builds the eligibility matrix mapping benefit groups to their default
+// plan per product. Uses the category→plan linkage from
+// eligibility.categories[].defaultPlanRawCode which the AI extraction
+// populates directly from the slip's "Basis of Cover" sections.
+function buildEligibilityMatrix(
+  benefitGroups: BenefitGroupSuggestion[],
+  products: ExtractedProduct[],
+): ExtractionSuggestions['eligibilityMatrix'] {
+  // Build a per-product lookup: normalised category label → defaultPlanRawCode
+  const productCategoryPlans = new Map<string, Map<string, string>>();
+  for (const p of products) {
+    const catMap = new Map<string, string>();
+    for (const cat of p.eligibility?.categories ?? []) {
+      if (cat.defaultPlanRawCode) {
+        catMap.set(cat.category.replace(/\s+/g, ' ').trim().toLowerCase(), cat.defaultPlanRawCode);
+      }
+    }
+    productCategoryPlans.set(p.productTypeCode, catMap);
+  }
+
+  return benefitGroups.map((g) => {
+    const normLabel = g.sourcePlanLabel.toLowerCase();
+    return {
+      groupRawLabel: g.sourcePlanLabel,
+      perProduct: products.map((p) => {
+        const catMap = productCategoryPlans.get(p.productTypeCode);
+        const planCode = catMap?.get(normLabel) ?? null;
+        return {
+          productTypeCode: p.productTypeCode,
+          defaultPlanRawCode: planCode,
+        };
+      }),
+    };
+  });
 }
 
 function extractVarPath(node: unknown): string | null {

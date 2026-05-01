@@ -415,15 +415,27 @@ async function rebuildSuggestionsForMerged(
     }> | null) ?? [];
 
   const benefitGroups = suggestBenefitGroups(mergedProducts, employeeFields);
+
+  // Build eligibility matrix from category→plan mapping in each product's
+  // eligibility.categories[].defaultPlanRawCode.
+  const productCategoryPlans = new Map<string, Map<string, string>>();
+  for (const p of mergedProducts) {
+    const catMap = new Map<string, string>();
+    for (const cat of p.eligibility?.categories ?? []) {
+      if (cat.defaultPlanRawCode) {
+        catMap.set(cat.category.replace(/\s+/g, ' ').trim().toLowerCase(), cat.defaultPlanRawCode);
+      }
+    }
+    productCategoryPlans.set(p.productTypeCode, catMap);
+  }
   const eligibilityMatrix = benefitGroups.map((g) => ({
     groupRawLabel: g.sourcePlanLabel,
     perProduct: mergedProducts.map((p) => {
-      const match = p.plans.find((pl) =>
-        pl.rawName.toLowerCase().includes(g.sourcePlanLabel.toLowerCase().slice(0, 8)),
-      );
+      const catMap = productCategoryPlans.get(p.productTypeCode);
+      const planCode = catMap?.get(g.sourcePlanLabel.toLowerCase()) ?? null;
       return {
         productTypeCode: p.productTypeCode,
-        defaultPlanRawCode: match?.rawCode ?? null,
+        defaultPlanRawCode: planCode,
       };
     }),
   }));

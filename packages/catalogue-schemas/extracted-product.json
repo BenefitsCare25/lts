@@ -192,7 +192,11 @@
           "type": ["string", "null"],
           "description": "raw formula text, e.g. '24 x LDBMS'"
         },
-        "participation": { "type": ["string", "null"] }
+        "participation": { "type": ["string", "null"] },
+        "defaultPlanRawCode": {
+          "type": ["string", "null"],
+          "description": "Plan rawCode assigned to this category on the slip, e.g. 'B2' for Board of Directors on GHS"
+        }
       }
     },
     "PlanField": {

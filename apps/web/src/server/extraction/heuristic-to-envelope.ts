@@ -63,6 +63,7 @@ export type CategoryField = {
   headcount: number | null;
   sumInsuredFormula: string | null;
   participation: string | null;
+  defaultPlanRawCode: string | null;
   confidence: number;
   sourceRef?: SourceRef;
 };
@@ -497,6 +498,7 @@ function envelopeProduct(
         headcount: null,
         sumInsuredFormula: null,
         participation: null,
+        defaultPlanRawCode: String(p.code).trim() || null,
         confidence: 0.3,
         sourceRef: headerSourceRef(`plans-block-row-${i}`),
       })),
