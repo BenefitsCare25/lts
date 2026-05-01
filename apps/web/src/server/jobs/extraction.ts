@@ -109,7 +109,11 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
   let buffer: Buffer;
   try {
     const path = upload.storageKey.replace(/^sharepoint:/, '');
+    // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+    console.log(`[ai-extraction] downloading from SharePoint path=${path}`);
     buffer = await downloadFile(path);
+    // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+    console.log(`[ai-extraction] download ok bytes=${buffer.length}`);
   } catch (err) {
     // Storage outage — retryable. Throw so BullMQ retries.
     throw new Error(
@@ -122,6 +126,8 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
   // Run the heuristic baseline. It's cheap (50–500ms) and gives the
   // AI a floor of confidence-1.0 cells when an insurer template
   // actually matches.
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log('[ai-extraction] running heuristic parser');
   let heuristic: ExtractionResult;
   try {
     heuristic = await extractFromWorkbook(db, buffer);
@@ -159,11 +165,18 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     };
   }
 
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log(
+    `[ai-extraction] heuristic done products=${heuristic.extractedProducts.length} issues=${heuristic.parseResult.issues.length}`,
+  );
+
   await markProgress(uploadId, {
     stage: 'CALLING_AI',
     sheetsCount: undefined,
   });
 
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log('[ai-extraction] calling AI runner');
   const aiResult = await runAiExtraction({
     db,
     tenantSlug: tenant.slug,
@@ -172,6 +185,10 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
   });
 
   if (!aiResult.ok) {
+    console.error(
+      `[ai-extraction] runner failed retryable=${aiResult.retryable} error=${aiResult.error}`,
+      aiResult.meta,
+    );
     if (aiResult.retryable) {
       // Throwing causes BullMQ to retry per the queue's backoff config.
       throw new Error(`AI extraction failed (retryable): ${aiResult.error}`);
