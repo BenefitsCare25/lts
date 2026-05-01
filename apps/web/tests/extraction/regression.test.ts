@@ -16,6 +16,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { buildAccuracyReport, compareToExpected } from './compare-to-expected';
+import { runHeuristicFixture } from './fixture-runner';
 import type { AccuracyReport, ExpectedFixture, FixtureScore } from './types';
 
 const FIXTURE_DIR = path.join(__dirname, 'fixtures');
@@ -70,30 +71,23 @@ if (fixtures.length === 0) {
         fixtureName,
         async () => {
           const expected = loadExpected(fixtureName);
-          // Sanity: the slip file exists; we don't read it here yet because
-          // the extractor pipeline isn't fully refactored to take a buffer
-          // directly. Phase 2/4 wires this end-to-end. For now this confirms
-          // the fixture is shaped correctly and the harness is loadable.
-          loadSlipBuffer(fixtureName);
+          const slipBuf = loadSlipBuffer(fixtureName);
 
-          // TODO(phase-0-final): replace this stub with a real call:
-          //   const actual = await runExtractionForFixture(fixtureName, slipBuf, expected);
-          // For now, we run the comparator against an empty extraction so
-          // the test fails LOUDLY with a clear "extractor stub" message —
-          // signalling Phase 0 needs the runner integration before fixtures
-          // earn meaningful scores.
-          const stubActual = {
-            proposedClient: null,
-            proposedPolicyEntities: [],
-            proposedBenefitYear: null,
-            proposedInsurers: [],
-            proposedPool: null,
-            warnings: [],
-            extractedProducts: [],
-            reconciliation: {},
-          };
           const start = Date.now();
-          const score = compareToExpected(fixtureName, expected, stubActual, Date.now() - start);
+          const actual =
+            process.env.EXTRACTION_RUNNER_WIRED === 'true'
+              ? await runHeuristicFixture(slipBuf)
+              : {
+                  proposedClient: null,
+                  proposedPolicyEntities: [],
+                  proposedBenefitYear: null,
+                  proposedInsurers: [],
+                  proposedPool: null,
+                  warnings: [],
+                  extractedProducts: [],
+                  reconciliation: {},
+                };
+          const score = compareToExpected(fixtureName, expected, actual, Date.now() - start);
           scores.push(score);
 
           const floor = expected._minScore ?? 0.85;
