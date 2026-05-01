@@ -8,14 +8,48 @@
 'use client';
 
 import { Card } from '@/components/ui';
+import type { AppRouter } from '@/server/trpc/router';
+import type { inferRouterOutputs } from '@trpc/server';
+import { useEffect, useMemo, useRef } from 'react';
 import type { DraftFormState } from './_registry';
+import { aiBundleFromDraft } from './_types';
 
 type Props = {
   form: DraftFormState;
   setForm: React.Dispatch<React.SetStateAction<DraftFormState>>;
+  draft: inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
 };
 
-export function BenefitYearSection({ form, setForm }: Props) {
+export function BenefitYearSection({ form, setForm, draft }: Props) {
+  const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
+
+  // Seed once per draft from the AI's proposedBenefitYear. Only fills
+  // empty fields so broker edits made before AI completed survive.
+  const seededDraftIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (seededDraftIdRef.current === draft.id) return;
+    const proposed = aiBundle.proposedBenefitYear;
+    if (!proposed) return;
+    seededDraftIdRef.current = draft.id;
+    setForm((prev) => ({
+      ...prev,
+      policy: {
+        name: prev.policy.name || proposed.policyName || '',
+        ageBasis:
+          // Only override the default 'POLICY_START' when the AI proposed
+          // something concrete and non-null.
+          prev.policy.ageBasis === 'POLICY_START' && proposed.ageBasis
+            ? proposed.ageBasis
+            : prev.policy.ageBasis,
+      },
+      benefitYear: {
+        ...prev.benefitYear,
+        startDate: prev.benefitYear.startDate || proposed.startDate || '',
+        endDate: prev.benefitYear.endDate || proposed.endDate || '',
+      },
+    }));
+  }, [draft.id, aiBundle.proposedBenefitYear, setForm]);
+
   const updatePolicy = <K extends keyof DraftFormState['policy']>(
     key: K,
     value: DraftFormState['policy'][K],

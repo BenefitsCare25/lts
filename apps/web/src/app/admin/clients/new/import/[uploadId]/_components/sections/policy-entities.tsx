@@ -8,14 +8,48 @@
 'use client';
 
 import { Card } from '@/components/ui';
+import type { AppRouter } from '@/server/trpc/router';
+import type { inferRouterOutputs } from '@trpc/server';
+import { useEffect, useMemo, useRef } from 'react';
 import type { DraftFormState } from './_registry';
+import { aiBundleFromDraft } from './_types';
 
 type Props = {
   form: DraftFormState;
   setForm: React.Dispatch<React.SetStateAction<DraftFormState>>;
+  draft: inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
 };
 
-export function PolicyEntitiesSection({ form, setForm }: Props) {
+export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
+  const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
+
+  // Seed entity rows from the AI's proposedPolicyEntities, once per
+  // draft load. Skipped if the broker already added rows (preserves
+  // edits made before AI completed).
+  const seededDraftIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (seededDraftIdRef.current === draft.id) return;
+    if (aiBundle.proposedPolicyEntities.length === 0) return;
+    seededDraftIdRef.current = draft.id;
+    setForm((prev) => {
+      if (prev.policyEntities.length > 0) return prev;
+      // Ensure exactly one master flag; if the AI marked >1 or 0,
+      // default to the first row.
+      const proposals = aiBundle.proposedPolicyEntities;
+      const mastersCount = proposals.filter((p) => p.isMaster).length;
+      return {
+        ...prev,
+        policyEntities: proposals.map((p, i) => ({
+          legalName: p.legalName,
+          policyNumber: p.policyNumber ?? '',
+          address: p.address ?? '',
+          headcountEstimate: p.headcountEstimate,
+          isMaster: mastersCount === 1 ? p.isMaster : i === 0,
+        })),
+      };
+    });
+  }, [draft.id, aiBundle.proposedPolicyEntities, setForm]);
+
   const update = (index: number, patch: Partial<DraftFormState['policyEntities'][number]>) => {
     setForm((prev) => ({
       ...prev,
