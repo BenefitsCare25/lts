@@ -146,15 +146,30 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
     }
   >();
   for (const g of benefitGroups) {
+    const enumsFromPredicate = collectEnumValues(g.predicate);
     for (const ref of collectVarRefs(g.predicate)) {
       if (knownFieldNames.has(ref)) continue;
       if (!missingMap.has(ref)) {
+        const enumVals = enumsFromPredicate.get(ref);
+        const suggestedType = enumVals ? 'enum' : guessFieldTypeFromName(ref);
         missingMap.set(ref, {
           fieldPath: ref,
-          suggestedType: guessFieldTypeFromName(ref),
+          suggestedType,
           suggestedLabel: humanizeFieldName(ref),
           referencedBy: [],
+          ...(enumVals ? { enumValues: enumVals } : {}),
         });
+      } else {
+        // Merge any additional enum values discovered in later predicates.
+        const existing = missingMap.get(ref);
+        if (existing) {
+          const moreVals = enumsFromPredicate.get(ref);
+          if (moreVals) {
+            const merged = new Set([...(existing.enumValues ?? []), ...moreVals]);
+            existing.enumValues = Array.from(merged);
+            existing.suggestedType = 'enum';
+          }
+        }
       }
       const existing = missingMap.get(ref);
       if (existing && !existing.referencedBy.includes(g.sourcePlanLabel)) {
@@ -176,6 +191,68 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
       reconciliation,
     },
   };
+}
+
+// Walk a JSONLogic predicate and extract enum values associated with each
+// var-path from `==` and `in` operators.
+// e.g. { '==': [{ var: 'employee.employment_type' }, 'BARGAINABLE'] }
+//      → Map { 'employee.employment_type' => ['BARGAINABLE'] }
+function collectEnumValues(node: unknown): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const visit = (n: unknown) => {
+    if (n == null || typeof n !== 'object') return;
+    if (Array.isArray(n)) {
+      for (const child of n) visit(child);
+      return;
+    }
+    const obj = n as Record<string, unknown>;
+    // { '==': [{ var: 'path' }, 'VALUE'] }
+    if ('==' in obj) {
+      const pair = obj['=='];
+      if (Array.isArray(pair) && pair.length === 2) {
+        const [a, b] = pair;
+        const varPath = extractVarPath(a);
+        const val = typeof b === 'string' ? b : null;
+        if (varPath && val) {
+          const existing = out.get(varPath) ?? [];
+          if (!existing.includes(val)) existing.push(val);
+          out.set(varPath, existing);
+        }
+      }
+      return;
+    }
+    // { in: [{ var: 'path' }, ['V1', 'V2']] }
+    if ('in' in obj) {
+      const pair = obj.in;
+      if (Array.isArray(pair) && pair.length === 2) {
+        const [a, b] = pair;
+        const varPath = extractVarPath(a);
+        if (varPath && Array.isArray(b)) {
+          const vals = b.filter((v): v is string => typeof v === 'string');
+          if (vals.length > 0) {
+            const existing = out.get(varPath) ?? [];
+            for (const v of vals) {
+              if (!existing.includes(v)) existing.push(v);
+            }
+            out.set(varPath, existing);
+          }
+        }
+      }
+      return;
+    }
+    // Recurse into `and` / `or` / etc.
+    for (const v of Object.values(obj)) visit(v);
+  };
+  visit(node);
+  return out;
+}
+
+function extractVarPath(node: unknown): string | null {
+  if (node && typeof node === 'object' && !Array.isArray(node)) {
+    const obj = node as Record<string, unknown>;
+    if ('var' in obj && typeof obj.var === 'string') return obj.var;
+  }
+  return null;
 }
 
 // Walk a JSONLogic predicate, yielding every "var": "path" reference.
