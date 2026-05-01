@@ -178,8 +178,17 @@ export type WizardAiBundle = {
   proposedPool: ProposedPool;
   warnings: string[];
   // Wizard's status pill copy. Mirrors ExtractionDraft.status but
-  // also surfaces the per-stage hint (CALLING_AI / MERGING / FAILED).
+  // also surfaces the per-stage hint (AI_DISCOVERY / AI_PRODUCTS /
+  // CALLING_AI / MERGING / FAILED).
   stage: string | null;
+  // Live per-product progress, populated during AI_PRODUCTS stage by
+  // the fan-out streaming callback. Null when not in that stage.
+  liveProgress: {
+    totalProducts: number;
+    completedProducts: number;
+    lastProductKey: string | null;
+    lastProductOk: boolean | null;
+  } | null;
   failure: { stage: string; message: string; at?: string } | null;
   ai: {
     model: string;
@@ -188,6 +197,9 @@ export type WizardAiBundle = {
     latencyMs: number;
     workbookTruncated: boolean;
     sheetsCount: number;
+    productsRequested?: number;
+    productsExtracted?: number;
+    productsFailed?: number;
     completedAt?: string;
   } | null;
 };
@@ -201,6 +213,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedPool: null,
     warnings: [],
     stage: null,
+    liveProgress: null,
     failure: null,
     ai: null,
   };
@@ -213,9 +226,25 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedPool?: ProposedPool;
     warnings?: string[];
     stage?: string;
+    totalProducts?: number;
+    completedProducts?: number;
+    lastProductKey?: string;
+    lastProductOk?: boolean;
     failure?: { stage: string; message: string; at?: string };
     ai?: WizardAiBundle['ai'];
   };
+  // Live per-product progress is only meaningful during AI_PRODUCTS.
+  // Once the run completes (status flips to READY/FAILED) the bundle
+  // shows the final tallies from `ai.productsExtracted` etc. instead.
+  const liveProgress: WizardAiBundle['liveProgress'] =
+    p.stage === 'AI_PRODUCTS' && typeof p.totalProducts === 'number'
+      ? {
+          totalProducts: p.totalProducts,
+          completedProducts: p.completedProducts ?? 0,
+          lastProductKey: p.lastProductKey ?? null,
+          lastProductOk: p.lastProductOk ?? null,
+        }
+      : null;
   return {
     proposedClient: p.proposedClient ?? null,
     proposedPolicyEntities: p.proposedPolicyEntities ?? [],
@@ -224,6 +253,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedPool: p.proposedPool ?? null,
     warnings: p.warnings ?? [],
     stage: p.stage ?? null,
+    liveProgress,
     failure: p.failure ?? null,
     ai: p.ai ?? null,
   };

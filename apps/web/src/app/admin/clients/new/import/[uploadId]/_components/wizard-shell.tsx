@@ -257,14 +257,29 @@ function renderAiBanner(
 ): React.ReactNode {
   if (status === 'EXTRACTING') {
     const stage = bundle.stage ?? 'QUEUED';
-    const stageCopy =
-      stage === 'CALLING_AI'
-        ? 'Calling the AI provider — this usually takes 30–90 seconds.'
-        : stage === 'MERGING'
-          ? 'Merging the AI output with the heuristic baseline…'
-          : stage === 'QUEUED'
-            ? 'Queued — waiting for a worker to pick this up.'
-            : `Stage: ${stage}`;
+    const live = bundle.liveProgress;
+    const stageCopy = (() => {
+      if (stage === 'AI_DISCOVERY') {
+        return 'Identifying products in the workbook (discovery pass)…';
+      }
+      if (stage === 'AI_PRODUCTS' && live) {
+        const lastLabel = live.lastProductKey ? ` · last: ${live.lastProductKey}` : '';
+        return `Extracting product ${live.completedProducts} of ${live.totalProducts}${lastLabel}`;
+      }
+      if (stage === 'AI_PRODUCTS') {
+        return 'Running per-product extraction passes (in parallel)…';
+      }
+      if (stage === 'CALLING_AI') {
+        return 'Calling the AI provider — this usually takes 30–90 seconds.';
+      }
+      if (stage === 'MERGING') {
+        return 'Merging the AI output with the heuristic baseline…';
+      }
+      if (stage === 'QUEUED') {
+        return 'Queued — waiting for a worker to pick this up.';
+      }
+      return `Stage: ${stage}`;
+    })();
     return (
       <div
         className="card card-padded"
