@@ -182,6 +182,28 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     tenantSlug: tenant.slug,
     workbookBuffer: buffer,
     heuristicProducts: heuristic.extractedProducts,
+    onProgress: async (event) => {
+      // Stream live status to ExtractionDraft.progress so the wizard's
+      // poll picks it up. Each event mutates a small slice of the
+      // JSONB; we never overwrite earlier broker-visible state.
+      if (event.kind === 'discovery_started') {
+        await markProgress(uploadId, { stage: 'AI_DISCOVERY' });
+      } else if (event.kind === 'discovery_done') {
+        await markProgressDetailed(uploadId, {
+          stage: 'AI_PRODUCTS',
+          totalProducts: event.productsRequested,
+          completedProducts: 0,
+        });
+      } else if (event.kind === 'product_done') {
+        await markProgressDetailed(uploadId, {
+          stage: 'AI_PRODUCTS',
+          totalProducts: event.total,
+          completedProducts: event.index,
+          lastProductKey: event.productKey,
+          lastProductOk: event.ok,
+        });
+      }
+    },
   });
 
   if (!aiResult.ok) {
@@ -244,6 +266,9 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
           workbookTruncated: aiResult.meta.workbookTruncated,
           sheetsCount: aiResult.meta.sheetsCount,
           retried: aiResult.meta.retried,
+          productsRequested: aiResult.meta.productsRequested,
+          productsExtracted: aiResult.meta.productsExtracted,
+          productsFailed: aiResult.meta.productsFailed,
           completedAt: new Date().toISOString(),
         },
       } as unknown as Prisma.InputJsonValue,
@@ -255,7 +280,7 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
 
   // biome-ignore lint/suspicious/noConsoleLog: intentional job lifecycle log
   console.log(
-    `[ai-extraction] ok uploadId=${uploadId} model=${aiResult.meta.model} input=${aiResult.meta.inputTokens} output=${aiResult.meta.outputTokens} ms=${aiResult.meta.latencyMs}`,
+    `[ai-extraction] ok uploadId=${uploadId} model=${aiResult.meta.model} input=${aiResult.meta.inputTokens} output=${aiResult.meta.outputTokens} cacheRead=${aiResult.meta.cacheReadTokens} ms=${aiResult.meta.latencyMs} products=${aiResult.meta.productsExtracted}/${aiResult.meta.productsRequested} failed=${aiResult.meta.productsFailed}`,
   );
 }
 
@@ -315,6 +340,44 @@ async function markProgress(
         ...existing,
         stage: progress.stage,
         ...(progress.sheetsCount != null ? { sheetsCount: progress.sheetsCount } : {}),
+      } as unknown as Prisma.InputJsonValue,
+    },
+  });
+}
+
+// Detailed progress update used by the per-product fan-out streaming
+// callback. Mirrors markProgress but carries per-product counters and
+// the last completed product's key for the wizard's status line.
+async function markProgressDetailed(
+  uploadId: string,
+  progress: {
+    stage: string;
+    totalProducts: number;
+    completedProducts: number;
+    lastProductKey?: string;
+    lastProductOk?: boolean;
+  },
+): Promise<void> {
+  const draft = await prisma.extractionDraft.findUnique({
+    where: { uploadId },
+    select: { id: true, progress: true, status: true },
+  });
+  if (!draft) return;
+  if (draft.status !== 'EXTRACTING') return;
+  const existing =
+    draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
+      ? (draft.progress as Record<string, unknown>)
+      : {};
+  await prisma.extractionDraft.update({
+    where: { id: draft.id },
+    data: {
+      progress: {
+        ...existing,
+        stage: progress.stage,
+        totalProducts: progress.totalProducts,
+        completedProducts: progress.completedProducts,
+        ...(progress.lastProductKey ? { lastProductKey: progress.lastProductKey } : {}),
+        ...(progress.lastProductOk !== undefined ? { lastProductOk: progress.lastProductOk } : {}),
       } as unknown as Prisma.InputJsonValue,
     },
   });

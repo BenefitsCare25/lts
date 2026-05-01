@@ -1,79 +1,93 @@
 // =============================================================
-// AI extraction runner — the orchestrator that ties the AI module
-// pieces together. Owns the prompt assembly, the Foundry call, the
-// validate-and-retry loop, and the merge-with-heuristic step.
+// AI extraction runner — map-reduce orchestrator.
 //
-// The runner is invoked from the BullMQ extraction job. It returns
-// a structured result the job persists onto ExtractionDraft.
+// Stage 1 (discovery): one Foundry call returns the product manifest
+// and cross-cutting metadata.
+// Stage 2 (per-product): N Foundry calls in parallel, each returning
+// a single ExtractedProduct envelope.
+// Stage 3 (merge): combine the heuristic floor with the per-product
+// AI output. Heuristic confidence-1.0 cells survive; AI fills gaps.
 //
-// Failure modes are explicit and serializable (ok: false, error,
-// retryable). The job uses `retryable` to decide whether to throw
-// (which BullMQ retries) or to mark the draft FAILED (which it does
-// not retry). Validation failures after the one-shot retry are not
-// retryable — the model's output is structurally wrong and another
-// attempt with the same inputs won't help.
+// Failure policy:
+//   - Discovery failure (any kind): the whole extraction fails. We
+//     can't extract products without knowing what products exist.
+//   - Per-product failure: collected as a warning. The runner
+//     succeeds as long as at least ONE product extracted cleanly.
+//     The wizard surfaces failed products so the broker can re-run
+//     the affected slice (future improvement: per-product re-run UI).
+//   - Both retryable (5xx, 429, network) and non-retryable failures
+//     are reported with the right `retryable` flag so the BullMQ
+//     job can decide whether to re-throw or mark FAILED.
+//
+// Streaming:
+//   - The runner accepts an `onProgress` callback. Each pass emits
+//     events the job persists onto ExtractionDraft.progress. The
+//     wizard's poll picks it up and shows live status.
 // =============================================================
 
 import type { TenantDb } from '@/server/db/tenant';
-import type {
-  ExtractedProduct,
-  FieldEnvelope,
-  SourceRef,
-} from '@/server/extraction/heuristic-to-envelope';
-import { isClaudeDeployment } from '@/server/trpc/routers/tenant-ai-provider';
+import type { ExtractedProduct, FieldEnvelope, SourceRef } from '../heuristic-to-envelope';
 import { type CatalogueContext, loadCatalogueContext } from './catalogue-context';
+import { runDiscoveryPass } from './discovery-pass';
+import { type ProgressEvent, runProductPasses } from './fan-out';
 import {
   type FoundryProvider,
-  callFoundry,
+  type FoundryUsage,
   decryptProviderKey,
+  detectModelFamily,
   loadActiveProvider,
 } from './foundry-client';
-import {
-  type AiOutput,
-  type AiOutputBenefitYear,
-  type AiOutputInsurer,
-  type AiOutputPolicyEntity,
-  type AiOutputPool,
-  type AiOutputProposedClient,
-  formatAjvErrors,
-  getOutputValidator,
-} from './output-schema';
-import { aiOutputSchema } from './output-schema';
-import {
-  EXTRACTION_TOOL_DESCRIPTION,
-  EXTRACTION_TOOL_NAME,
-  buildSystemPrompt,
-  buildUserPrompt,
-} from './prompt';
+import { buildSharedSystemPrompt } from './prompt-shared';
+import type {
+  DiscoveryBenefitYear,
+  DiscoveryInsurer,
+  DiscoveryPolicyEntity,
+  DiscoveryPool,
+  DiscoveryProposedClient,
+  ProductManifestEntry,
+} from './schema-discovery';
 import { type WorkbookText, flattenWorkbookText, workbookToText } from './workbook-to-text';
 
-export const AI_EXTRACTOR_VERSION = 'ai-foundry-1.0';
+export const AI_EXTRACTOR_VERSION = 'ai-foundry-2.0';
+
+// Re-export the wizard-section types under the legacy AiOutput* names
+// so downstream consumers (jobs/extraction.ts) don't need import
+// surgery. The shape is identical to the v1 schemas.
+export type AiOutputProposedClient = DiscoveryProposedClient;
+export type AiOutputPolicyEntity = DiscoveryPolicyEntity;
+export type AiOutputBenefitYear = DiscoveryBenefitYear;
+export type AiOutputInsurer = DiscoveryInsurer;
+export type AiOutputPool = DiscoveryPool;
 
 export type AiRunnerSuccess = {
   ok: true;
   // Per-product extractions, merged with the heuristic floor.
   products: ExtractedProduct[];
-  // Wizard-section proposals.
+  // Wizard-section proposals from the discovery pass.
   proposedClient: AiOutputProposedClient;
   proposedPolicyEntities: AiOutputPolicyEntity[];
   proposedBenefitYear: AiOutputBenefitYear;
   proposedInsurers: AiOutputInsurer[];
   proposedPool: AiOutputPool;
-  // Combined warnings: workbook serializer truncation notes plus
-  // model-emitted warnings.
+  // Warnings from: serializer truncation + discovery pass + each
+  // per-product pass + per-product failures (partial-success path).
   warnings: string[];
-  // Telemetry.
+  // Telemetry. The runner sums tokens across all passes (discovery +
+  // every product pass).
   meta: {
     model: string;
     inputTokens: number;
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
-    latencyMs: number;
+    latencyMs: number; // wall time
     workbookChars: number;
     workbookTruncated: boolean;
     sheetsCount: number;
-    retried: boolean;
+    retried: boolean; // true if discovery or any product pass retried
+    productsRequested: number; // discovery manifest length
+    productsExtracted: number; // successful product passes
+    productsFailed: number; // failed product passes (kept as warnings)
   };
 };
 
@@ -81,7 +95,6 @@ export type AiRunnerFailure = {
   ok: false;
   retryable: boolean;
   error: string;
-  // Diagnostics (best-effort — may be empty on early failures).
   meta: {
     workbookChars?: number;
     sheetsCount?: number;
@@ -96,12 +109,37 @@ export type RunAiExtractionInput = {
   tenantSlug: string;
   workbookBuffer: Buffer;
   // The heuristic baseline. Empty array when no template matched.
-  // Used as the floor — confidence-1.0 cells survive the merge.
   heuristicProducts: ExtractedProduct[];
+  // Optional progress sink — the job uses this to stream events into
+  // ExtractionDraft.progress so the wizard's poll sees live status.
+  onProgress?: RunnerProgressHandler;
 };
 
+export type RunnerProgressHandler = (event: RunnerProgressEvent) => Promise<void> | void;
+
+export type RunnerProgressEvent =
+  | { kind: 'discovery_started' }
+  | {
+      kind: 'discovery_done';
+      productsRequested: number;
+      latencyMs: number;
+      retried: boolean;
+    }
+  | { kind: 'product_started'; productKey: string; index: number; total: number }
+  | {
+      kind: 'product_done';
+      productKey: string;
+      index: number;
+      total: number;
+      ok: boolean;
+      error?: string;
+      truncated?: boolean;
+      latencyMs: number;
+    };
+
 export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRunnerResult> {
-  const { db, tenantSlug, workbookBuffer, heuristicProducts } = input;
+  const { db, tenantSlug, workbookBuffer, heuristicProducts, onProgress } = input;
+  const wallStart = Date.now();
 
   const provider = await loadActiveProvider(db);
   if (!provider) {
@@ -114,9 +152,10 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     };
   }
 
+  const family = detectModelFamily(provider.deploymentName);
   // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
   console.log(
-    `[ai-extraction] provider deployment=${provider.deploymentName} protocol=${isClaudeDeployment(provider.deploymentName) ? 'anthropic' : 'openai-compat'} endpoint=${provider.endpoint}`,
+    `[ai-extraction] provider deployment=${provider.deploymentName} family=${family} endpoint=${provider.endpoint}`,
   );
 
   let workbookText: WorkbookText;
@@ -145,10 +184,6 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     };
   }
 
-  const catalogue = await loadCatalogueContext(db, tenantSlug);
-  const systemPrompt = buildSystemPrompt(catalogue);
-  const flattened = flattenWorkbookText(workbookText);
-
   const apiKey = (() => {
     try {
       return decryptProviderKey(provider);
@@ -166,205 +201,285 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     };
   }
 
-  const firstAttempt = await callOnce({
+  const catalogue = await loadCatalogueContext(db, tenantSlug);
+  const systemPrompt = buildSharedSystemPrompt(catalogue);
+  const flattened = flattenWorkbookText(workbookText);
+
+  // ───── Stage 1: discovery ─────
+  await safeProgress(onProgress, { kind: 'discovery_started' });
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log('[ai-extraction] discovery pass starting');
+
+  const discovery = await runDiscoveryPass({
     provider,
     apiKey,
     systemPrompt,
     workbookText: flattened,
-    retryHint: undefined,
+    heuristicProducts,
   });
-  if (firstAttempt.kind === 'fatal') {
+
+  if (!discovery.ok) {
+    console.error(
+      `[ai-extraction] discovery failed retryable=${discovery.retryable} truncated=${discovery.truncated} error=${discovery.error}`,
+    );
     return {
       ok: false,
-      retryable: firstAttempt.retryable,
-      error: firstAttempt.error,
+      retryable: discovery.retryable,
+      error: discovery.error,
       meta: {
         workbookChars: workbookText.totalChars,
         sheetsCount: workbookText.sheets.length,
-        ...(firstAttempt.latencyMs != null ? { latencyMs: firstAttempt.latencyMs } : {}),
+        latencyMs: discovery.latencyMs,
       },
-    };
-  }
-
-  let validatedOutput: AiOutput | null = null;
-  let retried = false;
-  let totalLatency = firstAttempt.latencyMs;
-  let totalInputTokens = firstAttempt.usage.inputTokens;
-  let totalOutputTokens = firstAttempt.usage.outputTokens;
-  let totalCacheReadTokens = firstAttempt.usage.cacheReadTokens;
-  let totalCacheCreationTokens = firstAttempt.usage.cacheCreationTokens;
-  let model = firstAttempt.model;
-
-  if (firstAttempt.validationError == null) {
-    validatedOutput = firstAttempt.output as AiOutput;
-  } else {
-    // One-shot retry with the validation errors fed back. The model
-    // is generally good at re-emitting a corrected version when told
-    // exactly what failed.
-    retried = true;
-    const retryAttempt = await callOnce({
-      provider,
-      apiKey,
-      systemPrompt,
-      workbookText: flattened,
-      retryHint: firstAttempt.validationError,
-    });
-    if (retryAttempt.kind === 'fatal') {
-      return {
-        ok: false,
-        retryable: retryAttempt.retryable,
-        error: `Retry failed: ${retryAttempt.error}`,
-        meta: {
-          workbookChars: workbookText.totalChars,
-          sheetsCount: workbookText.sheets.length,
-          latencyMs: totalLatency + (retryAttempt.latencyMs ?? 0),
-        },
-      };
-    }
-    totalLatency += retryAttempt.latencyMs;
-    totalInputTokens += retryAttempt.usage.inputTokens;
-    totalOutputTokens += retryAttempt.usage.outputTokens;
-    totalCacheReadTokens += retryAttempt.usage.cacheReadTokens;
-    totalCacheCreationTokens += retryAttempt.usage.cacheCreationTokens;
-    model = retryAttempt.model;
-    if (retryAttempt.validationError != null) {
-      return {
-        ok: false,
-        retryable: false,
-        error: `Model output failed schema validation twice. Final errors:\n${retryAttempt.validationError}`,
-        meta: {
-          workbookChars: workbookText.totalChars,
-          sheetsCount: workbookText.sheets.length,
-          latencyMs: totalLatency,
-        },
-      };
-    }
-    validatedOutput = retryAttempt.output as AiOutput;
-  }
-
-  // Merge AI products with the heuristic floor. Confidence-1.0 cells
-  // from the heuristic are preserved; AI fills nulls and lifts low-
-  // confidence cells.
-  const merged = mergeProducts(heuristicProducts, validatedOutput.products as ExtractedProduct[]);
-
-  const combinedWarnings = [...workbookText.warnings, ...validatedOutput.warnings];
-
-  return {
-    ok: true,
-    products: merged,
-    proposedClient: validatedOutput.proposedClient,
-    proposedPolicyEntities: validatedOutput.proposedPolicyEntities,
-    proposedBenefitYear: validatedOutput.proposedBenefitYear,
-    proposedInsurers: validatedOutput.proposedInsurers,
-    proposedPool: validatedOutput.proposedPool,
-    warnings: combinedWarnings,
-    meta: {
-      model,
-      inputTokens: totalInputTokens,
-      outputTokens: totalOutputTokens,
-      cacheReadTokens: totalCacheReadTokens,
-      cacheCreationTokens: totalCacheCreationTokens,
-      latencyMs: totalLatency,
-      workbookChars: workbookText.totalChars,
-      workbookTruncated: workbookText.truncated,
-      sheetsCount: workbookText.sheets.length,
-      retried,
-    },
-  };
-}
-
-// ─────────────────────────────────────────────────────────────
-// Internals
-// ─────────────────────────────────────────────────────────────
-
-type SingleAttemptResult =
-  | {
-      kind: 'ok';
-      output: Record<string, unknown>;
-      validationError: string | null;
-      usage: {
-        inputTokens: number;
-        outputTokens: number;
-        cacheReadTokens: number;
-        cacheCreationTokens: number;
-      };
-      model: string;
-      latencyMs: number;
-    }
-  | {
-      kind: 'fatal';
-      error: string;
-      retryable: boolean;
-      latencyMs: number | null;
-    };
-
-async function callOnce(args: {
-  provider: FoundryProvider;
-  apiKey: string;
-  systemPrompt: string;
-  workbookText: string;
-  retryHint: string | undefined;
-}): Promise<SingleAttemptResult> {
-  const userPrompt = buildUserPrompt(args.workbookText, args.retryHint);
-  const result = await callFoundry(args.provider, args.apiKey, {
-    system: args.systemPrompt,
-    user: userPrompt,
-    tool: {
-      name: EXTRACTION_TOOL_NAME,
-      description: EXTRACTION_TOOL_DESCRIPTION,
-      // Sanitize for tool-use endpoint — Anthropic rejects schemas
-      // that include `$schema` keys, and OpenAI's strict mode rejects
-      // `additionalProperties: false` on draft-7 mixed shapes. Strip
-      // `$schema`/`$id` and keep the rest. The runner-side Ajv still
-      // enforces full validation post-hoc.
-      inputSchema: stripSchemaMeta(aiOutputSchema as Record<string, unknown>),
-    },
-  });
-  if (!result.ok) {
-    return {
-      kind: 'fatal',
-      error: result.error,
-      retryable: result.retryable,
-      latencyMs: result.latencyMs,
     };
   }
 
   // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
   console.log(
-    `[ai-extraction] foundry response model=${result.model} latencyMs=${result.latencyMs} inputTokens=${result.usage.inputTokens} outputTokens=${result.usage.outputTokens} cacheRead=${result.usage.cacheReadTokens}`,
+    `[ai-extraction] discovery done products=${discovery.output.productManifest.length} latencyMs=${discovery.latencyMs} retried=${discovery.retried}`,
   );
 
-  const validator = getOutputValidator();
-  const valid = validator(result.output);
-  if (!valid) {
-    console.error(
-      '[ai-extraction] schema validation failed errors:',
-      formatAjvErrors(validator.errors),
-    );
-    console.error(
-      '[ai-extraction] raw output (first 2000 chars):',
-      JSON.stringify(result.output).slice(0, 2000),
-    );
+  await safeProgress(onProgress, {
+    kind: 'discovery_done',
+    productsRequested: discovery.output.productManifest.length,
+    latencyMs: discovery.latencyMs,
+    retried: discovery.retried,
+  });
+
+  // Empty manifest. The discovery model said there are no products
+  // here. Treat as success-with-zero-products (the broker may have
+  // uploaded a non-slip workbook or a cover page only).
+  if (discovery.output.productManifest.length === 0) {
+    return {
+      ok: true,
+      products: heuristicProducts,
+      proposedClient: discovery.output.proposedClient,
+      proposedPolicyEntities: discovery.output.proposedPolicyEntities,
+      proposedBenefitYear: discovery.output.proposedBenefitYear,
+      proposedInsurers: discovery.output.proposedInsurers,
+      proposedPool: discovery.output.proposedPool,
+      warnings: [
+        ...workbookText.warnings,
+        ...discovery.output.warnings,
+        'Discovery pass found no extractable products. Heuristic baseline returned as-is.',
+      ],
+      meta: buildMetaForZeroProducts({
+        workbookText,
+        wallStart,
+        provider,
+        family,
+        discoveryUsage: discovery.usage,
+        discoveryRetried: discovery.retried,
+        model: discovery.model,
+      }),
+    };
   }
+
+  // ───── Stage 2: per-product fan-out ─────
+  const heuristicByKey = indexHeuristic(heuristicProducts);
+  const total = discovery.output.productManifest.length;
+  const manifests = discovery.output.productManifest.map((m) => ({
+    manifest: m,
+    heuristicProduct: heuristicByKey.get(productKey(m)) ?? null,
+  }));
+
+  const fanOut = await runProductPasses({
+    perCallBase: {
+      provider,
+      apiKey,
+      systemPrompt,
+      workbookText: flattened,
+    },
+    manifests,
+    concurrency: 3,
+    onProgress: async (event: ProgressEvent) => {
+      const ok = event.result.ok;
+      // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+      console.log(
+        `[ai-extraction] product ${event.index}/${event.total} ${event.productKey} ${
+          ok ? 'ok' : 'failed'
+        } latencyMs=${event.result.latencyMs}${
+          ok
+            ? ''
+            : ` truncated=${event.result.truncated} error=${truncate(event.result.error, 200)}`
+        }`,
+      );
+      await safeProgress(onProgress, {
+        kind: 'product_done',
+        productKey: event.productKey,
+        index: event.index,
+        total: event.total,
+        ok,
+        latencyMs: event.result.latencyMs,
+        ...(ok ? {} : { error: event.result.error, truncated: event.result.truncated }),
+      });
+    },
+  });
+
+  const productsRequested = total;
+  const productsExtracted = fanOut.successes.length;
+  const productsFailed = fanOut.failures.length;
+
+  // Partial-failure policy: as long as at least one product extracted
+  // cleanly, the overall extraction is useful and the wizard surfaces
+  // the failures as warnings. Zero successes => fail the whole run.
+  if (productsExtracted === 0) {
+    const summary = fanOut.failures
+      .slice(0, 5)
+      .map((f) => `- ${f.manifest.productTypeCode}×${f.manifest.insurerCode}: ${f.error}`)
+      .join('\n');
+    return {
+      ok: false,
+      retryable: fanOut.failures.some((f) => f.retryable),
+      error: `All ${productsRequested} per-product extraction passes failed. First failures:\n${summary}`,
+      meta: {
+        workbookChars: workbookText.totalChars,
+        sheetsCount: workbookText.sheets.length,
+        latencyMs: Date.now() - wallStart,
+      },
+    };
+  }
+
+  // ───── Stage 3: merge with heuristic floor ─────
+  const aiProducts = fanOut.successes.map((s) => s.product);
+  const merged = mergeProducts(heuristicProducts, aiProducts);
+
+  // Aggregate token usage and latency.
+  const discoveryUsage = discovery.usage;
+  const productUsage = fanOut.successes.reduce<FoundryUsage>((acc, s) => sumUsage(acc, s.usage), {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  });
+  const failedProductUsage = fanOut.failures.reduce<FoundryUsage>(
+    (acc, f) => sumUsage(acc, f.usage ?? emptyUsage()),
+    emptyUsage(),
+  );
+  const totalUsage = sumUsage(sumUsage(discoveryUsage, productUsage), failedProductUsage);
+
+  const partialFailureWarnings = fanOut.failures.map(
+    (f) =>
+      `Product ${f.manifest.productTypeCode}×${f.manifest.insurerCode} failed extraction (${
+        f.truncated ? 'output truncated' : f.retryable ? 'transient error' : 'permanent error'
+      }): ${truncate(f.error, 250)}`,
+  );
+
+  const combinedWarnings = [
+    ...workbookText.warnings,
+    ...discovery.output.warnings,
+    ...partialFailureWarnings,
+  ];
+
   return {
-    kind: 'ok',
-    output: result.output,
-    validationError: valid ? null : formatAjvErrors(validator.errors),
-    usage: result.usage,
-    model: result.model,
-    latencyMs: result.latencyMs,
+    ok: true,
+    products: merged,
+    proposedClient: discovery.output.proposedClient,
+    proposedPolicyEntities: discovery.output.proposedPolicyEntities,
+    proposedBenefitYear: discovery.output.proposedBenefitYear,
+    proposedInsurers: discovery.output.proposedInsurers,
+    proposedPool: discovery.output.proposedPool,
+    warnings: combinedWarnings,
+    meta: {
+      model: discovery.model,
+      inputTokens: totalUsage.inputTokens,
+      outputTokens: totalUsage.outputTokens,
+      cacheReadTokens: totalUsage.cacheReadTokens,
+      cacheCreationTokens: totalUsage.cacheCreationTokens,
+      latencyMs: Date.now() - wallStart,
+      workbookChars: workbookText.totalChars,
+      workbookTruncated: workbookText.truncated,
+      sheetsCount: workbookText.sheets.length,
+      retried:
+        discovery.retried ||
+        fanOut.successes.some((s) => s.retried) ||
+        fanOut.failures.some((f) => f.error.includes('retry failed')),
+      productsRequested,
+      productsExtracted,
+      productsFailed,
+    },
   };
 }
 
-function stripSchemaMeta(schema: Record<string, unknown>): Record<string, unknown> {
-  const { $schema, $id, ...rest } = schema;
-  void $schema;
-  void $id;
-  return rest;
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+async function safeProgress(
+  handler: RunnerProgressHandler | undefined,
+  event: RunnerProgressEvent,
+): Promise<void> {
+  if (!handler) return;
+  try {
+    await handler(event);
+  } catch (err) {
+    // Progress emission failures must not poison the run. Log and
+    // continue.
+    console.error('[ai-extraction] progress emission failed:', err);
+  }
+}
+
+function productKey(m: ProductManifestEntry | ExtractedProduct): string {
+  return `${m.productTypeCode}::${m.insurerCode}`;
+}
+
+function indexHeuristic(products: ExtractedProduct[]): Map<string, ExtractedProduct> {
+  const map = new Map<string, ExtractedProduct>();
+  for (const p of products) map.set(productKey(p), p);
+  return map;
+}
+
+function emptyUsage(): FoundryUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  };
+}
+
+function sumUsage(a: FoundryUsage, b: FoundryUsage): FoundryUsage {
+  return {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+    cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
+  };
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
+}
+
+function buildMetaForZeroProducts(args: {
+  workbookText: WorkbookText;
+  wallStart: number;
+  provider: FoundryProvider;
+  family: ReturnType<typeof detectModelFamily>;
+  discoveryUsage: FoundryUsage;
+  discoveryRetried: boolean;
+  model: string;
+}): AiRunnerSuccess['meta'] {
+  return {
+    model: args.model,
+    inputTokens: args.discoveryUsage.inputTokens,
+    outputTokens: args.discoveryUsage.outputTokens,
+    cacheReadTokens: args.discoveryUsage.cacheReadTokens,
+    cacheCreationTokens: args.discoveryUsage.cacheCreationTokens,
+    latencyMs: Date.now() - args.wallStart,
+    workbookChars: args.workbookText.totalChars,
+    workbookTruncated: args.workbookText.truncated,
+    sheetsCount: args.workbookText.sheets.length,
+    retried: args.discoveryRetried,
+    productsRequested: 0,
+    productsExtracted: 0,
+    productsFailed: 0,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
-// Heuristic-AI merge
+// Heuristic-AI merge (unchanged from v1)
 // ─────────────────────────────────────────────────────────────
 
 // Merge rule: AI is additive. Heuristic confidence-1.0 leaves win;
@@ -377,15 +492,14 @@ export function mergeProducts(
   heuristic: ExtractedProduct[],
   ai: ExtractedProduct[],
 ): ExtractedProduct[] {
-  const keyOf = (p: ExtractedProduct) => `${p.productTypeCode}::${p.insurerCode}`;
   const aiByKey = new Map<string, ExtractedProduct>();
-  for (const p of ai) aiByKey.set(keyOf(p), p);
+  for (const p of ai) aiByKey.set(productKey(p), p);
 
   const merged: ExtractedProduct[] = [];
   const seenKeys = new Set<string>();
 
   for (const h of heuristic) {
-    const k = keyOf(h);
+    const k = productKey(h);
     seenKeys.add(k);
     const a = aiByKey.get(k);
     if (!a) {
@@ -395,7 +509,7 @@ export function mergeProducts(
     merged.push(mergeOneProduct(h, a));
   }
   for (const a of ai) {
-    if (!seenKeys.has(keyOf(a))) merged.push(a);
+    if (!seenKeys.has(productKey(a))) merged.push(a);
   }
   return merged;
 }
@@ -419,10 +533,6 @@ function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedPro
         h.policyholder.businessDescription,
         a.policyholder.businessDescription,
       ),
-      // Policy entities: heuristic is workbook-level (parsed from a
-      // Schedule of Insured Persons block); AI may discover entities
-      // the parser missed. Concatenate with de-dupe on legalName +
-      // policyNumber.
       insuredEntities: dedupePolicyEntities([
         ...h.policyholder.insuredEntities,
         ...a.policyholder.insuredEntities,
@@ -430,13 +540,9 @@ function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedPro
     },
     eligibility: {
       freeText: pickEnvelope(h.eligibility.freeText, a.eligibility.freeText),
-      // Categories: heuristic emits one per plan label; AI may emit
-      // richer SI formulae. Prefer AI when it has higher confidence.
       categories:
         a.eligibility.categories.length > 0 ? a.eligibility.categories : h.eligibility.categories,
     },
-    // Plans / rates / benefits: heuristic is the floor; AI fills gaps
-    // and may add plans the heuristic didn't see. Match by raw code.
     plans: mergePlans(h.plans, a.plans),
     premiumRates: mergeRates(h.premiumRates, a.premiumRates),
     benefits: mergeBenefits(h.benefits, a.benefits),
@@ -451,15 +557,9 @@ function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedPro
   };
 }
 
-// Pick the higher-confidence envelope between heuristic (h) and AI
-// (a). Confidence-1.0 from heuristic is always kept. AI wins ties so
-// it can lift a 0-confidence empty cell to a non-null value.
 function pickEnvelope<T>(h: FieldEnvelope<T>, a: FieldEnvelope<T>): FieldEnvelope<T> {
   if (h.confidence >= 1) return h;
   if (h.value != null && h.confidence >= a.confidence) return h;
-  // The AI envelope may carry a sourceRef object that doesn't match
-  // the strict shape; coerce its sourceRef into the canonical type
-  // (or omit when absent) so exactOptionalPropertyTypes is happy.
   return normalizeEnvelope(a);
 }
 
@@ -491,7 +591,6 @@ function dedupePolicyEntities<
       seen.set(k, r);
       continue;
     }
-    // Keep the master flag if either source set it.
     if (r.isMaster && !existing.isMaster) seen.set(k, r);
   }
   return Array.from(seen.values());
