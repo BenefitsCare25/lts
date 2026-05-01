@@ -48,6 +48,10 @@ packages/shared-types/        shared TS types
 prisma/                schema + migrations + seed
 infra/bicep/           Azure IaC (modules: container-app, postgres, redis,
                        app-insights, log-analytics, container-registry, …)
+                       *.bicep + *.json only — no docs/READMEs here.
+                       CI's "Detect infra changes" step diffs `infra/`
+                       and triggers a slow full-Bicep redeploy on any
+                       change; doc edits inside infra/ are a footgun.
 scripts/               dev bootstrap, codegen
 ```
 
