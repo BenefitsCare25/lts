@@ -74,6 +74,23 @@ export function WizardShell({ uploadId }: Props) {
     setDirtyFlags((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
   }, []);
 
+  // Auto-save mutation for the broker's form state. Debounced via the
+  // effect below so we don't fire on every keystroke. We deliberately
+  // don't invalidate the byUploadId query on success — the wizard owns
+  // form state and would lose its place if we re-fetched.
+  const saveBrokerForm = trpc.extractionDrafts.updateBrokerForm.useMutation();
+  // Stable ref to mutate — useMutation returns a new object per render
+  // but we only want the ref so the debounced effect doesn't re-arm
+  // its timer needlessly.
+  const saveFormMutateRef = useRef(saveBrokerForm.mutate);
+  useEffect(() => {
+    saveFormMutateRef.current = saveBrokerForm.mutate;
+  }, [saveBrokerForm.mutate]);
+  // Has the broker started editing? Set true the first time any section
+  // is marked dirty. Until then we don't auto-save (avoids overwriting
+  // the AI's seed with an empty form on first load).
+  const hasBrokerEdits = useMemo(() => Object.values(dirtyFlags).some(Boolean), [dirtyFlags]);
+
   // Keep activeSection in sync with the URL hash so reloads land on
   // the same section. Setting via UI updates both.
   useEffect(() => {
@@ -90,11 +107,42 @@ export function WizardShell({ uploadId }: Props) {
   // Seed the form's source-derived fields exactly once per draft —
   // a useRef guard means a tRPC refetch (focus refocus, etc.) won't
   // re-seed and overwrite a broker who deliberately cleared an entity.
+  // Hydrates from progress.brokerForm (auto-saved broker edits) when
+  // present; otherwise falls back to the heuristic parser's
+  // policyEntities. The per-section seeders (Client / BenefitYear /
+  // PolicyEntities) layer AI proposals on top of whichever path won.
   const seededDraftIdRef = useRef<string | null>(null);
+  const hydratedRef = useRef(false);
   useEffect(() => {
     if (!draft.data) return;
     if (seededDraftIdRef.current === draft.data.id) return;
     seededDraftIdRef.current = draft.data.id;
+
+    // 1) Persisted broker form takes priority — restore the broker's
+    //    own edits across reloads. The shape is validated structurally
+    //    (key by key) so an old/malformed payload falls through to the
+    //    heuristic seed rather than crashing.
+    const progress = draft.data.progress as
+      | (Record<string, unknown> & { brokerForm?: unknown })
+      | null;
+    const persisted = progress?.brokerForm;
+    if (persisted && isShapedLikeDraftForm(persisted)) {
+      setForm(persisted as DraftFormState);
+      // Mark every section that has content as dirty — the broker
+      // already touched them once.
+      const sectionsWithContent = sectionsWithBrokerContent(persisted as DraftFormState);
+      if (sectionsWithContent.length > 0) {
+        setDirtyFlags((prev) => {
+          const next = { ...prev };
+          for (const id of sectionsWithContent) next[id] = true;
+          return next;
+        });
+      }
+      hydratedRef.current = true;
+      return;
+    }
+
+    // 2) Heuristic seed — first load on a fresh draft, no broker edits.
     const parseResult =
       (draft.data.upload.parseResult as null | {
         policyEntities?: { policyNumber: string; legalName: string; isMaster: boolean }[];
@@ -115,6 +163,22 @@ export function WizardShell({ uploadId }: Props) {
       };
     });
   }, [draft.data]);
+
+  // Debounced auto-save of the broker's form state. Only fires once
+  // the broker has actually edited a field (hasBrokerEdits) — the AI/
+  // heuristic seeds set the form via setForm without flipping any
+  // dirty flag, so this stays quiet until the human takes over.
+  const draftId = draft.data?.id ?? null;
+  const draftStatus = draft.data?.status ?? null;
+  useEffect(() => {
+    if (!draftId) return;
+    if (!hasBrokerEdits) return;
+    if (draftStatus === 'APPLIED') return;
+    const timer = window.setTimeout(() => {
+      saveFormMutateRef.current({ draftId, brokerForm: form });
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [form, hasBrokerEdits, draftId, draftStatus]);
 
   // AI seeding lives per-section (ClientSection, PolicyEntitiesSection,
   // BenefitYearSection each own their useEffect that reads
@@ -490,36 +554,144 @@ function computeSectionStatus(
   form: DraftFormState,
   draft: DraftLike,
 ): Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> {
-  const extracted = (draft?.extractedProducts as Array<{ insurerCode: string }> | null) ?? [];
+  // Cast the loose shape into the richer one we need below. All fields
+  // are optional and we narrow per-key — older drafts (pre-AI) simply
+  // miss them and downstream comparisons short-circuit.
+  type ExtractedShape = {
+    insurerCode: string;
+    plans?: unknown[];
+    premiumRates?: unknown[];
+    header?: { bundledWithProductCode?: string | null };
+  };
+  const extracted = (draft?.extractedProducts as ExtractedShape[] | null) ?? [];
   const progressObj =
     (draft?.progress as {
-      suggestions?: { missingPredicateFields?: unknown[] };
+      suggestions?: {
+        missingPredicateFields?: unknown[];
+        benefitGroups?: Array<{ suggestedName: string }>;
+      };
       proposedInsurers?: unknown[];
+      brokerOverrides?: {
+        insurers?: { codeToRegistryId?: Record<string, string | null> };
+        eligibility?: {
+          groups?: Record<
+            string,
+            {
+              included?: boolean;
+              defaultPlanByProduct?: Record<string, string | null>;
+            }
+          >;
+        };
+        schemaDecisions?: Record<string, { resolution: string; mapTo?: string }>;
+        reconciliation?: { variancePctThreshold?: number; acknowledged?: boolean };
+      };
     } | null) ?? null;
   const missingFieldsCount = progressObj?.suggestions?.missingPredicateFields?.length ?? 0;
   // Discovery's proposedInsurers is independent of per-product passes.
   // If discovery succeeded but every per-product pass failed, the
-  // broker still has a usable insurer list — mark section 5 complete.
+  // broker still has a usable insurer list — surface section 5 either
+  // way.
   const proposedInsurersCount = Array.isArray(progressObj?.proposedInsurers)
     ? progressObj.proposedInsurers.length
     : 0;
+
+  // Section 5 — Insurers & pool. Complete when every detected code has
+  // a registry id (either auto-matched or broker-overridden). The
+  // checking is a coarse "broker confirmed" by counting overrides.
+  const insurerOverrides = progressObj?.brokerOverrides?.insurers?.codeToRegistryId ?? {};
+  const detectedInsurerCodes = Array.from(new Set(extracted.map((p) => p.insurerCode)));
+  const allInsurersBound =
+    detectedInsurerCodes.length > 0 &&
+    detectedInsurerCodes.every((c) => insurerOverrides[c] !== undefined);
+  const insurersStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' =
+    detectedInsurerCodes.length === 0 && proposedInsurersCount === 0
+      ? 'pending'
+      : allInsurersBound
+        ? 'complete'
+        : 'in_progress';
+
+  // Section 6 — Products. Complete when every product has at least one
+  // plan AND (premiumRates.length > 0 OR header.bundledWithProductCode
+  // set). Otherwise has_issues / in_progress.
+  let productsStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' = 'pending';
+  if (extracted.length > 0) {
+    const allComplete = extracted.every((p) => {
+      const planCount = Array.isArray(p.plans) ? p.plans.length : 0;
+      const rateCount = Array.isArray(p.premiumRates) ? p.premiumRates.length : 0;
+      const bundled = Boolean(p.header?.bundledWithProductCode);
+      return planCount > 0 && (rateCount > 0 || bundled);
+    });
+    productsStatus = allComplete ? 'complete' : 'has_issues';
+  }
+
+  // Section 7 — Eligibility. Complete when at least one benefit group
+  // is included AND every included group has full per-product coverage
+  // (a default plan picked for every extracted product).
+  const benefitGroups = progressObj?.suggestions?.benefitGroups ?? [];
+  const eligibilityOverrides = progressObj?.brokerOverrides?.eligibility?.groups ?? {};
+  const includedGroups = benefitGroups.filter(
+    (g) => eligibilityOverrides[g.suggestedName]?.included === true,
+  );
+  let eligibilityStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' = 'pending';
+  if (benefitGroups.length === 0) {
+    eligibilityStatus = 'complete'; // nothing suggested ⇒ nothing required
+  } else if (includedGroups.length === 0) {
+    eligibilityStatus = 'has_issues';
+  } else {
+    const productCodes = extracted.map((p) => p.insurerCode); // unused for keying, kept for length
+    void productCodes;
+    const productKeys = extracted.map(
+      (p) => (p as ExtractedShape & { productTypeCode: string }).productTypeCode,
+    );
+    const allCovered = includedGroups.every((g) => {
+      const map = eligibilityOverrides[g.suggestedName]?.defaultPlanByProduct ?? {};
+      return productKeys.every((k) => map[k] != null);
+    });
+    eligibilityStatus = allCovered ? 'complete' : 'in_progress';
+  }
+
+  // Section 8 — Schema additions. Complete when every missing field has
+  // a non-null decision (and MAP decisions have a target).
+  const schemaDecisions = progressObj?.brokerOverrides?.schemaDecisions ?? {};
+  const missingFields = (progressObj?.suggestions?.missingPredicateFields ?? []) as Array<{
+    fieldPath: string;
+  }>;
+  const allDecided =
+    missingFields.length === 0 ||
+    missingFields.every((f) => {
+      const d = schemaDecisions[f.fieldPath];
+      if (!d) return false;
+      if (d.resolution === 'MAP') return Boolean(d.mapTo);
+      return true;
+    });
+  const schemaStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' =
+    missingFieldsCount === 0 ? 'complete' : allDecided ? 'complete' : 'has_issues';
+
+  // Section 9 — Reconciliation. Complete when no per-product variance
+  // breaches threshold, OR broker explicitly acknowledged.
+  // Lives entirely on broker overrides; the section component computes
+  // variance from the same draft data so the rule below mirrors it.
+  const reconOverrides = progressObj?.brokerOverrides?.reconciliation;
+  const reconAcknowledged = Boolean(reconOverrides?.acknowledged);
+  // We don't recompute breach here (would duplicate the section's
+  // logic) — `complete` unless acknowledged-required-but-missing.
+  // Conservative default: if any extraction happened, reconciliation
+  // is "complete" because the broker can revisit any time.
+  const reconStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' =
+    extracted.length === 0 ? 'complete' : reconAcknowledged ? 'complete' : 'complete';
+  // (kept unified at 'complete' to avoid blocking apply on a soft signal;
+  // tighten to 'has_issues' once Phase 1.5 wires declared totals.)
+
   const result: Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> = {
     source: 'complete', // read-only summary; always complete once loaded
     client: 'pending',
     entities: 'pending',
     benefit_year: 'pending',
-    // Insurers / products / eligibility / reconciliation are read-mostly
-    // for now — they're "complete" the moment the draft is READY because
-    // the broker isn't required to touch them before Apply (apply uses
-    // form state for the foundational rows; per-product apply is next slice).
-    insurers: extracted.length > 0 || proposedInsurersCount > 0 ? 'complete' : 'pending',
-    products: extracted.length > 0 ? 'complete' : 'pending',
-    eligibility: 'complete',
-    // Schema additions: complete only if there are no missing fields,
-    // OR if every missing field has been resolved (resolution lives in
-    // section-local state today; coarse "any missing → has_issues").
-    schema_additions: missingFieldsCount === 0 ? 'complete' : 'has_issues',
-    reconciliation: 'complete',
+    insurers: insurersStatus,
+    products: productsStatus,
+    eligibility: eligibilityStatus,
+    schema_additions: schemaStatus,
+    reconciliation: reconStatus,
     review: 'pending',
   };
 
@@ -558,4 +730,39 @@ function computeSectionStatus(
   }
 
   return result;
+}
+
+// Structural shape check on a persisted brokerForm payload. We don't
+// run a full schema validator here — the wizard tolerates partial
+// payloads (an older version of the wizard wrote, a newer version
+// reads). What we DO require is the top-level keys exist with the
+// right rough types so destructuring in section components doesn't
+// crash.
+function isShapedLikeDraftForm(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v.client !== undefined &&
+    typeof v.client === 'object' &&
+    v.client !== null &&
+    Array.isArray(v.policyEntities) &&
+    v.policy !== undefined &&
+    typeof v.policy === 'object' &&
+    v.policy !== null &&
+    v.benefitYear !== undefined &&
+    typeof v.benefitYear === 'object' &&
+    v.benefitYear !== null
+  );
+}
+
+// On hydration, mark sections dirty if the persisted form has content
+// in them — preserves the rail's "Edited" badge after reload.
+function sectionsWithBrokerContent(form: DraftFormState): SectionId[] {
+  const out: SectionId[] = [];
+  if (form.client.legalName || form.client.uen || form.client.address) out.push('client');
+  if (form.policyEntities.length > 0) out.push('entities');
+  if (form.benefitYear.startDate || form.benefitYear.endDate || form.policy.name) {
+    out.push('benefit_year');
+  }
+  return out;
 }
