@@ -21,8 +21,8 @@
 'use client';
 
 import { Card } from '@/components/ui';
-import { useEffect, useMemo, useState } from 'react';
-import type { WizardAiBundle } from './sections/_types';
+import { useEffect, useState } from 'react';
+import type { LiveStage, WizardAiBundle } from './sections/_types';
 
 type Props = {
   // Subset of the bundle the card actually renders. Keeps callers
@@ -34,19 +34,9 @@ export function ExtractionProgress({ live }: Props) {
   const elapsedSec = useElapsedSeconds(live.startedAt);
   const total = live.productKeys.length;
   const completed = live.completedCount;
-  const failed = useMemo(
-    () => Object.values(live.statuses).filter((s) => s === 'failed').length,
-    [live.statuses],
-  );
-
-  const percent = useMemo(
-    () => calcPercent(live.stage, completed, total),
-    [live.stage, completed, total],
-  );
-  const stageLabel = useMemo(
-    () => stageHeading(live.stage, completed, total),
-    [live.stage, completed, total],
-  );
+  const failed = Object.values(live.statuses).filter((s) => s === 'failed').length;
+  const percent = calcPercent(live.stage, completed, total);
+  const stageLabel = stageHeading(live.stage, completed, total);
 
   return (
     <Card
@@ -373,25 +363,17 @@ function formatElapsed(seconds: number): string {
   return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
-function calcPercent(stage: string, completed: number, total: number): number {
+function calcPercent(stage: LiveStage, completed: number, total: number): number {
   // Discovery alone weighted at ~15% of perceived progress.
   // Per-product fan-out is the bulk (15-95%).
   if (stage === 'AI_DISCOVERY') return 8;
-  if (stage === 'AI_PRODUCTS') {
-    if (total === 0) return 12;
-    return Math.min(95, 15 + Math.round((completed / total) * 80));
-  }
-  return 4;
+  if (total === 0) return 12;
+  return Math.min(95, 15 + Math.round((completed / total) * 80));
 }
 
-function stageHeading(stage: string, completed: number, total: number): string {
-  if (stage === 'AI_DISCOVERY') {
-    return 'Identifying products in the workbook…';
-  }
-  if (stage === 'AI_PRODUCTS') {
-    if (total === 0) return 'Preparing per-product extraction…';
-    if (completed === total) return 'Finalising extraction…';
-    return `Extracting product ${completed + 1} of ${total}`;
-  }
-  return 'Starting AI extraction…';
+function stageHeading(stage: LiveStage, completed: number, total: number): string {
+  if (stage === 'AI_DISCOVERY') return 'Identifying products in the workbook…';
+  if (total === 0) return 'Preparing per-product extraction…';
+  if (completed === total) return 'Finalising extraction…';
+  return `Extracting product ${completed + 1} of ${total}`;
 }

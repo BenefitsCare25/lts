@@ -6,43 +6,32 @@
 //
 // We re-use packages/catalogue-schemas/extracted-product.json
 // verbatim so the per-product shape stays in lock-step with the
-// catalogue contract. The Ajv-compiled validator is exported as a
-// singleton; the runner uses it to enforce the contract on every
-// model response.
+// catalogue contract. The compiled validator is cached via the
+// shared catalogue Ajv singleton so repeat extractions in the same
+// process reuse the compile.
 //
 // Tool input schema sanitisation (strip $schema/$id) happens in the
-// runner — Anthropic rejects schemas with $schema keys, OpenAI's
-// strict mode rejects some draft-7 idioms. The compiled validator
-// here keeps the full schema (Ajv handles it fine).
+// runner via foundry-client.stripSchemaMeta — Anthropic rejects
+// schemas with $schema keys, OpenAI's strict mode rejects some
+// draft-7 idioms. The compiled validator here keeps the full schema.
 // =============================================================
 
-import Ajv, { type ValidateFunction } from 'ajv';
-import addFormats from 'ajv-formats';
+import { type ValidateFunction, formatAjvError, safeCompile } from '@/server/catalogue/ajv';
 import extractedProductSchema from '../../../../../../packages/catalogue-schemas/extracted-product.json';
-
-const ajv = new Ajv({
-  allErrors: true,
-  removeAdditional: false,
-  strict: false,
-});
-addFormats(ajv);
 
 export const productSchema = extractedProductSchema as Record<string, unknown>;
 
-let _validator: ValidateFunction | null = null;
 export function getProductValidator(): ValidateFunction {
-  if (!_validator) {
-    _validator = ajv.compile(productSchema);
+  const result = safeCompile(productSchema, 'extraction:product-v1');
+  if (!result.ok) {
+    throw new Error(`Product schema failed to compile: ${result.error}`);
   }
-  return _validator;
+  return result.validate;
 }
 
 export function formatProductAjvErrors(errors: ValidateFunction['errors']): string {
   if (!errors || errors.length === 0) return '(no error details)';
-  return errors
-    .slice(0, 12)
-    .map((e) => `${e.instancePath || '/'} ${e.message ?? 'invalid'}`)
-    .join('\n');
+  return errors.slice(0, 12).map(formatAjvError).join('\n');
 }
 
 export const PRODUCT_TOOL_NAME = 'emit_product';

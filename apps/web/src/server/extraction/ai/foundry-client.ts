@@ -92,6 +92,29 @@ export type FoundryUsage = {
   cacheCreationTokens: number;
 };
 
+export const emptyUsage = (): FoundryUsage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+});
+
+export const addUsage = (a: FoundryUsage, b: FoundryUsage): FoundryUsage => ({
+  inputTokens: a.inputTokens + b.inputTokens,
+  outputTokens: a.outputTokens + b.outputTokens,
+  cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
+  cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
+});
+
+// Anthropic rejects schemas containing $schema / $id keys at the
+// tool-input boundary (OpenAI's strict mode also chokes on some
+// draft-7 idioms with these present). Strip them; the runner-side
+// Ajv still validates the full schema.
+export function stripSchemaMeta(schema: Record<string, unknown>): Record<string, unknown> {
+  const { $schema: _s, $id: _id, ...rest } = schema;
+  return rest;
+}
+
 export type FoundryCallResult =
   | {
       ok: true;

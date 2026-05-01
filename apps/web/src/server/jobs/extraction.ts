@@ -170,43 +170,25 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     `[ai-extraction] heuristic done products=${heuristic.extractedProducts.length} issues=${heuristic.parseResult.issues.length}`,
   );
 
-  await markProgress(uploadId, {
-    stage: 'CALLING_AI',
-    sheetsCount: undefined,
-  });
-
   // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
   console.log('[ai-extraction] calling AI runner');
+
+  const liveState = newLiveState();
+  // Stamp the wizard with an in-progress state immediately so the UI
+  // shows the progress card during the runner's 1-3s setup window
+  // (provider load, key decrypt, workbook serialize) before the first
+  // discovery_started event lands.
+  liveState.startedAt = new Date().toISOString();
+  await persistLiveState(uploadId, liveState);
+
   const aiResult = await runAiExtraction({
     db,
     tenantSlug: tenant.slug,
     workbookBuffer: buffer,
     heuristicProducts: heuristic.extractedProducts,
     onProgress: async (event) => {
-      // Stream live status to ExtractionDraft.progress so the wizard's
-      // poll picks it up. The job maintains a per-key status map under
-      // `progress.live` that the wizard renders as a per-product list.
-      if (event.kind === 'discovery_started') {
-        await mergeLiveProgress(uploadId, {
-          stage: 'AI_DISCOVERY',
-          startedAt: new Date().toISOString(),
-        });
-      } else if (event.kind === 'discovery_done') {
-        await mergeLiveProgress(uploadId, {
-          stage: 'AI_PRODUCTS',
-          productKeys: event.productKeys,
-        });
-      } else if (event.kind === 'product_started') {
-        await mergeLiveProgress(uploadId, {
-          stage: 'AI_PRODUCTS',
-          productInFlight: event.productKey,
-        });
-      } else if (event.kind === 'product_done') {
-        await mergeLiveProgress(uploadId, {
-          stage: 'AI_PRODUCTS',
-          productCompleted: { key: event.productKey, ok: event.ok },
-        });
-      }
+      applyEventToLive(liveState, event);
+      await persistLiveState(uploadId, liveState);
     },
   });
 
@@ -321,126 +303,73 @@ async function markFailed(
   });
 }
 
-// Lightweight progress update — the wizard's poll picks it up. Kept
-// idempotent so retries don't trample a later state.
-async function markProgress(
-  uploadId: string,
-  progress: { stage: string; sheetsCount?: number | undefined },
-): Promise<void> {
-  const draft = await prisma.extractionDraft.findUnique({
-    where: { uploadId },
-    select: { id: true, progress: true, status: true },
-  });
-  if (!draft) return;
-  if (draft.status !== 'EXTRACTING') return; // already terminal
-  const existing =
-    draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
-      ? (draft.progress as Record<string, unknown>)
-      : {};
-  await prisma.extractionDraft.update({
-    where: { id: draft.id },
-    data: {
-      progress: {
-        ...existing,
-        stage: progress.stage,
-        ...(progress.sheetsCount != null ? { sheetsCount: progress.sheetsCount } : {}),
-      } as unknown as Prisma.InputJsonValue,
-    },
-  });
-}
-
-// Live progress merger used by the runner's onProgress callback.
-// Maintains a per-key status map under `progress.live` so the wizard
-// can render the full per-product list with running / ok / failed /
-// queued indicators.
-//
-// Shape persisted under progress.live:
-//   {
-//     stage:          'AI_DISCOVERY' | 'AI_PRODUCTS',
-//     startedAt:      ISO string set on discovery_started,
-//     productKeys:    string[]     // full manifest order
-//     statuses:       Record<key, 'queued'|'running'|'ok'|'failed'>
-//     completedCount: number       // ok+failed only
-//     lastCompleted:  { key, ok } | null
-//   }
-//
-// Each call mutates the slice it owns and leaves everything else
-// untouched. Idempotent under the wizard's 2s poll.
-type LiveProgressUpdate = {
-  stage: string;
+// Live progress state. Owned by the in-flight job in memory; the
+// worker is the only writer of `progress.live` during EXTRACTING, so
+// we don't read the row back on every event — we mutate locally and
+// persist with a status-gated updateMany. This eliminates one DB
+// roundtrip per event (3-15 events per extraction).
+type LiveStage = 'AI_DISCOVERY' | 'AI_PRODUCTS';
+type LiveStatus = 'queued' | 'running' | 'ok' | 'failed';
+type LiveState = {
+  stage: LiveStage;
   startedAt?: string;
   productKeys?: string[];
-  productInFlight?: string;
-  productCompleted?: { key: string; ok: boolean };
-};
-
-type LiveProgressShape = {
-  stage: string;
-  startedAt?: string;
-  productKeys?: string[];
-  statuses?: Record<string, 'queued' | 'running' | 'ok' | 'failed'>;
-  completedCount?: number;
+  statuses: Record<string, LiveStatus>;
+  completedCount: number;
   lastCompleted?: { key: string; ok: boolean };
 };
 
-async function mergeLiveProgress(uploadId: string, update: LiveProgressUpdate): Promise<void> {
-  const draft = await prisma.extractionDraft.findUnique({
-    where: { uploadId },
-    select: { id: true, progress: true, status: true },
-  });
-  if (!draft) return;
-  if (draft.status !== 'EXTRACTING') return;
+function newLiveState(): LiveState {
+  return { stage: 'AI_DISCOVERY', statuses: {}, completedCount: 0 };
+}
 
-  const existing =
-    draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
-      ? (draft.progress as Record<string, unknown>)
-      : {};
-  const existingLive: LiveProgressShape =
-    existing.live && typeof existing.live === 'object' && !Array.isArray(existing.live)
-      ? (existing.live as LiveProgressShape)
-      : { stage: update.stage };
+// Apply a runner progress event to the live state in place. Returns
+// the same reference (or a swapped one) so the caller can persist the
+// post-event snapshot. Discriminated union keeps the switch exhaustive.
+type RunnerProgressEvent = Parameters<
+  NonNullable<Parameters<typeof runAiExtraction>[0]['onProgress']>
+>[0];
 
-  const nextStatuses: Record<string, 'queued' | 'running' | 'ok' | 'failed'> = {
-    ...(existingLive.statuses ?? {}),
-  };
-
-  // discovery_done seeded the manifest; mark every key as queued so
-  // the UI renders the full list immediately.
-  if (update.productKeys) {
-    for (const k of update.productKeys) {
-      if (!nextStatuses[k]) nextStatuses[k] = 'queued';
+function applyEventToLive(state: LiveState, event: RunnerProgressEvent): void {
+  if (event.kind === 'discovery_started') {
+    state.stage = 'AI_DISCOVERY';
+    state.startedAt = new Date().toISOString();
+    return;
+  }
+  if (event.kind === 'discovery_done') {
+    state.stage = 'AI_PRODUCTS';
+    state.productKeys = event.productKeys;
+    for (const k of event.productKeys) {
+      if (!state.statuses[k]) state.statuses[k] = 'queued';
     }
+    return;
   }
-  if (update.productInFlight) {
-    nextStatuses[update.productInFlight] = 'running';
+  if (event.kind === 'product_started') {
+    state.stage = 'AI_PRODUCTS';
+    state.statuses[event.productKey] = 'running';
+    return;
   }
-  if (update.productCompleted) {
-    nextStatuses[update.productCompleted.key] = update.productCompleted.ok ? 'ok' : 'failed';
+  if (event.kind === 'product_done') {
+    state.stage = 'AI_PRODUCTS';
+    state.statuses[event.productKey] = event.ok ? 'ok' : 'failed';
+    state.completedCount = Object.values(state.statuses).filter(
+      (s) => s === 'ok' || s === 'failed',
+    ).length;
+    state.lastCompleted = { key: event.productKey, ok: event.ok };
   }
+}
 
-  const completedCount = Object.values(nextStatuses).filter(
-    (s) => s === 'ok' || s === 'failed',
-  ).length;
-
-  const startedAt = update.startedAt ?? existingLive.startedAt;
-  const productKeys = update.productKeys ?? existingLive.productKeys;
-  const lastCompleted = update.productCompleted ?? existingLive.lastCompleted;
-  const nextLive: LiveProgressShape = {
-    stage: update.stage,
-    statuses: nextStatuses,
-    completedCount,
-    ...(startedAt !== undefined ? { startedAt } : {}),
-    ...(productKeys !== undefined ? { productKeys } : {}),
-    ...(lastCompleted !== undefined ? { lastCompleted } : {}),
-  };
-
-  await prisma.extractionDraft.update({
-    where: { id: draft.id },
+// Persist the live state. updateMany is gated on status === EXTRACTING
+// so a draft that reached a terminal state (FAILED via markFailed,
+// READY via the success path) silently absorbs late events without a
+// findUnique roundtrip.
+async function persistLiveState(uploadId: string, state: LiveState): Promise<void> {
+  await prisma.extractionDraft.updateMany({
+    where: { uploadId, status: 'EXTRACTING' },
     data: {
       progress: {
-        ...existing,
-        stage: update.stage,
-        live: nextLive,
+        stage: state.stage,
+        live: state,
       } as unknown as Prisma.InputJsonValue,
     },
   });

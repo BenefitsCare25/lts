@@ -23,7 +23,10 @@ import {
   ESCALATED_OUTPUT_TOKENS,
   type FoundryProvider,
   type FoundryUsage,
+  addUsage,
   callFoundry,
+  emptyUsage,
+  stripSchemaMeta,
 } from './foundry-client';
 import { buildProductUserPrompt } from './prompt-product';
 import type { ProductManifestEntry } from './schema-discovery';
@@ -117,7 +120,7 @@ export async function runProductPass(input: ProductPassInput): Promise<ProductPa
   });
 
   const cumulativeLatency = first.latencyMs + second.latencyMs;
-  const cumulativeUsage = sumUsage(usageOf(first), usageOf(second));
+  const cumulativeUsage = addUsage(usageOf(first), usageOf(second));
 
   if (second.kind === 'fatal') {
     return {
@@ -238,30 +241,7 @@ async function singleAttempt(args: {
   };
 }
 
-function stripSchemaMeta(schema: Record<string, unknown>): Record<string, unknown> {
-  const { $schema, $id, ...rest } = schema;
-  void $schema;
-  void $id;
-  return rest;
-}
-
 function usageOf(a: SingleAttempt): FoundryUsage {
   if (a.kind === 'ok') return a.usage;
-  return (
-    a.usage ?? {
-      inputTokens: 0,
-      outputTokens: 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-    }
-  );
-}
-
-function sumUsage(a: FoundryUsage, b: FoundryUsage): FoundryUsage {
-  return {
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
-    cacheReadTokens: a.cacheReadTokens + b.cacheReadTokens,
-    cacheCreationTokens: a.cacheCreationTokens + b.cacheCreationTokens,
-  };
+  return a.usage ?? emptyUsage();
 }

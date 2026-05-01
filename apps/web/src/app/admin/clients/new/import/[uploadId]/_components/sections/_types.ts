@@ -170,6 +170,9 @@ export type ProposedPool = {
   sourceRef?: SourceRef;
 } | null;
 
+export type LiveStage = 'AI_DISCOVERY' | 'AI_PRODUCTS';
+export type LiveProductStatus = 'queued' | 'running' | 'ok' | 'failed';
+
 export type WizardAiBundle = {
   proposedClient: ProposedClient | null;
   proposedPolicyEntities: ProposedPolicyEntity[];
@@ -185,10 +188,10 @@ export type WizardAiBundle = {
   // streaming callback. Null when no run is active. Drives the
   // ExtractionProgress card.
   live: {
-    stage: 'AI_DISCOVERY' | 'AI_PRODUCTS' | string;
+    stage: LiveStage;
     startedAt: string | null; // ISO timestamp; client computes elapsed
     productKeys: string[]; // full manifest order, set on discovery_done
-    statuses: Record<string, 'queued' | 'running' | 'ok' | 'failed'>;
+    statuses: Record<string, LiveProductStatus>;
     completedCount: number;
     lastCompleted: { key: string; ok: boolean } | null;
   } | null;
@@ -230,10 +233,10 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     warnings?: string[];
     stage?: string;
     live?: {
-      stage?: string;
+      stage?: LiveStage;
       startedAt?: string;
       productKeys?: string[];
-      statuses?: Record<string, 'queued' | 'running' | 'ok' | 'failed'>;
+      statuses?: Record<string, LiveProductStatus>;
       completedCount?: number;
       lastCompleted?: { key: string; ok: boolean };
     };
@@ -242,7 +245,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
   };
   const live: WizardAiBundle['live'] = p.live
     ? {
-        stage: p.live.stage ?? p.stage ?? 'AI_DISCOVERY',
+        stage: p.live.stage ?? 'AI_DISCOVERY',
         startedAt: p.live.startedAt ?? null,
         productKeys: p.live.productKeys ?? [],
         statuses: p.live.statuses ?? {},
