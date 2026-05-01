@@ -139,18 +139,31 @@
     "grandComputed_max": 2650,
     "perProduct": [
       { "productTypeCode": "GTL", "insurerCode": "TM_LIFE", "status": ["OK"] },
-      { "productTypeCode": "GHS", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
-      { "productTypeCode": "GP", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
-      { "productTypeCode": "SP", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
-      { "productTypeCode": "Dental", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
+      {
+        "productTypeCode": "GHS",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "GP",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "SP",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "Dental",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
       { "productTypeCode": "GPA", "insurerCode": "ALLIED_WORLD", "status": ["OK"] },
       { "productTypeCode": "WICI", "insurerCode": "ALLIED_WORLD", "status": ["OK"] }
     ]
   },
 
   "_expectedWarnings_comment": "AI should surface these as workbook-level warnings when extraction completes. Substring matches; case-insensitive.",
-  "expectedWarnings": [
-    "allied world",
-    "min"
-  ]
+  "expectedWarnings": ["allied world", "min"]
 }
