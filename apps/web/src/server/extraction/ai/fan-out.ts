@@ -39,18 +39,25 @@ export type FanOutInput = {
   }>;
   // Concurrency cap. Defaults to 3.
   concurrency?: number;
-  // Called whenever a pass completes (success or failure). The
-  // runner uses this to update ExtractionDraft.progress so the
-  // wizard's poll picks up real-time progress.
+  // Called whenever a pass starts or completes. The runner uses this
+  // to update ExtractionDraft.progress so the wizard's poll picks up
+  // real-time progress (live "in-progress" indicators per product).
   onProgress?: (event: ProgressEvent) => Promise<void> | void;
 };
 
-export type ProgressEvent = {
-  productKey: string; // `${productTypeCode}::${insurerCode}`
-  index: number; // 1-based among manifests, in completion order
-  total: number;
-  result: ProductPassResult;
-};
+export type ProgressEvent =
+  | {
+      kind: 'started';
+      productKey: string;
+      total: number;
+    }
+  | {
+      kind: 'completed';
+      productKey: string;
+      index: number; // 1-based among manifests, in completion order
+      total: number;
+      result: ProductPassResult;
+    };
 
 export type FanOutResult = {
   successes: Array<Extract<ProductPassResult, { ok: true }>>;
@@ -78,6 +85,16 @@ export async function runProductPasses(input: FanOutInput): Promise<FanOutResult
       const entry = input.manifests[i];
       if (!entry) return;
 
+      const productKey = `${entry.manifest.productTypeCode}::${entry.manifest.insurerCode}`;
+
+      if (input.onProgress) {
+        try {
+          await input.onProgress({ kind: 'started', productKey, total });
+        } catch {
+          // Progress emission failures must not poison the run.
+        }
+      }
+
       const result = await runProductPass({
         ...input.perCallBase,
         manifest: entry.manifest,
@@ -89,9 +106,9 @@ export async function runProductPasses(input: FanOutInput): Promise<FanOutResult
 
       completedCount++;
       if (input.onProgress) {
-        const productKey = `${entry.manifest.productTypeCode}::${entry.manifest.insurerCode}`;
         try {
           await input.onProgress({
+            kind: 'completed',
             productKey,
             index: completedCount,
             total,
@@ -99,8 +116,6 @@ export async function runProductPasses(input: FanOutInput): Promise<FanOutResult
           });
         } catch {
           // Progress emission failures must not poison the run.
-          // The wizard will pick up the final state when fan-out
-          // returns; missed mid-flight events are harmless.
         }
       }
     }
