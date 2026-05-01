@@ -126,9 +126,21 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
             <>
               <p className="field-help mb-3">
                 {aiBundle.ai
-                  ? `Last run: ${aiBundle.ai.model} · ${aiBundle.ai.sheetsCount} sheet${
-                      aiBundle.ai.sheetsCount === 1 ? '' : 's'
-                    } in ${(aiBundle.ai.latencyMs / 1000).toFixed(1)}s · ${aiBundle.ai.inputTokens.toLocaleString()} input + ${aiBundle.ai.outputTokens.toLocaleString()} output tokens.`
+                  ? (() => {
+                      const ai = aiBundle.ai;
+                      const productsLine =
+                        typeof ai.productsExtracted === 'number' &&
+                        typeof ai.productsRequested === 'number'
+                          ? ` · ${ai.productsExtracted}/${ai.productsRequested} products extracted${
+                              ai.productsFailed && ai.productsFailed > 0
+                                ? ` (${ai.productsFailed} failed — see warnings)`
+                                : ''
+                            }`
+                          : '';
+                      return `Last run: ${ai.model} · ${ai.sheetsCount} sheet${
+                        ai.sheetsCount === 1 ? '' : 's'
+                      } in ${(ai.latencyMs / 1000).toFixed(1)}s · ${ai.inputTokens.toLocaleString()} input + ${ai.outputTokens.toLocaleString()} output tokens${productsLine}.`;
+                    })()
                   : 'AI extraction reads the workbook with your tenant’s configured Claude/Foundry deployment and pre-fills the wizard’s sections (client details, policy entities, benefit year, products, plans, premium rates, eligibility). Heuristic-extracted cells with full confidence are preserved; the AI fills the rest.'}
               </p>
               {aiBundle.ai?.workbookTruncated ? (
