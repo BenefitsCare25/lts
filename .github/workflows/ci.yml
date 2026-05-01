@@ -198,11 +198,16 @@ jobs:
       - name: Detect infra changes
         id: infra
         run: |
+          # Only deployment-relevant files trigger the slow full-Bicep
+          # path. Docs/READMEs/markdown inside infra/ are intentionally
+          # excluded — touching one used to redeploy the entire ARM
+          # template AND clobber Container App secrets with whatever
+          # happened to be in GitHub Actions secrets at the time.
           BEFORE="${{ github.event.before }}"
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            DIFF=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- infra/ 2>/dev/null || true)
+            DIFF=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- 'infra/**/*.bicep' 'infra/**/*.json' 2>/dev/null || true)
             [ -n "$DIFF" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -296,6 +301,51 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --image "${{ steps.acr.outputs.server }}/insurance-saas-web:${{ github.sha }}"
           echo "Fast deploy complete — image updated, Bicep skipped."
+
+      - name: Verify deploy secrets before Bicep
+        if: steps.infra.outputs.changed == 'true'
+        env:
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          SHAREPOINT_TENANT_ID: ${{ secrets.SHAREPOINT_TENANT_ID }}
+          SHAREPOINT_CLIENT_ID: ${{ secrets.SHAREPOINT_CLIENT_ID }}
+          SHAREPOINT_CLIENT_SECRET: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
+          SHAREPOINT_SERVICE_ACCOUNT_USERNAME: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_USERNAME }}
+          SHAREPOINT_SERVICE_ACCOUNT_PASSWORD: ${{ secrets.SHAREPOINT_SERVICE_ACCOUNT_PASSWORD }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+        # Bicep's `az deployment group create` faithfully writes whatever
+        # value we pass for each secret param into the Container App's
+        # secret bag, overwriting whatever was there. A placeholder /
+        # empty / mis-set GitHub Actions secret silently kills the
+        # running app on the next revision boot. Fail loud here BEFORE
+        # we touch live infra. Length thresholds match production env
+        # validation in apps/web/src/server/env/*.ts and Azure resource
+        # password policies. Values are never echoed — only lengths.
+        run: |
+          fail=0
+          check() {
+            local name="$1" min_len="$2" value="$3"
+            local len=${#value}
+            if [ "$len" -lt "$min_len" ]; then
+              echo "::error::GitHub repo secret $name is $len chars; required >= $min_len. Bicep would silently overwrite the live Container App secret with this junk value and kill the running app. Fix via 'gh secret set $name' before re-running this deploy."
+              fail=1
+            else
+              echo "$name: $len chars (ok)"
+            fi
+          }
+          check AUTH_SECRET 32 "$AUTH_SECRET"
+          check APP_SECRET_KEY 32 "$APP_SECRET_KEY"
+          check POSTGRES_ADMIN_PASSWORD 16 "$POSTGRES_ADMIN_PASSWORD"
+          check SHAREPOINT_TENANT_ID 30 "$SHAREPOINT_TENANT_ID"
+          check SHAREPOINT_CLIENT_ID 30 "$SHAREPOINT_CLIENT_ID"
+          check SHAREPOINT_CLIENT_SECRET 20 "$SHAREPOINT_CLIENT_SECRET"
+          check SHAREPOINT_SERVICE_ACCOUNT_USERNAME 5 "$SHAREPOINT_SERVICE_ACCOUNT_USERNAME"
+          check SHAREPOINT_SERVICE_ACCOUNT_PASSWORD 8 "$SHAREPOINT_SERVICE_ACCOUNT_PASSWORD"
+          if [ "$fail" -eq 1 ]; then
+            echo "::error::One or more deploy secrets failed validation. Aborting Bicep deploy to prevent clobbering live Container App secrets."
+            exit 1
+          fi
+          echo "All deploy secrets pass length checks."
 
       - name: Deploy — full Bicep (infra changed)
         if: steps.infra.outputs.changed == 'true'
