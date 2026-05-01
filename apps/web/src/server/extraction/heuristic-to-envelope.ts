@@ -47,6 +47,8 @@ export type PolicyEntityField = {
   legalName: string;
   policyNumber: string | null;
   address: string | null;
+  siteCode: string | null;
+  headcountEstimate: number | null;
   isMaster: boolean;
   confidence: number;
   sourceRef?: SourceRef;
@@ -66,8 +68,16 @@ export type PlanField = {
   rawName: string;
   code: string;
   name: string;
-  coverBasis: 'per_cover_tier' | 'salary_multiple' | 'fixed_amount' | 'per_region';
+  coverBasis:
+    | 'per_cover_tier'
+    | 'salary_multiple'
+    | 'fixed_amount'
+    | 'per_region'
+    | 'earnings_based'
+    | 'per_employee_flat';
+  /** @deprecated use stacksOnRawCodes (array) */
   stacksOnRawCode: string | null;
+  stacksOnRawCodes: string[];
   selectionMode: 'broker_default' | 'employee_flex';
   schedule: Record<string, unknown>;
   confidence: number;
@@ -105,12 +115,15 @@ export type BenefitField = {
 export type ExtractedProduct = {
   productTypeCode: string;
   insurerCode: string;
+  bundledWithProductCode?: string | null;
   header: {
     policyNumber: StringField;
     period: PeriodField;
     lastEntryAge: NumberField;
     administrationType: StringField;
     currency: StringField;
+    declaredPremium?: NumberField;
+    nonEvidenceLimit?: StringField;
   };
   policyholder: {
     legalName: StringField;
@@ -279,33 +292,87 @@ function derivePlanCode(label: string, index: number): string {
   return `P_${index + 1}`;
 }
 
-// Sniff "additional above Plan X" → "X" (the rider-base hint that
-// drives Plan.stacksOn). Same regex the parser uses, kept here so
-// the extractor can re-derive it from raw plan text if needed.
-function sniffStacksOnFromText(text: string): string | null {
-  const m = text.match(/additional\s+above\s+Plan\s+([A-Z0-9]+)/i);
-  return m?.[1] ?? null;
+// Sniff "additional above Plan X" or "additional above Plan X / Plan Y"
+// → ["X"] or ["X","Y"]. Returns empty array when no stacking found.
+function sniffStacksOnFromText(text: string): string[] {
+  const normalised = text.replace(/\n/g, ' ').replace(/\s+/g, ' ');
+  // "additional above Plan A / Plan B" or "additional above Plan A and Plan B"
+  const multiM = normalised.match(
+    /additional\s+above\s+Plan\s+([A-Z0-9]+)\s*(?:\/|and)\s*Plan\s+([A-Z0-9]+)/i,
+  );
+  if (multiM) return [(multiM[1] ?? '').toUpperCase(), (multiM[2] ?? '').toUpperCase()];
+  const singleM = normalised.match(/additional\s+above\s+Plan\s+([A-Z0-9]+)/i);
+  if (singleM) return [(singleM[1] ?? '').toUpperCase()];
+  return [];
 }
 
-// Sniff multiplier "36 x LDBMS" → 36.
-function sniffMultiplier(text: string): number | null {
-  const m = text.match(/(\d{1,3})\s*[x×]\s*(?:LDBMS|last\s*drawn|monthly\s*salary)/i);
-  return m ? Number.parseInt(m[1] ?? '', 10) : null;
+type PlanScheduleResult = {
+  basis: PlanField['coverBasis'];
+  schedule: Partial<{
+    multiplier: number;
+    sumAssured: number;
+    ratePerEmployee: number;
+  }>;
+};
+
+// Comprehensive schedule pattern matching (item 2.1).
+// Order matters: more-specific patterns first to avoid false positives.
+export function parseScheduleFromFormula(formula: string | null): PlanScheduleResult | null {
+  if (!formula) return null;
+  const cleaned = formula.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Salary multiple: "36 x LDBMS", "36×Last Drawn Basic Monthly Salary"
+  const multM = cleaned.match(
+    /(\d+(?:\.\d+)?)\s*[x×]\s*(?:LDBMS|last\s+drawn|monthly\s+salary|basic\s+monthly)/i,
+  );
+  if (multM) {
+    const value = Number.parseFloat(multM[1] ?? '');
+    if (Number.isFinite(value))
+      return { basis: 'salary_multiple', schedule: { multiplier: value } };
+  }
+
+  // Per-employee flat rate: "$9.50 per insured person", "9.5 per life"
+  const perEmpM = cleaned.match(
+    /S?\$?\s*([\d,]+(?:\.\d+)?)\s*(?:per\s+)?(?:insured|employee|person|life|head|pax)/i,
+  );
+  if (perEmpM) {
+    const value = Number.parseFloat((perEmpM[1] ?? '').replace(/,/g, ''));
+    if (Number.isFinite(value))
+      return { basis: 'per_employee_flat', schedule: { ratePerEmployee: value } };
+  }
+
+  // Fixed sum assured: "$50,000" or "S$50,000" or bare "50000"
+  const fixedM = cleaned.match(/^S?\$?\s*([\d,]+(?:\.\d+)?)\s*$/);
+  if (fixedM) {
+    const value = Number.parseFloat((fixedM[1] ?? '').replace(/,/g, ''));
+    if (Number.isFinite(value)) return { basis: 'fixed_amount', schedule: { sumAssured: value } };
+  }
+
+  return null;
 }
 
-// Sniff fixed sum "$10,000" or "10000" — a numeric followed by no x.
-function sniffFixedSum(text: string): number | null {
-  const m = text.match(/\$?\s*([\d,]+)\b/);
-  if (!m) return null;
-  const n = Number.parseFloat((m[1] ?? '').replace(/,/g, ''));
-  return Number.isFinite(n) ? n : null;
+// Site-code sniff: a non-master entity address that looks like a short
+// location code (≤6 uppercase/digit chars, no spaces, not a postal code).
+// Examples: "AMK", "TPY", "HQ", "JTC-AW". Full Singapore postal codes
+// are 6 digits — excluded so we don't misclassify them.
+function sniffSiteCode(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const trimmed = address.trim();
+  if (/^\d{6}$/.test(trimmed)) return null; // postal code
+  if (/^[A-Z0-9][A-Z0-9\-]{0,5}$/.test(trimmed)) return trimmed;
+  return null;
 }
 
 function envelopePolicyEntity(e: ParsedPolicyEntity): PolicyEntityField {
+  // ParsedPolicyEntity doesn't carry an address field from the heuristic
+  // parser; the AI pass fills it in. Heuristic confidence stays 0.95 for
+  // the structural fields we do have.
   return {
     legalName: e.legalName,
     policyNumber: e.policyNumber || null,
     address: null,
+    siteCode: null,
+    headcountEstimate: null,
     isMaster: e.isMaster,
     confidence: 0.95,
   };
@@ -342,27 +409,35 @@ function envelopeProduct(
   const plans: PlanField[] = parsed.plans.map((p, i) => {
     const label = String(p.code).trim();
     const code = derivePlanCode(label, i);
-    const stacksOnFromHint = p.stacksOnLabel
-      ? p.stacksOnLabel.replace(/^Plan\s+/i, '').trim()
+
+    // Multi-parent stacking: prefer explicit parser hint, then sniff from label.
+    const stacksOnRawCodes: string[] = p.stacksOnLabel
+      ? [
+          p.stacksOnLabel
+            .replace(/^Plan\s+/i, '')
+            .trim()
+            .toUpperCase(),
+        ]
       : sniffStacksOnFromText(label);
-    // Schedule seed: only the multiplier / sumAssured are inferable
-    // from the label. Tier-banded schedules need the schedule-of-
-    // benefits sheet, which the broker fills via the Plans tab.
-    const schedule: Record<string, unknown> = {};
-    if (coverBasis === 'salary_multiple') {
-      const mult = sniffMultiplier(label);
-      if (mult != null) schedule.multiplier = mult;
-    } else if (coverBasis === 'fixed_amount') {
-      const sum = sniffFixedSum(label);
-      if (sum != null) schedule.sumAssured = sum;
+
+    // Schedule: try the comprehensive formula parser first (works on the
+    // full label text), then fall back to the product-level coverBasis.
+    const parsed2 = parseScheduleFromFormula(label);
+    let effectiveCoverBasis = coverBasis;
+    let schedule: Record<string, unknown> = {};
+    if (parsed2) {
+      effectiveCoverBasis = parsed2.basis;
+      schedule = parsed2.schedule;
     }
+
     return {
       rawCode: label,
       rawName: label,
       code,
       name: label,
-      coverBasis,
-      stacksOnRawCode: stacksOnFromHint,
+      coverBasis: effectiveCoverBasis,
+      stacksOnRawCode: stacksOnRawCodes[0] ?? null, // deprecated singular
+      stacksOnRawCodes,
       selectionMode: 'broker_default',
       schedule,
       confidence: 0.9,
@@ -439,6 +514,17 @@ function envelopeProduct(
   };
 }
 
+// Extract business description from the first product that has it (EX-7).
+// Placement slips carry "Business: <text>" on every product sheet but
+// it's the same for the whole workbook — take the first non-empty value.
+function extractBusinessDescription(parseResult: ParseResult): string | null {
+  for (const product of parseResult.products) {
+    const desc = product.fields.business_description ?? product.fields.business;
+    if (typeof desc === 'string' && desc.trim().length > 0) return desc.trim();
+  }
+  return null;
+}
+
 export type CatalogueLookup = {
   productTypeStrategy: Record<string, string>; // productTypeCode → premiumStrategy
   parsingRules: Record<string, Record<string, ParsingRules>>; // productTypeCode → insurerCode → ParsingRules
@@ -449,6 +535,8 @@ export function envelopeFromParseResult(
   catalogue: CatalogueLookup,
 ): ExtractedProduct[] {
   const policyEntities = parseResult.policyEntities ?? [];
+  const businessDesc = extractBusinessDescription(parseResult);
+
   return parseResult.products.map((p) => {
     const strategy = catalogue.productTypeStrategy[p.productTypeCode] ?? null;
     const product = envelopeProduct(
@@ -458,6 +546,20 @@ export function envelopeFromParseResult(
       p.templateInsurerCode,
       p.productTypeCode,
     );
+
+    // Overlay workbook-level businessDescription onto every product (EX-7).
+    if (businessDesc && product.policyholder.businessDescription.value === null) {
+      product.policyholder.businessDescription = stringField(businessDesc);
+    }
+
+    // Sniff siteCode for non-master entities whose "address" looks like a
+    // short site code rather than a registered address (V-5).
+    product.policyholder.insuredEntities = product.policyholder.insuredEntities.map((e) => {
+      if (e.isMaster) return e;
+      const code = sniffSiteCode(e.address);
+      if (!code) return e;
+      return { ...e, address: null, siteCode: code };
+    });
     // Now layer in premium rates, walking parsed.rates per the
     // rate_column_map for this (productType, insurer) pair.
     const rules = catalogue.parsingRules[p.productTypeCode]?.[p.templateInsurerCode];

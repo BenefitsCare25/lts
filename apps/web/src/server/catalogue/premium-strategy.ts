@@ -2,7 +2,13 @@
 // implies. Shared between the wizard-time extractor and the apply-
 // time placement-slips router so the two can't drift.
 
-export type CoverBasis = 'per_cover_tier' | 'salary_multiple' | 'fixed_amount' | 'per_region';
+export type CoverBasis =
+  | 'per_cover_tier'
+  | 'salary_multiple'
+  | 'fixed_amount'
+  | 'per_region'
+  | 'earnings_based'
+  | 'per_employee_flat';
 
 export const COVER_BASIS_BY_STRATEGY: Record<string, CoverBasis> = {
   per_individual_salary_multiple: 'salary_multiple',
