@@ -214,8 +214,8 @@ const productSchema = (extra: Record<string, unknown> = {}) => ({
 });
 
 // ── Per-insurer × per-product parsing rules ────────────────────────────
-// Cell coordinates calibrated against the STM placement slip (see
-// docs/STM_PLACEMENT_SLIP_LAYOUT.md for the full reference).
+// Cell coordinates calibrated against the STM placement slip in
+// reference/.
 //
 // TM_LIFE rules remain placeholder; calibrating them needs the Balance
 // and CUBER reference slips, which are not in the repo. Phase 1 ships

@@ -8,17 +8,6 @@ A multi-agency white-label SaaS platform for insurance brokerage agencies. Broke
 
 The single most important design idea: **the product catalogue is data, not code.** Every insurer product (GTL, GHS, GPA, and so on) is defined by a JSON Schema stored in the database. Product instances are JSONB validated against that schema on every write. Adding a new product never requires a code deploy. If you catch yourself writing product-specific `if` branches in application code, stop — extend the catalogue instead.
 
-## Phase 1 plan (canonical)
-
-The current Phase 1 plan is **`docs/PHASE_1_BUILD_PLAN_v2.md`**. It supersedes `docs/build_brief.md` — if anything in the brief or `docs/architecture.md` conflicts with the v2 plan, the v2 plan wins. The brief is kept as historical reference only; do not start a story from it.
-
-Read order at the start of every session:
-
-1. This file (`CLAUDE.md`).
-2. `docs/PHASE_1_BUILD_PLAN_v2.md` — the plan (sections 1–3 for orientation, then your story's section).
-3. `docs/PROGRESS.md` — what's done, what's next.
-4. Any `proposed`-status ADR under `docs/ADRs/` — pending decisions you may need to honour.
-
 ## Stack
 
 Node.js 22 LTS, TypeScript strict. Next.js 15 with App Router as a single full-stack app. PostgreSQL 16 via Prisma 5. WorkOS AuthKit for authentication, with WorkOS Organizations mapped one-to-one onto our `Tenant` entity (multi-tenancy). Ajv for JSON Schema validation, Zod for API input validation, `@rjsf/core` for auto-generating admin forms from catalogue schemas, `json-logic-js` for benefit group eligibility predicates, `exceljs` for placement slip parsing, BullMQ with Azure Redis for background jobs. Biome for linting and formatting. Vitest for unit and integration tests, Playwright for end-to-end. pnpm for package management.
@@ -60,7 +49,6 @@ prisma/                schema + migrations + seed
 infra/bicep/           Azure IaC (modules: container-app, postgres, redis,
                        app-insights, log-analytics, container-registry, …)
 scripts/               dev bootstrap, codegen
-docs/                  architecture, build brief, ADRs
 ```
 
 ## Commands
@@ -90,7 +78,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Server vs client.** Default to server components. Mark client components explicitly with `"use client"`. Data fetching happens in server components or server actions; client components receive props.
 
-**Data access.** Prisma for all database access. Never write raw SQL except in rare performance-driven cases, which must come with a comment explaining why and an ADR under `docs/ADRs/`.
+**Data access.** Prisma for all database access. Never write raw SQL except in rare performance-driven cases, which must come with a comment explaining why.
 
 **Tenant scoping.** Every tenant-scoped Prisma query goes through `requireTenantContext()` which returns a tenant-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack a `tenantId` filter — bypass is not possible. Postgres row-level security policies enforce the same boundary at the database layer (defence-in-depth). If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use. **Inside routers always reach for `ctx.db` (the tenant-scoped extension), never the bare `prisma` client, when touching one of the 14 TENANT_MODELS** (User, EmployeeSchema, Insurer, TPA, Pool, ProductType, Client, AuditLog, TenantAiProvider, ExtractionDraft, BenefitGroupPreset, EndorsementCatalogue, ExclusionCatalogue, PlacementSlipUpload) — the bare client bypasses the auto-injected tenantId filter and is reserved for non-tenant-scoped models which gate via parent FK joins.
 
@@ -126,7 +114,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **The catalogue is data.** If you need to special-case a product in application code, the special case belongs in the catalogue — extend the JSON Schema, update the ingestion template, update the display template, or pick a different `premiumStrategy`. Application code stays product-agnostic.
 
-**Tenant isolation is absolute.** Every query filters by `tenantId`. Every JSONB field is tenant-scoped. Postgres RLS is the second line of defence. No exceptions without an ADR.
+**Tenant isolation is absolute.** Every query filters by `tenantId`. Every JSONB field is tenant-scoped. Postgres RLS is the second line of defence. No exceptions without explicit human sign-off.
 
 **Versions are immutable.** A published `ProductType` version or a `PUBLISHED` `BenefitYear` cannot be mutated. Changes produce new versions. Old instances continue to validate against their original version until explicitly migrated.
 
@@ -149,7 +137,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 - Render long descriptive paragraphs above the page header explaining what an entity is ("Each client is a legal entity..."). Admins are power users; the labels speak for themselves. Reserve prose for inline `field-help` next to specific inputs only.
 - Catch-and-ignore errors. Either handle them meaningfully or let them propagate with context.
 - Modify migrations that have been applied to any environment beyond local dev. Create a new migration instead.
-- Use raw SQL without an ADR justifying it.
+- Use raw SQL without a comment justifying it.
 - Add a library without considering maintenance overhead. Check: is it actively maintained, well-typed, secure, and does Biome lint its outputs?
 - Copy-paste placement slip values between product instances. Use the seed script or the UI. Copy-pasted data skips validation.
 
@@ -175,9 +163,9 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 ## When stuck
 
-Check `docs/PHASE_1_BUILD_PLAN_v2.md` first — it's the canonical plan. `docs/architecture.md` is supporting context (treat it as superseded where it disagrees with v2). If the question is architectural and the v2 plan doesn't answer it, write an ADR under `docs/ADRs/NNNN-short-title.md` proposing an answer, tag it `status: proposed`, and ask the human. If it's tactical (a library quirk, a type error), search the codebase for similar patterns, then search the web, then ask.
+If the question is architectural and this file doesn't answer it, ask the human. If it's tactical (a library quirk, a type error), search the codebase for similar patterns, then search the web, then ask.
 
-Never silently invent behaviour. If a requirement is ambiguous, ask. If you made an assumption to keep moving, leave a `// TODO(assumption):` comment and flag it in the commit body and the next progress-log entry.
+Never silently invent behaviour. If a requirement is ambiguous, ask. If you made an assumption to keep moving, leave a `// TODO(assumption):` comment and flag it in the commit body.
 
 ## Things that will probably confuse you
 
