@@ -53,11 +53,11 @@ export async function enqueueAiExtraction(data: AiExtractionJobData): Promise<st
   // default). After the job completes, removeOnComplete clears the
   // ID so a future re-run is allowed.
   const job = await queue.add(AI_EXTRACTION_JOB, data, {
-    jobId: `extraction:${data.uploadId}`,
+    jobId: `extraction-${data.uploadId}`,
     attempts: 2,
     backoff: { type: 'exponential', delay: 5_000 },
   });
-  return job.id ?? `extraction:${data.uploadId}`;
+  return job.id ?? `extraction-${data.uploadId}`;
 }
 
 export async function processAiExtraction(job: Job<AiExtractionJobData>): Promise<void> {
