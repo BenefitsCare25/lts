@@ -242,17 +242,16 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     `[ai-extraction] discovery done products=${discovery.output.productManifest.length} latencyMs=${discovery.latencyMs} retried=${discovery.retried}`,
   );
 
-  await safeProgress(onProgress, {
-    kind: 'discovery_done',
-    productKeys: discovery.output.productManifest.map((m) => productKey(m)),
-    latencyMs: discovery.latencyMs,
-    retried: discovery.retried,
-  });
-
   // Empty manifest. The discovery model said there are no products
   // here. Treat as success-with-zero-products (the broker may have
   // uploaded a non-slip workbook or a cover page only).
   if (discovery.output.productManifest.length === 0) {
+    await safeProgress(onProgress, {
+      kind: 'discovery_done',
+      productKeys: [],
+      latencyMs: discovery.latencyMs,
+      retried: discovery.retried,
+    });
     return {
       ok: true,
       products: heuristicProducts,
@@ -298,6 +297,17 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     ...m,
     insurerCode: insurerAlias.get(m.insurerCode) ?? m.insurerCode,
   }));
+
+  // Emit canonicalised keys so the wizard's per-product list keys
+  // match the productKeys used by subsequent product_started/done
+  // events. Emitting raw discovery keys here would leave the list
+  // permanently stuck on "queued" while completedCount increments.
+  await safeProgress(onProgress, {
+    kind: 'discovery_done',
+    productKeys: canonicalisedManifest.map((m) => productKey(m)),
+    latencyMs: discovery.latencyMs,
+    retried: discovery.retried,
+  });
 
   // ───── Stage 2: per-product fan-out ─────
   const heuristicByKey = indexHeuristic(canonicalisedHeuristic);
@@ -701,17 +711,17 @@ function computeOverallConfidence(p: ExtractedProduct): number {
   const push = (e: { confidence?: number } | undefined): void => {
     if (e && typeof e.confidence === 'number') samples.push(e.confidence);
   };
-  push(p.header.policyNumber);
-  push(p.header.period);
-  push(p.header.lastEntryAge);
-  push(p.header.administrationType);
-  push(p.header.currency);
-  push(p.policyholder.legalName);
-  push(p.policyholder.uen);
-  push(p.policyholder.address);
-  for (const pl of p.plans) push(pl);
-  for (const r of p.premiumRates) push(r);
-  for (const b of p.benefits) push(b);
+  push(p.header?.policyNumber);
+  push(p.header?.period);
+  push(p.header?.lastEntryAge);
+  push(p.header?.administrationType);
+  push(p.header?.currency);
+  push(p.policyholder?.legalName);
+  push(p.policyholder?.uen);
+  push(p.policyholder?.address);
+  for (const pl of p.plans ?? []) push(pl);
+  for (const r of p.premiumRates ?? []) push(r);
+  for (const b of p.benefits ?? []) push(b);
   if (samples.length === 0) return 0.5;
   const sum = samples.reduce((a, b) => a + b, 0);
   return Math.max(0, Math.min(1, sum / samples.length));
@@ -722,45 +732,62 @@ function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedPro
     productTypeCode: h.productTypeCode,
     insurerCode: h.insurerCode,
     header: {
-      policyNumber: pickEnvelope(h.header.policyNumber, a.header.policyNumber),
-      period: pickEnvelope(h.header.period, a.header.period),
-      lastEntryAge: pickEnvelope(h.header.lastEntryAge, a.header.lastEntryAge),
-      administrationType: pickEnvelope(h.header.administrationType, a.header.administrationType),
-      currency: pickEnvelope(h.header.currency, a.header.currency),
+      policyNumber: pickEnvelope(h.header?.policyNumber, a.header?.policyNumber),
+      period: pickEnvelope(h.header?.period, a.header?.period),
+      lastEntryAge: pickEnvelope(h.header?.lastEntryAge, a.header?.lastEntryAge),
+      administrationType: pickEnvelope(h.header?.administrationType, a.header?.administrationType),
+      currency: pickEnvelope(h.header?.currency, a.header?.currency),
     },
     policyholder: {
-      legalName: pickEnvelope(h.policyholder.legalName, a.policyholder.legalName),
-      uen: pickEnvelope(h.policyholder.uen, a.policyholder.uen),
-      address: pickEnvelope(h.policyholder.address, a.policyholder.address),
+      legalName: pickEnvelope(h.policyholder?.legalName, a.policyholder?.legalName),
+      uen: pickEnvelope(h.policyholder?.uen, a.policyholder?.uen),
+      address: pickEnvelope(h.policyholder?.address, a.policyholder?.address),
       businessDescription: pickEnvelope(
-        h.policyholder.businessDescription,
-        a.policyholder.businessDescription,
+        h.policyholder?.businessDescription,
+        a.policyholder?.businessDescription,
       ),
       insuredEntities: dedupePolicyEntities([
-        ...h.policyholder.insuredEntities,
-        ...a.policyholder.insuredEntities,
+        ...(h.policyholder?.insuredEntities ?? []),
+        ...(a.policyholder?.insuredEntities ?? []),
       ]),
     },
     eligibility: {
-      freeText: pickEnvelope(h.eligibility.freeText, a.eligibility.freeText),
+      freeText: pickEnvelope(h.eligibility?.freeText, a.eligibility?.freeText),
       categories:
-        a.eligibility.categories.length > 0 ? a.eligibility.categories : h.eligibility.categories,
+        (a.eligibility?.categories ?? []).length > 0
+          ? (a.eligibility?.categories ?? [])
+          : (h.eligibility?.categories ?? []),
     },
-    plans: mergePlans(h.plans, a.plans),
-    premiumRates: mergeRates(h.premiumRates, a.premiumRates),
-    benefits: mergeBenefits(h.benefits, a.benefits),
+    plans: mergePlans(h.plans ?? [], a.plans ?? []),
+    premiumRates: mergeRates(h.premiumRates ?? [], a.premiumRates ?? []),
+    benefits: mergeBenefits(h.benefits ?? [], a.benefits ?? []),
     extractionMeta: {
       overallConfidence: Math.max(
-        h.extractionMeta.overallConfidence,
-        a.extractionMeta.overallConfidence,
+        h.extractionMeta?.overallConfidence ?? 0,
+        a.extractionMeta?.overallConfidence ?? 0,
       ),
       extractorVersion: AI_EXTRACTOR_VERSION,
-      warnings: [...h.extractionMeta.warnings, ...a.extractionMeta.warnings],
+      warnings: [...(h.extractionMeta?.warnings ?? []), ...(a.extractionMeta?.warnings ?? [])],
     },
   };
 }
 
-function pickEnvelope<T>(h: FieldEnvelope<T>, a: FieldEnvelope<T>): FieldEnvelope<T> {
+// Both args may be undefined when the AI's per-product output omits
+// an optional sub-field (extracted-product.json marks lastEntryAge,
+// administrationType, currency, uen, address, businessDescription,
+// freeText etc. as optional). We synthesise an empty envelope so
+// downstream consumers always see a complete shape.
+function emptyEnvelope<T>(): FieldEnvelope<T> {
+  return { value: null, confidence: 0 };
+}
+
+function pickEnvelope<T>(
+  h: FieldEnvelope<T> | undefined,
+  a: FieldEnvelope<T> | undefined,
+): FieldEnvelope<T> {
+  if (!h && !a) return emptyEnvelope<T>();
+  if (!h) return normalizeEnvelope(a as FieldEnvelope<T>);
+  if (!a) return normalizeEnvelope(h);
   if (h.confidence >= 1) return h;
   if (h.value != null && h.confidence >= a.confidence) return h;
   return normalizeEnvelope(a);

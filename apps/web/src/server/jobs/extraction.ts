@@ -359,20 +359,27 @@ function applyEventToLive(state: LiveState, event: RunnerProgressEvent): void {
   }
 }
 
-// Persist the live state. updateMany is gated on status === EXTRACTING
-// so a draft that reached a terminal state (FAILED via markFailed,
-// READY via the success path) silently absorbs late events without a
-// findUnique roundtrip.
+// Persist the live state. Uses jsonb_set so we only patch the
+// `stage` and `live` keys — the heuristic-built `suggestions` blob,
+// the broker's in-progress `brokerOverrides` / `brokerForm`, and
+// any other progress fields survive untouched. The status guard
+// ensures a draft that reached a terminal state (FAILED via
+// markFailed, READY via the success path) silently absorbs late
+// events without writing anything.
 async function persistLiveState(uploadId: string, state: LiveState): Promise<void> {
-  await prisma.extractionDraft.updateMany({
-    where: { uploadId, status: 'EXTRACTING' },
-    data: {
-      progress: {
-        stage: state.stage,
-        live: state,
-      } as unknown as Prisma.InputJsonValue,
-    },
-  });
+  const stageJson = JSON.stringify(state.stage);
+  const liveJson = JSON.stringify(state);
+  await prisma.$executeRaw`
+    UPDATE "ExtractionDraft"
+    SET "progress" = jsonb_set(
+      jsonb_set(
+        COALESCE("progress", '{}'::jsonb),
+        '{stage}', ${stageJson}::jsonb, true
+      ),
+      '{live}', ${liveJson}::jsonb, true
+    )
+    WHERE "uploadId" = ${uploadId} AND "status" = 'EXTRACTING'
+  `;
 }
 
 // Re-run only the suggestion layer over the merged extracted products.

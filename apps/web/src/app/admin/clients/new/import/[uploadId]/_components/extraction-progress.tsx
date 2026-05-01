@@ -375,5 +375,9 @@ function stageHeading(stage: LiveStage, completed: number, total: number): strin
   if (stage === 'AI_DISCOVERY') return 'Identifying products in the workbook…';
   if (total === 0) return 'Preparing per-product extraction…';
   if (completed === total) return 'Finalising extraction…';
-  return `Extracting product ${completed + 1} of ${total}`;
+  // Up to 3 products run in parallel (fan-out concurrency). Saying
+  // "extracting product N of M" with N = completed+1 contradicts the
+  // visible list when callers haven't yet flipped status to running.
+  // `completed of total` matches the per-product list exactly.
+  return `Extracting products… (${completed} of ${total} done)`;
 }
