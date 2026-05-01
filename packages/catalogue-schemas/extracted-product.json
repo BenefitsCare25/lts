@@ -1,6 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://insurance-saas/schemas/extracted-product.json",
+  "$comment": "v2: adds declaredPremium, nonEvidenceLimit, multi-parent stacksOnRawCodes, expanded coverBasis (earnings_based, per_employee_flat), PremiumRate.basis enum, bundledWithProductCode, siteCode on entities. All additions are optional — v1 envelopes still validate.",
   "title": "ExtractedProduct",
   "description": "AI-extracted placement-slip data for one (ProductType x Insurer) instance. Every field carries provenance + confidence so the review UI can highlight uncertainty.",
   "type": "object",
@@ -24,6 +25,10 @@
       "type": "string",
       "description": "Insurer.code, e.g. GE_LIFE, TM_LIFE, ZURICH"
     },
+    "bundledWithProductCode": {
+      "type": ["string", "null"],
+      "description": "When this product's premium is rolled into another product's rates (e.g. SP rates listed as 'Part of GHS'). The reconciliation skips this product; the wizard's Rates tab shows a 'bundled' notice."
+    },
     "header": {
       "type": "object",
       "additionalProperties": false,
@@ -33,7 +38,9 @@
         "period": { "$ref": "#/definitions/PeriodField" },
         "lastEntryAge": { "$ref": "#/definitions/NumberField" },
         "administrationType": { "$ref": "#/definitions/StringField" },
-        "currency": { "$ref": "#/definitions/StringField" }
+        "currency": { "$ref": "#/definitions/StringField" },
+        "declaredPremium": { "$ref": "#/definitions/NumberField" },
+        "nonEvidenceLimit": { "$ref": "#/definitions/StringField" }
       }
     },
     "policyholder": {
@@ -81,6 +88,10 @@
       "properties": {
         "overallConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "extractorVersion": { "type": "string" },
+        "envelopeVersion": {
+          "type": "string",
+          "description": "Schema version written by the runner. 'v2' for envelopes produced after the Phase 1 migration."
+        },
         "warnings": { "type": "array", "items": { "type": "string" } }
       }
     }
@@ -157,7 +168,12 @@
         "legalName": { "type": "string" },
         "policyNumber": { "type": ["string", "null"] },
         "address": { "type": ["string", "null"] },
-        "isMaster": { "type": "boolean" }
+        "isMaster": { "type": "boolean" },
+        "headcountEstimate": { "type": ["integer", "null"] },
+        "siteCode": {
+          "type": ["string", "null"],
+          "description": "Branch/facility code (e.g. AMK, TPY, HQ). Distinct from address. Optional."
+        }
       }
     },
     "CategoryField": {
@@ -195,13 +211,51 @@
         "name": { "type": "string", "description": "Canonical/display name" },
         "coverBasis": {
           "type": "string",
-          "enum": ["per_cover_tier", "salary_multiple", "fixed_amount", "per_region"]
+          "enum": ["per_cover_tier", "salary_multiple", "fixed_amount", "per_region", "earnings_based", "per_employee_flat"]
         },
-        "stacksOnRawCode": { "type": ["string", "null"] },
+        "stacksOnRawCode": {
+          "type": ["string", "null"],
+          "description": "DEPRECATED v2: use stacksOnRawCodes. Read path lifts this string into [string]; write path uses stacksOnRawCodes."
+        },
+        "stacksOnRawCodes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "v2: list of rawCodes this plan stacks on. Empty array = base plan. Supersedes stacksOnRawCode."
+        },
         "selectionMode": { "type": "string", "enum": ["broker_default", "employee_flex"] },
         "schedule": {
           "type": "object",
-          "description": "Plan-schedule fields keyed per ProductType.planSchema; values may themselves be FieldEnvelopes"
+          "description": "Plan-schedule fields keyed per ProductType.planSchema; values may themselves be FieldEnvelopes",
+          "properties": {
+            "multiplier": {
+              "type": ["number", "null"],
+              "description": "salary_multiple basis; e.g. 36 for '36 x LDBMS'"
+            },
+            "sumAssured": {
+              "type": ["number", "null"],
+              "description": "fixed_amount basis; e.g. 50000 for '$50,000'"
+            },
+            "ratePerEmployee": {
+              "type": ["number", "null"],
+              "description": "per_employee_flat basis; e.g. 9.50 for '$9.50 per insured'"
+            },
+            "dailyRoomBoard": {
+              "type": ["number", "null"],
+              "description": "Per-cover-tier R&B amount where applicable"
+            },
+            "endorsements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            },
+            "exclusions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "default": []
+            }
+          },
+          "additionalProperties": true
         }
       }
     },
@@ -217,8 +271,26 @@
           "type": ["string", "null"],
           "description": "EO|ES|EC|EF or insurer-specific tier code; null when basis is not per_cover_tier"
         },
+        "basis": {
+          "type": "string",
+          "enum": ["per_thousand_si", "per_unit_earnings", "per_employee", "flat"],
+          "default": "per_thousand_si",
+          "description": "Which math applies. per_thousand_si: rate * SI / 1000. per_unit_earnings: rate * estimated annual earnings. per_employee: rate * headcount. flat: just the fixed amount."
+        },
         "ratePerThousand": { "type": ["number", "null"] },
+        "ratePerEarningsUnit": {
+          "type": ["number", "null"],
+          "description": "Rate when basis is per_unit_earnings (e.g. WICI 0.000095 per S$1 of earnings)"
+        },
+        "estimatedAnnualEarnings": {
+          "type": ["number", "null"],
+          "description": "When basis is per_unit_earnings, the estimated annual earnings used for premium calc"
+        },
         "fixedAmount": { "type": ["number", "null"] },
+        "blockLabel": {
+          "type": ["string", "null"],
+          "description": "Section label from the rate table (e.g. 'Plan A', 'Employees', 'Class 1')"
+        },
         "ageBand": {
           "type": ["object", "null"],
           "additionalProperties": false,

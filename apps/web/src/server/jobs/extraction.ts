@@ -226,10 +226,7 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     return;
   }
 
-  const validationIssues = checkExtractedProducts(
-    aiResult.products,
-    `upload:${uploadId}`,
-  );
+  const validationIssues = checkExtractedProducts(aiResult.products, `upload:${uploadId}`);
 
   await prisma.extractionDraft.update({
     where: { id: draft.id },

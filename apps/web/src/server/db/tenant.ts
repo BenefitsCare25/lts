@@ -45,6 +45,9 @@ const TENANT_MODELS = new Set([
   // (no clientId yet during the Create Client wizard). Auto-scope keeps
   // the wizard's pre-client list/byId queries from leaking across tenants.
   'PlacementSlipUpload',
+  // Phase 1: per-AI-call cost history and applied-draft audit trail.
+  'ExtractionAttempt',
+  'AppliedDraftSnapshot',
 ]);
 
 export class UserNotProvisionedError extends Error {
