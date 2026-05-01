@@ -1,24 +1,8 @@
-// =============================================================
-// ProductsSection — per-product editor with four tabs:
-//   Details      — product-level header fields (insurer, eligibility,
-//                  age limits, currency, free cover limit, …)
-//   Plans        — plan list with code / name / cover basis / stacks-on /
-//                  per-plan schedule fields (multiplier, sumAssured)
-//   Rates        — premium-rate matrix (plan × tier × block)
-//   Endorsements — per-plan endorsement & exclusion code lists
-//
-// Edits live in a local mirror of `WizardExtractedProduct[]` and are
-// debounced-flushed to the draft via
-// `extractionDrafts.updateExtractedProducts`. The list is re-seeded
-// from the server payload on every draft.id change but never on a
-// subsequent refetch — the broker's in-flight edits are sticky until
-// they navigate away.
-// =============================================================
-
 'use client';
 
 import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
+import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SectionId } from './_registry';
 import {
@@ -79,69 +63,55 @@ const COVER_BASIS_OPTIONS: WizardPlanField['coverBasis'][] = [
 const COMMON_COVER_TIERS = ['EO', 'EF', 'E1C', 'E2C', 'E3C', 'E4C'];
 
 export function ProductsSection({ draft, markSectionDirty }: Props) {
-  const seeded = useMemo(
-    () => extractedProductsFromDraft(draft.extractedProducts),
-    [draft.extractedProducts],
-  );
-
   // Local mirror of the products list. Re-seeded only when draft.id
   // changes; subsequent refetches don't clobber in-flight edits.
-  const [products, setProducts] = useState<WizardExtractedProduct[]>(seeded);
+  const [products, setProducts] = useState<WizardExtractedProduct[]>(() =>
+    extractedProductsFromDraft(draft.extractedProducts),
+  );
   const seededDraftIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (seededDraftIdRef.current === draft.id) return;
     seededDraftIdRef.current = draft.id;
-    setProducts(seeded);
-  }, [draft.id, seeded]);
+    setProducts(extractedProductsFromDraft(draft.extractedProducts));
+  }, [draft.id, draft.extractedProducts]);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<Tab>('details');
   const active = products[activeIndex] ?? null;
 
-  // Persist to the draft, debounced. The mutation accepts a passthrough
-  // schema (loose ExtractedProduct shape) — full validation against
-  // extracted-product.json runs at apply time.
   const saveProducts = trpc.extractionDrafts.updateExtractedProducts.useMutation();
-  const mutateRef = useRef(saveProducts.mutate);
-  useEffect(() => {
-    mutateRef.current = saveProducts.mutate;
-  }, [saveProducts.mutate]);
-  const dirtyRef = useRef(false);
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    const timer = window.setTimeout(() => {
-      mutateRef.current({
+  const markAutosaveDirty = useDebouncedAutosave(
+    products,
+    (value) =>
+      saveProducts.mutate({
         draftId: draft.id,
-        extractedProducts: products as unknown as Array<{
+        extractedProducts: value as unknown as Array<{
           productTypeCode: string;
           insurerCode: string;
         }>,
-      });
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [products, draft.id]);
-
-  // Mutation helper — flips the dirty flag and marks the wizard rail
-  // section as edited. All edit handlers below funnel through this.
-  const mutateProducts = useCallback(
-    (next: WizardExtractedProduct[]) => {
-      dirtyRef.current = true;
-      markSectionDirty?.('products');
-      setProducts(next);
-    },
-    [markSectionDirty],
+      }),
+    { delayMs: 700 },
   );
+
+  const markProductsDirty = useCallback(() => {
+    markAutosaveDirty();
+    markSectionDirty?.('products');
+  }, [markAutosaveDirty, markSectionDirty]);
 
   const updateProduct = useCallback(
     (index: number, patch: (p: WizardExtractedProduct) => WizardExtractedProduct) => {
-      mutateProducts(products.map((p, i) => (i === index ? patch(p) : p)));
+      markProductsDirty();
+      setProducts((prev) => prev.map((p, i) => (i === index ? patch(p) : p)));
     },
-    [products, mutateProducts],
+    [markProductsDirty],
   );
 
   const addProduct = () => {
-    mutateProducts([...products, emptyProduct()]);
-    setActiveIndex(products.length);
+    markProductsDirty();
+    setProducts((prev) => {
+      setActiveIndex(prev.length);
+      return [...prev, emptyProduct()];
+    });
     setActiveTab('details');
   };
 
@@ -153,9 +123,12 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
     ) {
       return;
     }
-    const next = products.filter((_, i) => i !== index);
-    mutateProducts(next);
-    if (activeIndex >= next.length) setActiveIndex(Math.max(0, next.length - 1));
+    markProductsDirty();
+    setProducts((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (activeIndex >= next.length) setActiveIndex(Math.max(0, next.length - 1));
+      return next;
+    });
   };
 
   if (products.length === 0) {

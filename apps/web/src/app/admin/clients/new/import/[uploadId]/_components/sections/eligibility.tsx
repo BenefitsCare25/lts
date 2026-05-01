@@ -1,31 +1,15 @@
-// =============================================================
-// EligibilitySection — surfaces the AI-suggested benefit groups
-// (predicates) and the default-plan eligibility matrix. Brokers
-// confirm or strike each group; matrix cells let them pick a
-// different default plan or mark the group ineligible.
-//
-// Editable fields (persisted under draft.progress.brokerOverrides.eligibility):
-//   - Per-group inclusion (checkbox)
-//   - Per-group rename (suggestedName), description
-//   - Per-group raw-JSON predicate editor
-//   - Per-(group × product) default plan override (or ineligible)
-//
-// The predicate human-rendering walks JSONLogic and prints a
-// short, scannable summary (no JSON in the broker's eye line) by
-// default; a per-row "Edit predicate" toggle reveals the raw JSON
-// textarea for advanced cases.
-// =============================================================
-
 'use client';
 
 import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
+import { useCallback, useMemo, useState } from 'react';
 import type { SectionId } from './_registry';
 import {
   type WizardExtractedProduct,
   type WizardSuggestions,
   extractedProductsFromDraft,
+  readBrokerOverride,
   suggestionsFromDraft,
 } from './_types';
 
@@ -57,23 +41,15 @@ export function EligibilitySection({ draft, markSectionDirty }: Props) {
   const products = extractedProductsFromDraft(draft.extractedProducts);
   const suggestions = suggestionsFromDraft(draft.progress);
 
-  // Hydrate per-group state from draft.progress.brokerOverrides.eligibility.
-  const persisted = useMemo<EligibilityOverride>(() => {
-    if (!draft.progress || typeof draft.progress !== 'object' || Array.isArray(draft.progress)) {
-      return { groups: {} };
-    }
-    const obj = draft.progress as { brokerOverrides?: Record<string, unknown> };
-    const v = obj.brokerOverrides?.eligibility as EligibilityOverride | undefined;
-    if (v && typeof v === 'object' && v.groups && typeof v.groups === 'object') {
-      return { groups: { ...v.groups } };
-    }
-    return { groups: {} };
-  }, [draft.progress]);
-
   // Default included = AI's recommendation (tokenMatches > 0). Broker
   // overrides win.
   const [override, setOverride] = useState<EligibilityOverride>(() => {
-    if (Object.keys(persisted.groups).length > 0) return persisted;
+    const persisted = readBrokerOverride<EligibilityOverride>(draft.progress, 'eligibility', {
+      groups: {},
+    });
+    if (Object.keys(persisted.groups).length > 0) {
+      return { groups: { ...persisted.groups } };
+    }
     const init: Record<string, GroupOverride> = {};
     for (const g of suggestions.benefitGroups) {
       init[g.suggestedName] = { included: g.tokenMatches > 0 };
@@ -81,25 +57,17 @@ export function EligibilitySection({ draft, markSectionDirty }: Props) {
     return { groups: init };
   });
 
-  // Persist debounced.
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
-  const mutateRef = useRef(saveOverride.mutate);
-  useEffect(() => {
-    mutateRef.current = saveOverride.mutate;
-  }, [saveOverride.mutate]);
-  const dirtyRef = useRef(false);
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    const timer = window.setTimeout(() => {
-      mutateRef.current({ draftId: draft.id, namespace: 'eligibility', value: override });
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [override, draft.id]);
+  const markAutosaveDirty = useDebouncedAutosave(
+    override,
+    (value) => saveOverride.mutate({ draftId: draft.id, namespace: 'eligibility', value }),
+    { delayMs: 600 },
+  );
 
   const markDirty = useCallback(() => {
-    dirtyRef.current = true;
+    markAutosaveDirty();
     markSectionDirty?.('eligibility');
-  }, [markSectionDirty]);
+  }, [markAutosaveDirty, markSectionDirty]);
 
   const updateGroup = useCallback(
     (name: string, patch: Partial<GroupOverride>) => {

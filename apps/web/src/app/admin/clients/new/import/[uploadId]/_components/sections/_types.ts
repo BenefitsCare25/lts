@@ -293,3 +293,29 @@ export function extractedProductsFromDraft(raw: unknown): WizardExtractedProduct
   if (!Array.isArray(raw)) return [];
   return raw as WizardExtractedProduct[];
 }
+
+export const BROKER_OVERRIDE_NAMESPACES = [
+  'insurers',
+  'pool',
+  'eligibility',
+  'schemaDecisions',
+  'reconciliation',
+] as const;
+
+export type BrokerOverrideNamespace = (typeof BROKER_OVERRIDE_NAMESPACES)[number];
+
+// Read a namespaced override off draft.progress.brokerOverrides,
+// returning fallback when the path is missing or the value isn't a
+// plain object. Sections layer their own structural narrowing on top.
+export function readBrokerOverride<T>(
+  progress: unknown,
+  namespace: BrokerOverrideNamespace,
+  fallback: T,
+): T {
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) return fallback;
+  const overrides = (progress as { brokerOverrides?: unknown }).brokerOverrides;
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return fallback;
+  const value = (overrides as Record<string, unknown>)[namespace];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+  return value as T;
+}

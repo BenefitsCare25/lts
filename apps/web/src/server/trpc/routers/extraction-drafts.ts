@@ -80,7 +80,21 @@ const applyInputSchema = z.object({
   }),
 });
 
+// Loose lookup used by every write path. Keeps the query slim — the
+// per-keystroke autosaves don't need the upload row; the two heavier
+// callers (apply, deleteOrphan) read it via `loadDraftWithUpload`.
 async function loadDraftForTenant(tenantId: string, draftId: string) {
+  const draft = await prisma.extractionDraft.findUnique({
+    where: { id: draftId },
+    select: { id: true, tenantId: true, status: true, progress: true },
+  });
+  if (!draft || draft.tenantId !== tenantId) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Extraction draft not found.' });
+  }
+  return draft;
+}
+
+async function loadDraftWithUpload(tenantId: string, draftId: string) {
   const draft = await prisma.extractionDraft.findUnique({
     where: { id: draftId },
     include: { upload: true },
@@ -90,6 +104,14 @@ async function loadDraftForTenant(tenantId: string, draftId: string) {
   }
   return draft;
 }
+
+const BROKER_OVERRIDE_NAMESPACE = z.enum([
+  'insurers',
+  'pool',
+  'eligibility',
+  'schemaDecisions',
+  'reconciliation',
+]);
 
 export const extractionDraftsRouter = router({
   // List orphan drafts for the current tenant. The Create Client
@@ -204,8 +226,7 @@ export const extractionDraftsRouter = router({
     .input(
       z.object({
         draftId: z.string().min(1),
-        // 'insurers' | 'eligibility' | 'schemaDecisions' | 'reconciliation' | 'pool'
-        namespace: z.string().min(1).max(40),
+        namespace: BROKER_OVERRIDE_NAMESPACE,
         // The override payload. Shapes vary per namespace and live in
         // wizard code — passthrough here.
         value: z.unknown(),
@@ -361,7 +382,7 @@ export const extractionDraftsRouter = router({
   deleteOrphan: adminProcedure
     .input(z.object({ draftId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const draft = await loadDraftForTenant(ctx.tenantId, input.draftId);
+      const draft = await loadDraftWithUpload(ctx.tenantId, input.draftId);
       if (draft.upload.clientId) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
@@ -426,7 +447,7 @@ export const extractionDraftsRouter = router({
   // Idempotency: re-running on an APPLIED draft is rejected. The
   // wizard's Apply button is disabled once status flips to APPLIED.
   applyToCatalogue: adminProcedure.input(applyInputSchema).mutation(async ({ ctx, input }) => {
-    const draft = await loadDraftForTenant(ctx.tenantId, input.draftId);
+    const draft = await loadDraftWithUpload(ctx.tenantId, input.draftId);
     if (draft.status === 'APPLIED') {
       throw new TRPCError({
         code: 'BAD_REQUEST',
