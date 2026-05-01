@@ -1,0 +1,156 @@
+{
+  "schema": "expected.v1",
+  "slip": {
+    "filename": "slip.xlsx",
+    "anonymizedFrom": "Papua New Guinea High Commission (Singapore-based diplomatic mission)",
+    "anonymizedAt": "2026-05-01"
+  },
+  "tolerances": {
+    "ratePerThousand": 0.01,
+    "headcount": 0,
+    "sumAssured": 1,
+    "grandComputedPct": 1
+  },
+
+  "_min_score_comment": "Conservative floor; raise to 0.92 once extraction is wired in Phase 0 final and we have a real baseline number to anchor on.",
+  "_minScore": 0.85,
+
+  "client": {
+    "legalName": "Test C Pte Ltd",
+    "address": "3 Test Crescent, Singapore 100003",
+    "uen": null,
+    "industry": null,
+    "countryOfIncorporation": "SG",
+    "_broker_fills": ["uen", "industry", "primaryContactName", "primaryContactEmail"]
+  },
+
+  "policyEntities": [
+    {
+      "legalName": "Test C Pte Ltd",
+      "policyNumber": null,
+      "isMaster": true,
+      "headcountEstimate": 2
+    }
+  ],
+
+  "_benefitYear_comment": "All 7 product sheets carry Period of Insurance 01/05/2026 - 30/04/2027. The Renewal Overall Premium summary sheet repeats the same dates. No multi-year ambiguity here.",
+  "benefitYear": {
+    "startDate": "2026-05-01",
+    "endDate": "2027-04-30"
+  },
+
+  "_insurers_comment": "Tokio Marine Life carries 5 products (GTL/GHS/GP/SP/Dental); Allied World carries 2 (GPA/WICA). Allied World is NOT in the current seed catalogue — extractor should still emit the code or surface an unknown-insurer warning. Adding ALLIED_WORLD to the catalogue is a Phase 1 follow-up.",
+  "insurers": [
+    { "code": "TM_LIFE", "productCount": 5 },
+    { "code": "ALLIED_WORLD", "productCount": 2 }
+  ],
+
+  "pool": null,
+
+  "products": [
+    {
+      "productTypeCode": "GTL",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 130,
+      "_planCount": 1,
+      "plans": [
+        { "code": "P1", "coverBasis": "fixed_amount", "schedule": { "sumAssured": 50000 } }
+      ],
+      "premiumRates": [{ "planCode": "P1", "ratePerThousand": 1.3, "basis": "per_thousand_si" }],
+      "categories": [{ "category": "All Employees", "headcount": 2, "sumInsured": 100000 }]
+    },
+    {
+      "productTypeCode": "GHS",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 720,
+      "_planCount": 1,
+      "_plans_comment": "GHS uses Plan 1 with cover-tier rates (EO=360 per employee). 360 x 2 EO = 720. The schedule per cover tier is per-employee per-year; same situation as CBRE MCST GHS — Phase 1 introduces basis='per_employee'.",
+      "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }],
+      "categories": [{ "category": "All Employees", "headcount": 2 }]
+    },
+    {
+      "productTypeCode": "GP",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 622,
+      "_planCount": 1,
+      "_plans_comment": "GCGP (Group Clinical General Practitioner) maps to GP product code. Plan 1, per-employee rate 311, headcount 2 -> 622 declared.",
+      "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }],
+      "premiumRates": [{ "planCode": "P1", "ratePerEmployee": 311 }],
+      "categories": [{ "category": "All Employees", "headcount": 2 }]
+    },
+    {
+      "productTypeCode": "SP",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 326,
+      "_planCount": 1,
+      "_plans_comment": "GCSP (Group Clinical Specialist Insurance) maps to SP product code. Plan 2, per-employee rate 163, headcount 2 -> 326 declared.",
+      "plans": [{ "code": "P2", "coverBasis": "per_cover_tier" }],
+      "premiumRates": [{ "planCode": "P2", "ratePerEmployee": 163 }],
+      "categories": [{ "category": "All Employees", "headcount": 2 }]
+    },
+    {
+      "productTypeCode": "Dental",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 364,
+      "_planCount": 1,
+      "_plans_comment": "GD (Group Dental) maps to Dental product code. Plan 1, per-employee rate 182, headcount 2 -> 364 declared.",
+      "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }],
+      "premiumRates": [{ "planCode": "P1", "ratePerEmployee": 182 }],
+      "categories": [{ "category": "All Employees", "headcount": 2 }]
+    },
+    {
+      "productTypeCode": "GPA",
+      "insurerCode": "ALLIED_WORLD",
+      "_declaredPremium_comment": "Mismatch: summary sheet says 200, product sheet's annual premium row says 50 (computed = 0.0005 * 100k SI = 50). Likely a min-premium clause not stated on the slip. Reconciliation tests should accept either; we set declaredPremium=200 (the summary sheet wins) and note the discrepancy in expectedWarnings.",
+      "declaredPremium": 200,
+      "_planCount": 1,
+      "plans": [
+        { "code": "P1", "coverBasis": "fixed_amount", "schedule": { "sumAssured": 50000 } }
+      ],
+      "premiumRates": [{ "planCode": "P1", "ratePerThousand": 0.5, "basis": "per_thousand_si" }],
+      "categories": [{ "category": "All Employees", "headcount": 2, "sumInsured": 100000 }]
+    },
+    {
+      "productTypeCode": "WICI",
+      "insurerCode": "ALLIED_WORLD",
+      "_declaredPremium_comment": "Slip explicitly says 'MIN. PREMIUM : SGD250.00 before GST'. Computed wages-x-rate is ~163 (60000*0.00042 + 55000*0.0025 = 25.2 + 137.5). Min-premium clause is the canonical example of why we cannot enforce computed==declared.",
+      "declaredPremium": 250,
+      "_planCount": 2,
+      "_plans_comment": "Two classes (Class 1 = administrative, Class 2 = manual/driver). Each class is a separate premium rate.",
+      "plans": [
+        { "code": "Class1", "coverBasis": "earnings_based" },
+        { "code": "Class2", "coverBasis": "earnings_based" }
+      ],
+      "premiumRates": [
+        { "planCode": "Class1", "ratePerEarningsUnit": 0.00042 },
+        { "planCode": "Class2", "ratePerEarningsUnit": 0.0025 }
+      ],
+      "categories": [
+        { "category": "Class 1", "headcount": 1, "sumInsured": 60000 },
+        { "category": "Class 2", "headcount": 1, "sumInsured": 55000 }
+      ]
+    }
+  ],
+
+  "reconciliation": {
+    "_grand_comment": "Grand declared = 130 + 720 + 622 + 326 + 364 + 200 + 250 = 2612 (matches Renewal Overall Premium total). Computed sum is 130 + 720 + 622 + 326 + 364 + 50 + 162.7 = 2374.7 because GPA and WICA both have premium-floor mismatches. Allow wide range (5%) on grandComputed.",
+    "grandDeclared": 2612,
+    "grandComputed_min": 2300,
+    "grandComputed_max": 2650,
+    "perProduct": [
+      { "productTypeCode": "GTL", "insurerCode": "TM_LIFE", "status": ["OK"] },
+      { "productTypeCode": "GHS", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
+      { "productTypeCode": "GP", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
+      { "productTypeCode": "SP", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
+      { "productTypeCode": "Dental", "insurerCode": "TM_LIFE", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
+      { "productTypeCode": "GPA", "insurerCode": "ALLIED_WORLD", "status": ["OK"] },
+      { "productTypeCode": "WICI", "insurerCode": "ALLIED_WORLD", "status": ["OK"] }
+    ]
+  },
+
+  "_expectedWarnings_comment": "AI should surface these as workbook-level warnings when extraction completes. Substring matches; case-insensitive.",
+  "expectedWarnings": [
+    "allied world",
+    "min"
+  ]
+}
