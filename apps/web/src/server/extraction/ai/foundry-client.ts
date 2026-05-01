@@ -21,6 +21,18 @@
 // response_format json_schema (OpenAI-compat). The caller validates
 // the JSON against the canonical Ajv schema; this module guarantees
 // only that the response is valid JSON of *some* shape.
+//
+// Truncation policy (industry-standard fail-fast):
+//   - Anthropic returns stop_reason="max_tokens" when generation
+//     hits the max_tokens cap mid-tool_use. The tool_use input that
+//     comes back is a partial / empty object — useless.
+//   - OpenAI-compat returns finish_reason="length" in the same case.
+//   - We DO NOT silently forward this as ok:true. Instead we return
+//     ok:false with truncated:true so the caller can either escalate
+//     the budget (single product retry with larger cap) or split the
+//     request further (run more passes). Retrying with identical
+//     inputs guarantees identical truncation, which is what burned us
+//     in the v1 monolithic design.
 // =============================================================
 
 import type { TenantDb } from '@/server/db/tenant';
@@ -37,11 +49,19 @@ import {
 // publishes a newer one.
 const ANTHROPIC_VERSION = '2023-06-01';
 
-// Conservative request timeout. Extraction is heavy: a 50-product
-// slip can take 60–90s end-to-end. We give the call 5 minutes before
-// aborting; the BullMQ job's own timeout sits above this and decides
-// whether to retry.
-const REQUEST_TIMEOUT_MS = 300_000;
+// Conservative request timeout. With the map-reduce architecture each
+// call extracts a single product or the discovery manifest (small
+// outputs), so 2 minutes is plenty even on Opus. The BullMQ job
+// timeout sits above this.
+const REQUEST_TIMEOUT_MS = 120_000;
+
+// Default per-call output budget. The new map-reduce architecture
+// keeps each call's output small (1 product envelope ≈ 2-4K tokens,
+// discovery manifest ≈ 3-5K tokens) so 8K is comfortable headroom.
+// Callers escalate to ESCALATED_OUTPUT_TOKENS when a per-product call
+// truncates — gives the model 3x runway for unusually rich products.
+export const DEFAULT_OUTPUT_TOKENS = 8_000;
+export const ESCALATED_OUTPUT_TOKENS = 24_000;
 
 export type FoundryToolSchema = {
   name: string;
@@ -65,25 +85,43 @@ export type FoundryCallParams = {
   temperature?: number;
 };
 
+export type FoundryUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+};
+
 export type FoundryCallResult =
   | {
       ok: true;
       output: Record<string, unknown>;
-      usage: {
-        inputTokens: number;
-        outputTokens: number;
-        cacheReadTokens: number;
-        cacheCreationTokens: number;
-      };
+      // The model's own stop_reason / finish_reason. Always non-null
+      // on success — `end_turn` (Anthropic) or `stop`/`tool_calls`
+      // (OpenAI). Logged for observability.
+      stopReason: string;
+      usage: FoundryUsage;
       model: string;
       latencyMs: number;
     }
   | {
       ok: false;
+      // True when the model hit max_tokens mid-generation. The
+      // tool_use input on the wire is partial/empty; never usable.
+      // Distinct from `retryable` because retrying with identical
+      // inputs always re-truncates. The caller decides whether to
+      // escalate the budget or split the request.
+      truncated: boolean;
+      // True for transient failures (5xx, 429, network). False for
+      // permanent failures (auth, schema sanitization, model refused
+      // to call the tool, response was not JSON).
       retryable: boolean;
       error: string;
       status?: number;
       latencyMs: number;
+      // Best-effort usage telemetry on failure. Not all failure paths
+      // populate this (e.g. network errors have no body).
+      usage?: FoundryUsage;
     };
 
 export type FoundryProvider = {
@@ -114,6 +152,39 @@ export function decryptProviderKey(provider: FoundryProvider): string {
   return decryptSecret(provider.encryptedKey);
 }
 
+// Best-effort model family detection from the deployment name. Used
+// by the runner to pick safe per-call max_tokens caps and to surface
+// which model handled a given call in telemetry. Returning 'unknown'
+// is fine — the runner falls back to conservative defaults.
+export type ModelFamily = 'claude-opus' | 'claude-sonnet' | 'claude-haiku' | 'gpt' | 'unknown';
+
+export function detectModelFamily(deploymentName: string): ModelFamily {
+  const lower = deploymentName.toLowerCase();
+  if (lower.includes('opus')) return 'claude-opus';
+  if (lower.includes('sonnet')) return 'claude-sonnet';
+  if (lower.includes('haiku')) return 'claude-haiku';
+  if (lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) return 'gpt';
+  return 'unknown';
+}
+
+// Hard upper bound for max_tokens per family. The runner clamps
+// caller-requested budgets to these to avoid 400 responses from
+// models that don't support large outputs.
+export function maxOutputCapFor(family: ModelFamily): number {
+  switch (family) {
+    case 'claude-opus':
+      return 32_000;
+    case 'claude-sonnet':
+      return 64_000;
+    case 'claude-haiku':
+      return 8_192;
+    case 'gpt':
+      return 16_384;
+    case 'unknown':
+      return 16_000;
+  }
+}
+
 export async function callFoundry(
   provider: FoundryProvider,
   apiKey: string,
@@ -135,9 +206,17 @@ export async function callFoundry(
     headers['api-key'] = apiKey;
   }
 
+  // Clamp the requested budget to the model family's hard cap. The
+  // caller gets back a truncated:true result (not a 400) when the
+  // model's own ceiling is the constraint.
+  const family = detectModelFamily(provider.deploymentName);
+  const requested = params.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
+  const clamped = Math.min(requested, maxOutputCapFor(family));
+  const callParams: FoundryCallParams = { ...params, maxOutputTokens: clamped };
+
   const body = claude
-    ? buildAnthropicBody(provider.deploymentName, params)
-    : buildOpenAiBody(params);
+    ? buildAnthropicBody(provider.deploymentName, callParams)
+    : buildOpenAiBody(callParams);
 
   const started = Date.now();
   let response: Response;
@@ -151,6 +230,7 @@ export async function callFoundry(
   } catch (err) {
     return {
       ok: false,
+      truncated: false,
       retryable: true,
       error: err instanceof Error ? err.message : 'Network error',
       latencyMs: Date.now() - started,
@@ -163,6 +243,7 @@ export async function callFoundry(
     const retryable = response.status === 429 || response.status >= 500;
     return {
       ok: false,
+      truncated: false,
       retryable,
       status: response.status,
       error: text.slice(0, 1_000) || `HTTP ${response.status}`,
@@ -176,6 +257,7 @@ export async function callFoundry(
   } catch (err) {
     return {
       ok: false,
+      truncated: false,
       retryable: false,
       error: `Response was not valid JSON: ${err instanceof Error ? err.message : 'parse error'}`,
       latencyMs,
@@ -194,10 +276,13 @@ export async function callFoundry(
 function buildAnthropicBody(model: string, params: FoundryCallParams): Record<string, unknown> {
   // System block uses cache_control so the (large, stable) catalogue
   // preamble caches for 5 minutes — repeat extractions for the same
-  // tenant in a session pay ~10% of the input cost.
+  // tenant in a session pay ~10% of the input cost. Workbook text
+  // also gets cache_control because the same workbook is reused
+  // across the discovery pass and N per-product passes — caching the
+  // serialized workbook saves ~90% of input tokens on calls 2..N.
   return {
     model,
-    max_tokens: params.maxOutputTokens ?? 16_000,
+    max_tokens: params.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS,
     temperature: params.temperature ?? 0,
     system: [
       {
@@ -219,7 +304,13 @@ function buildAnthropicBody(model: string, params: FoundryCallParams): Record<st
     messages: [
       {
         role: 'user',
-        content: params.user,
+        content: [
+          {
+            type: 'text',
+            text: params.user,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
       },
     ],
   };
@@ -247,6 +338,28 @@ function extractFromAnthropic(
   expectedToolName: string,
 ): FoundryCallResult {
   const r = raw as AnthropicResponseShape;
+  const stopReason = r.stop_reason ?? 'unknown';
+  const usage: FoundryUsage = {
+    inputTokens: r.usage?.input_tokens ?? 0,
+    outputTokens: r.usage?.output_tokens ?? 0,
+    cacheReadTokens: r.usage?.cache_read_input_tokens ?? 0,
+    cacheCreationTokens: r.usage?.cache_creation_input_tokens ?? 0,
+  };
+
+  // Truncation: model hit max_tokens before completing the tool_use
+  // input. The partial input is unsafe to forward — return ok:false
+  // with truncated:true so the caller can escalate or split.
+  if (stopReason === 'max_tokens') {
+    return {
+      ok: false,
+      truncated: true,
+      retryable: false,
+      error: `Output truncated at ${usage.outputTokens} tokens (max_tokens cap). Escalate the per-call budget or split the request.`,
+      latencyMs,
+      usage,
+    };
+  }
+
   const toolBlock = (r.content ?? []).find(
     (b): b is { type: 'tool_use'; name: string; input: Record<string, unknown> } =>
       b.type === 'tool_use' && b.name === expectedToolName,
@@ -266,14 +379,10 @@ function extractFromAnthropic(
         return {
           ok: true,
           output: obj,
+          stopReason,
           model,
           latencyMs,
-          usage: {
-            inputTokens: r.usage?.input_tokens ?? 0,
-            outputTokens: r.usage?.output_tokens ?? 0,
-            cacheReadTokens: r.usage?.cache_read_input_tokens ?? 0,
-            cacheCreationTokens: r.usage?.cache_creation_input_tokens ?? 0,
-          },
+          usage,
         };
       } catch {
         // fall through
@@ -281,22 +390,20 @@ function extractFromAnthropic(
     }
     return {
       ok: false,
+      truncated: false,
       retryable: false,
-      error: `Model did not invoke the ${expectedToolName} tool. stop_reason=${r.stop_reason ?? 'unknown'}`,
+      error: `Model did not invoke the ${expectedToolName} tool. stop_reason=${stopReason}`,
       latencyMs,
+      usage,
     };
   }
   return {
     ok: true,
     output: toolBlock.input,
+    stopReason,
     model,
     latencyMs,
-    usage: {
-      inputTokens: r.usage?.input_tokens ?? 0,
-      outputTokens: r.usage?.output_tokens ?? 0,
-      cacheReadTokens: r.usage?.cache_read_input_tokens ?? 0,
-      cacheCreationTokens: r.usage?.cache_creation_input_tokens ?? 0,
-    },
+    usage,
   };
 }
 
@@ -306,7 +413,7 @@ function extractFromAnthropic(
 
 function buildOpenAiBody(params: FoundryCallParams): Record<string, unknown> {
   return {
-    max_tokens: params.maxOutputTokens ?? 16_000,
+    max_tokens: params.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS,
     temperature: params.temperature ?? 0,
     messages: [
       { role: 'system', content: params.system },
@@ -346,13 +453,36 @@ type OpenAiResponseShape = {
 function extractFromOpenAi(raw: unknown, model: string, latencyMs: number): FoundryCallResult {
   const r = raw as OpenAiResponseShape;
   const choice = r.choices?.[0];
+  const finishReason = choice?.finish_reason ?? 'unknown';
+  const usage: FoundryUsage = {
+    inputTokens: r.usage?.prompt_tokens ?? 0,
+    outputTokens: r.usage?.completion_tokens ?? 0,
+    cacheReadTokens: r.usage?.prompt_tokens_details?.cached_tokens ?? 0,
+    cacheCreationTokens: 0,
+  };
+
+  // Truncation on OpenAI-compat: finish_reason === 'length' means
+  // generation hit max_tokens. Mirror the Anthropic behaviour.
+  if (finishReason === 'length') {
+    return {
+      ok: false,
+      truncated: true,
+      retryable: false,
+      error: `Output truncated at ${usage.outputTokens} tokens (max_tokens cap). Escalate the per-call budget or split the request.`,
+      latencyMs,
+      usage,
+    };
+  }
+
   const toolCall = choice?.message?.tool_calls?.[0];
   if (!toolCall?.function?.arguments) {
     return {
       ok: false,
+      truncated: false,
       retryable: false,
-      error: `Model did not call the function. finish_reason=${choice?.finish_reason ?? 'unknown'}`,
+      error: `Model did not call the function. finish_reason=${finishReason}`,
       latencyMs,
+      usage,
     };
   }
   let parsed: Record<string, unknown>;
@@ -361,21 +491,19 @@ function extractFromOpenAi(raw: unknown, model: string, latencyMs: number): Foun
   } catch (err) {
     return {
       ok: false,
+      truncated: false,
       retryable: false,
       error: `Tool arguments were not valid JSON: ${err instanceof Error ? err.message : 'parse error'}`,
       latencyMs,
+      usage,
     };
   }
   return {
     ok: true,
     output: parsed,
+    stopReason: finishReason,
     model,
     latencyMs,
-    usage: {
-      inputTokens: r.usage?.prompt_tokens ?? 0,
-      outputTokens: r.usage?.completion_tokens ?? 0,
-      cacheReadTokens: r.usage?.prompt_tokens_details?.cached_tokens ?? 0,
-      cacheCreationTokens: 0,
-    },
+    usage,
   };
 }
