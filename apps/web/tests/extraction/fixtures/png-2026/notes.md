@@ -1,8 +1,8 @@
 # png-2026
 
-**Source:** Anonymized from [REDACTED]'s real placement slip dated 2026.
+**Source:** Anonymized from a real placement slip dated 2026. Original identifiers replaced; rules in the gitignored `scripts/anonymize-rules/png-2026.json`.
 **Anonymized by:** Claude (under user direction), 2026-05-01.
-**Anonymization audit:** see `_anonymization-audit.json` in this directory.
+**Anonymization audit:** see `_anonymization-audit.json` in this directory (records cells changed, no source content).
 
 ## What this fixture covers
 
@@ -20,7 +20,7 @@ A small slip (2 employees, 7 products, 2 insurers, 1 entity) with a **workbook-l
 
 - **WICA explicit min-premium clause.** WICA sheet ends with `(MIN. PREMIUM : SGD250.00 before GST)`. Computed wages × rate = `60000 × 0.00042 + 55000 × 0.0025 ≈ 162.7`. Declared = 250 (the floor). The extractor should not flag this as an error — the slip is internally consistent and explicit.
 
-- **Product code naming differences.** PNG slip uses sheet labels:
+- **Product code naming differences.** This slip uses sheet labels:
   - `GCGP` (Group Clinical General Practitioner) → catalogue code `GP`
   - `GCSP` (Group Clinical Specialist Insurance) → catalogue code `SP`
   - `GD` (Group Dental) → catalogue code `Dental`
@@ -29,7 +29,7 @@ A small slip (2 employees, 7 products, 2 insurers, 1 entity) with a **workbook-l
 
 - **Single entity, no pool.** No `Pool` row populated on any sheet. `pool: null` expected.
 
-- **All 7 products on a single benefit year.** Period of Insurance = 01/05/2026 – 30/04/2027 on every sheet (including the summary). No multi-year ambiguity here, unlike [REDACTED]'s 2-year-billed-annually case.
+- **All 7 products on a single benefit year.** Period of Insurance = 01/05/2026 – 30/04/2027 on every sheet (including the summary). No multi-year ambiguity here, unlike the cbre-mcst-2026 fixture's 2-year-billed-annually case.
 
 ## Slip data summary
 

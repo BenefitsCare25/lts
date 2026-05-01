@@ -1,8 +1,8 @@
 # cbre-mcst-2026
 
-**Source:** Anonymized from [REDACTED] [REDACTED]'s real placement slip dated 2025-2026.
+**Source:** Anonymized from a real placement slip (period 2025-2026). Original identifiers replaced; rules in the gitignored `scripts/anonymize-rules/cbre-mcst-2026.json`.
 **Anonymized by:** Claude (under user direction), 2026-05-01.
-**Anonymization audit:** see `_anonymization-audit.json` in this directory.
+**Anonymization audit:** see `_anonymization-audit.json` in this directory (records cells changed, no source content).
 
 ## What this fixture covers
 
@@ -20,7 +20,7 @@ The simplest slip in the working corpus. **5 products, 1 entity, 2 insurers, 12-
 
 - **`Product Rated Together: GTL, GDD, GHS, GMM`** appears in row 32-33 of the GE products. This indicates the four GE-Life products are jointly underwritten — relevant for renewal / claims but currently has no schema representation. Surface as a workbook-level warning at most.
 
-- **`Policyholder(s) Rated Together: [REDACTED]`** — the original slip leaks the parent group name in this row. The anonymization replaces with `Test Group`. Per-fixture audit log records the rule.
+- **`Policyholder(s) Rated Together: Test Group`** — the slip carries a parent-group reference in this row, indicating the entity is part of a larger corporate group rated together for underwriting purposes.
 
 ## Slip data summary
 

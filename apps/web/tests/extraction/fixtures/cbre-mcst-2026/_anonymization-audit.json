@@ -1,272 +1,198 @@
 {
   "fixture": "cbre-mcst-2026",
-  "source_filename": "Placement Slips - [REDACTED]  (2025-2026).xlsx",
   "dest_filename": "slip.xlsx",
-  "rules_applied": {
-    "string_replacements": 6,
-    "cell_overrides": 0,
-    "numeric_scalings": 0
+  "rules_summary": {
+    "string_replacements_defined": 6,
+    "cell_overrides_defined": 0,
+    "numeric_scalings_defined": 0
   },
-  "total_changes": 37,
+  "total_changes_applied": 37,
   "changes": [
     {
       "sheet": "*",
       "cell": "*",
       "kind": "flatten_formulas",
-      "before": "32 formula cells",
-      "after": "literal cached values"
+      "count": 32
     },
     {
       "sheet": "GTL",
       "cell": "C4",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GTL",
       "cell": "C5",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GTL",
       "cell": "C6",
-      "kind": "string_replace",
-      "before": "[REDACTED] ",
-      "after": "1 Test Avenue, Singapore 100001 "
+      "kind": "string_replace"
     },
     {
       "sheet": "GTL",
       "cell": "C7",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "2 Test Boulevard, Singapore 100002"
+      "kind": "string_replace"
     },
     {
       "sheet": "GTL",
       "cell": "B19",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GTL",
       "cell": "B24",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GTL",
       "cell": "C34",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test Group"
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "C4",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "C5",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "C6",
-      "kind": "string_replace",
-      "before": "[REDACTED] ",
-      "after": "1 Test Avenue, Singapore 100001 "
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "C7",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "2 Test Boulevard, Singapore 100002"
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "B19",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "B24",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GDD ",
       "cell": "C34",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test Group"
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "C4",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "C5",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "C6",
-      "kind": "string_replace",
-      "before": "[REDACTED] ",
-      "after": "1 Test Avenue, Singapore 100001 "
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "C7",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "2 Test Boulevard, Singapore 100002"
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "B20",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "B26",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GHS",
       "cell": "C32",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test Group"
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "C4",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "C5",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "C6",
-      "kind": "string_replace",
-      "before": "[REDACTED] ",
-      "after": "1 Test Avenue, Singapore 100001 "
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "C7",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "2 Test Boulevard, Singapore 100002"
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "B20",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "B27",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GMM",
       "cell": "C33",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test Group"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "C4",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "C5",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "C6",
-      "kind": "string_replace",
-      "before": "[REDACTED] ",
-      "after": "1 Test Avenue, Singapore 100001 "
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "C7",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "2 Test Boulevard, Singapore 100002"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "C12",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "TEST/ZURICH/MCST-001"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "B22",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "B27",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test B Pte Ltd"
+      "kind": "string_replace"
     },
     {
       "sheet": "GPA",
       "cell": "C35",
-      "kind": "string_replace",
-      "before": "[REDACTED]",
-      "after": "Test Pte Ltd"
+      "kind": "string_replace"
     }
   ]
 }

@@ -53,5 +53,10 @@ next-env.d.ts
 # Local audit / scratch dumps under scripts/ (filenames starting with _)
 scripts/_*
 
+# Per-fixture anonymization rules — contain real client identifiers, employee
+# names, NRICs, addresses, and other PII. The committed anonymizer script
+# loads these from disk; the JSONs themselves stay LOCAL ONLY.
+scripts/anonymize-rules/
+
 # Extraction regression accuracy report (per-run; CI uploads as artifact)
 apps/web/tests/extraction/.accuracy-report.json

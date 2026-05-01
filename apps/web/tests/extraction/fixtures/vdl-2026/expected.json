@@ -2,7 +2,7 @@
   "schema": "expected.v1",
   "slip": {
     "filename": "slip.xlsx",
-    "anonymizedFrom": "[REDACTED] (Singapore semiconductor manufacturer with multi-jurisdiction subsidiaries)",
+    "anonymizedFrom": "Anonymized real-world Singapore broker placement slip (Test D)",
     "anonymizedAt": "2026-05-01"
   },
   "tolerances": {
@@ -24,7 +24,7 @@
     "_broker_fills": ["uen", "industry", "primaryContactName", "primaryContactEmail"]
   },
 
-  "_policyEntities_comment": "[REDACTED] slip lists 3 entities under 'Insured': Test D Pte Ltd (SG main, master policy), Test D China Ltd, Test D Americas LLC. The wizard's PolicyEntity model handles this multi-jurisdiction case via isMaster + sibling rows.",
+  "_policyEntities_comment": "Slip lists 3 entities under 'Insured': Test D Pte Ltd (SG main, master policy), Test D China Ltd, Test D Americas LLC. The wizard's PolicyEntity model handles this multi-jurisdiction case via isMaster + sibling rows.",
   "policyEntities": [
     {
       "legalName": "Test D Pte Ltd",

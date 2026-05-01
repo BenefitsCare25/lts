@@ -2,7 +2,7 @@
   "schema": "expected.v1",
   "slip": {
     "filename": "slip.xlsx",
-    "anonymizedFrom": "[REDACTED] (Singapore-based diplomatic mission)",
+    "anonymizedFrom": "Anonymized real-world Singapore broker placement slip (Test C)",
     "anonymizedAt": "2026-05-01"
   },
   "tolerances": {
@@ -64,7 +64,7 @@
       "insurerCode": "TM_LIFE",
       "declaredPremium": 720,
       "_planCount": 1,
-      "_plans_comment": "GHS uses Plan 1 with cover-tier rates (EO=360 per employee). 360 x 2 EO = 720. The schedule per cover tier is per-employee per-year; same situation as [REDACTED] GHS — Phase 1 introduces basis='per_employee'.",
+      "_plans_comment": "GHS uses Plan 1 with cover-tier rates (EO=360 per employee). 360 x 2 EO = 720. The schedule per cover tier is per-employee per-year; same situation as the cbre-mcst-2026 GHS — Phase 1 introduces basis='per_employee'.",
       "plans": [{ "code": "P1", "coverBasis": "per_cover_tier" }],
       "categories": [{ "category": "All Employees", "headcount": 2 }]
     },

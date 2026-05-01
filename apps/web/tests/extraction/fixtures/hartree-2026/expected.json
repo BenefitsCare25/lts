@@ -2,7 +2,7 @@
   "schema": "expected.v1",
   "slip": {
     "filename": "slip.xlsx",
-    "anonymizedFrom": "[REDACTED] + [REDACTED] (Singapore commodity trader + battery storage subsidiary)",
+    "anonymizedFrom": "Anonymized real-world Singapore broker placement slip (Test E + Test E Energy two-entity policy)",
     "anonymizedAt": "2026-05-01"
   },
   "tolerances": {
@@ -43,7 +43,7 @@
     "endDate": "2027-04-30"
   },
 
-  "_insurers_comment": "Three insurers: HSBC Life Insurance (6 products, all share one Insurope Pool policy), Zurich Insurance Company Ltd (GBT only), Income Insurance Limited (WICA only). HSBC_LIFE and INCOME are NOT in the seed catalogue — Phase 1 follow-up (same gap pattern as Allied World on PNG, Berkshire on [REDACTED]).",
+  "_insurers_comment": "Three insurers: HSBC Life Insurance (6 products, all share one Insurope Pool policy), Zurich Insurance Company Ltd (GBT only), Income Insurance Limited (WICA only). HSBC_LIFE and INCOME are NOT in the seed catalogue — Phase 1 follow-up (same gap pattern as the missing insurers on png-2026 and vdl-2026).",
   "insurers": [
     { "code": "HSBC_LIFE", "productCount": 6 },
     { "code": "ZURICH", "productCount": 1 },
@@ -104,7 +104,7 @@
       "expectedWarnings": ["16135"]
     },
     {
-      "_gbt_comment": "Group Business Travel — annual flat premium per region/plan. The B177 endorsement extends Group Parent Protection to 7 employees in Test E Japan K.K. (anonymized — was [REDACTED]). Tests whether AI surfaces multi-jurisdiction GBT extension as a workbook warning.",
+      "_gbt_comment": "Group Business Travel — annual flat premium per region/plan. The B177 endorsement extends Group Parent Protection to 7 employees in Test E Japan K.K. Tests whether AI surfaces multi-jurisdiction GBT extension as a workbook warning.",
       "productTypeCode": "GBT",
       "insurerCode": "ZURICH",
       "declaredPremium": 1640,

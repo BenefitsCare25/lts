@@ -1,23 +1,51 @@
 """Anonymize a real placement slip into a regression-test fixture.
 
-Per-fixture rules live in FIXTURES below. The script:
-  1. If source is `.xls`, converts to `.xlsx` via Excel COM automation
-     (openpyxl can only read `.xlsx`; many real broker slips are `.xls`).
-  2. Loads the (possibly-converted) `.xlsx` with openpyxl (full mode).
-  3. Applies string find/replace across every cell of every sheet.
-  4. Applies per-cell overrides (when find/replace would mis-replace).
-  5. Optionally scales numeric cells in headcount/SI columns.
-  6. Saves to apps/web/tests/extraction/fixtures/<name>/slip.xlsx.
-  7. Writes a per-fixture audit log of every change.
+Per-fixture rules live in JSON config files OUTSIDE the committed repo:
+
+    scripts/anonymize-rules/<fixture-name>.json
+
+These config files contain real client identifiers, employee names, NRICs,
+addresses, and other PII. They are GITIGNORED. The committed script knows
+only the generic processing pipeline — never the real values.
+
+The script:
+  1. Loads the per-fixture config from scripts/anonymize-rules/<name>.json.
+  2. If source is `.xls`, converts to `.xlsx` via Excel COM automation.
+  3. Loads the (possibly-converted) `.xlsx` with openpyxl (full mode).
+  4. Applies string find/replace across every cell of every sheet.
+  5. Applies per-cell overrides (when find/replace would mis-replace).
+  6. Optionally scales numeric cells in headcount/SI columns.
+  7. Saves to apps/web/tests/extraction/fixtures/<name>/slip.xlsx.
+  8. Writes a per-fixture audit log with sheet/cell/kind only — NO
+     `before`/`after` text fields, so the committed audit doesn't itself
+     leak the real values.
 
 Usage:
   python scripts/anonymize-slip.py <fixture-name>
   python scripts/anonymize-slip.py --all
   python scripts/anonymize-slip.py --list
 
-Adding a fixture: append an entry to FIXTURES, run the script, manually
-verify the output in Excel (anonymization rules above in
-apps/web/tests/extraction/fixtures/README.md), then commit.
+Config file shape (scripts/anonymize-rules/<fixture>.json):
+
+    {
+      "source": "C:\\\\path\\\\to\\\\original\\\\slip.xlsx",
+      "replace_strings": {
+        "<real-string-1>": "<placeholder-1>",
+        "<real-string-2>": "<placeholder-2>"
+      },
+      "cell_overrides": {
+        "<sheet-name>": { "<cell-coord>": "<new-value>" }
+      },
+      "scale_numeric": [
+        { "sheet": "<sheet>", "factor": 0.125, "cells": ["F22","F23"] }
+      ]
+    }
+
+Adding a fixture:
+  1. Write scripts/anonymize-rules/<name>.json with the rules above.
+  2. Run python scripts/anonymize-slip.py <name>.
+  3. Verify the output slip.xlsx is fully anonymized (manual sentinel scan).
+  4. Commit the slip.xlsx + expected.json + notes.md (NEVER the rule file).
 """
 
 import argparse
@@ -32,6 +60,7 @@ import openpyxl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES_DIR = REPO_ROOT / "apps" / "web" / "tests" / "extraction" / "fixtures"
+RULES_DIR = REPO_ROOT / "scripts" / "anonymize-rules"
 
 # Excel SaveAs format code for .xlsx (xlOpenXMLWorkbook).
 _XL_OPEN_XML_WORKBOOK = 51
@@ -74,214 +103,32 @@ def convert_xls_to_xlsx(src: Path) -> Path:
 
     return tmp_path
 
-# Per-fixture anonymization rules. Each fixture's `source` is the real slip's
-# absolute path on the operator's machine; `dest` is the in-repo fixture path.
-# String replacements run on every text cell (case-sensitive). Cell overrides
-# run after string replacements (last-write-wins).
-FIXTURES: dict[str, dict[str, Any]] = {
-    "cbre-mcst-2026": {
-        "source": r"C:\Users\huien\Desktop\slips\Placement Slips - [REDACTED]  (2025-2026).xlsx",
-        "replace_strings": {
-            # Direct identifiers
-            "[REDACTED]": "Test B Pte Ltd",
-            # Parent group references (in "Policyholder(s) Rated Together")
-            "[REDACTED]": "Test Group",
-            "[REDACTED]": "Test Pte Ltd",
-            # Addresses (two distinct ones used by this slip)
-            "[REDACTED]": "1 Test Avenue, Singapore 100001",
-            "[REDACTED]": "2 Test Boulevard, Singapore 100002",
-            # Policy numbers
-            "[REDACTED]": "TEST/ZURICH/MCST-001",
-        },
-        "cell_overrides": {},
-        "scale_numeric": [],
-    },
-    "png-2026": {
-        "source": r"C:\Users\huien\Desktop\slips\[REDACTED] - Placement Slips 2026.xlsx",
-        "replace_strings": {
-            # Direct identifier (appears on every product sheet at C4/C5/B21/B25/B27 etc.
-            # and on the Renewal Overall Premium summary at B2).
-            "[REDACTED]": "Test C Pte Ltd",
-            # Address (only one in this slip).
-            "[REDACTED]": "3 Test Crescent, Singapore 100003",
-            # Allied World policy numbers (string, anonymized to neutral form —
-            # avoid abbreviations like 'PNG' which themselves identify the source).
-            "[REDACTED]": "TEST/AW/2026-002",
-            "[REDACTED]": "TEST/AW/2026-003",
-        },
-        "cell_overrides": {
-            # Tokio Marine Life policy number is stored as an INTEGER ([REDACTED]) on
-            # GTL/GHS/GCGP/GCSP/GD!C11. The string-replace pass only touches text cells,
-            # so we override these explicitly.
-            "GTL": {"C11": "TEST/TM/2026-001"},
-            "GHS": {"C11": "TEST/TM/2026-001"},
-            "GCGP": {"C11": "TEST/TM/2026-001"},
-            "GCSP": {"C11": "TEST/TM/2026-001"},
-            "GD": {"C11": "TEST/TM/2026-001"},
-            # Round the WICA estimated annual earnings to clean numbers — exact salaries
-            # are mildly identifying. Ratio preserved (Class 1 ~ 60000, Class 2 ~ 55000).
-            # H32/H33 are the basis-of-cover declared wages; F37/F38 are formula refs
-            # `=H32`/`=H33` in the rate-calculation table that get FLATTENED to their
-            # cached value before this override runs, so we override them too.
-            # H37/H38 are `=F37*G37` etc. — recompute the products manually.
-            # Note: WICA Annual Premium does NOT reconcile to wages × rate (slip applies
-            # a SGD250 minimum); these rounded values preserve that mismatch, see notes.md.
-            "WICI": {
-                "H32": 60000,
-                "H33": 55000,
-                "F37": 60000,
-                "F38": 55000,
-                "H37": 25.2,    # 60000 * 0.00042
-                "H38": 137.5,   # 55000 * 0.0025
-            },
-        },
-        "scale_numeric": [],
-    },
-    "vdl-2026": {
-        "source": r"C:\Users\huien\Desktop\slips\[REDACTED]",
-        "replace_strings": {
-            # Three legal entities in the slip's "Insured" field. Replacement order
-            # matters: longer strings FIRST so substring overlap doesn't fire early.
-            # Note the source has a typo "[REDACTED]" on entity 2 — replace it
-            # explicitly so the output doesn't carry the misspelling.
-            "[REDACTED]": "Test D Pte Ltd",
-            "[REDACTED]": "Test D China Ltd",
-            "[REDACTED]": "Test D Americas LLC",
-            # Alternate abbreviations of the entity name appear in extension notes.
-            "[REDACTED]": "Test D China Ltd",
-            # Three address locations.
-            "[REDACTED]": "Main Location 1: 4 Test Lane, Singapore 100004",
-            "[REDACTED]": "Location 2: 5 Test Industrial Park #01-01, Singapore 100005",
-            "[REDACTED]": "Location 3: 6 Test Logistics Hub, Singapore 100006",
-            # Business description — generalize the SSIC category. The slip says
-            # "[REDACTED]";
-            # we replace with a broader "electronic components" descriptor so the
-            # combination of headcount + industry doesn't pinpoint the firm.
-            "[REDACTED]": "Manufacturing of electronic components",
-            # Berkshire policy numbers (string).
-            "[REDACTED]": "TEST/BRK/2026-002",
-            "[REDACTED]": "TEST/BRK/2026-003",
-            # ── Extension-notes leaks ───────────────────────────────────────────
-            # "Additional Arrangements" sections at the bottom of every product
-            # sheet contain free-text extensions. These leak: real employee names
-            # (PII), the Dutch parent location, the [REDACTED] subsidiary location,
-            # and a long list of third-party staffing companies. Replace each.
-            #
-            # Real employee names (PII — must be removed).
-            "[REDACTED]": "[Employee A]",
-            "[REDACTED]": "[Employee B]",
-            # Foreign-affiliate location identifiers.
-            "[REDACTED]": "Test D affiliate in Country C",
-            "[REDACTED]": "another Test D entity in Country C",
-            # [REDACTED] must run AFTER the longer "[REDACTED]"
-            # replacement above so it doesn't truncate that match prematurely.
-            "[REDACTED]": "Country B",
-            # Third-party staffing companies. Real SG firms — naming them in
-            # the fixture exposes their commercial relationships with this client.
-            # Note the double-space in "[REDACTED]  Singapore" is preserved
-            # verbatim from the source slip.
-            "[REDACTED]": "Test Staffing Partner 1 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 2 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 3 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 4 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 5 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 6 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 7 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 8 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 9 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 10 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 11 Pte Ltd",
-            "[REDACTED]": "Test Staffing Partner 12 Pte Ltd",
-            # Catch-all for any remaining bare "[REDACTED]" reference (e.g. "with [REDACTED].",
-            # "for [REDACTED]"). Run LAST so longer phrases match first.
-            "[REDACTED]": "Test D",
-        },
-        "cell_overrides": {
-            # Tokio Marine Life policy number stored as INTEGER ([REDACTED]) on every
-            # Tokio Marine sheet (GTL, GHS-Locals, GHS-Secondees, GHS-Dependants,
-            # GMM, GCGP, GCSP). String-replace pass skips numerics.
-            "GTL ": {"C11": "TEST/TM/2026-001"},
-            "GHS - Locals": {"C11": "TEST/TM/2026-001"},
-            "GHS - Secondees": {"C11": "TEST/TM/2026-001"},
-            "GHS - Dependants": {"C11": "TEST/TM/2026-001"},
-            "GMM": {"C11": "TEST/TM/2026-001"},
-            "GCGP": {"C11": "TEST/TM/2026-001"},
-            "GCSP": {"C11": "TEST/TM/2026-001"},
-        },
-        "scale_numeric": [],
-    },
-    "hartree-2026": {
-        "source": r"C:\Users\huien\Desktop\slips\[REDACTED] & [REDACTED] - Placement slips 2026 - 2027 (1).xlsx",
-        "replace_strings": {
-            # ── Entity names (longer-first; Japan affiliate before bare CHC) ──
-            "[REDACTED]": "Test E Pte Ltd",
-            "[REDACTED]": "Test E Japan K.K.",
-            "[REDACTED]": "Test E Japan K.K.",
-            "[REDACTED]": "Test E Energy Pte Ltd",
-            # ── Address (3 case/format variants of the same physical address) ──
-            "[REDACTED]": "7 Test Boulevard #20-02, Singapore 100007",
-            "[REDACTED]": "7 TEST BOULEVARD #20-02, SINGAPORE 100007",
-            "[REDACTED]": "7 Test Boulevard #18-02, Singapore 100007",
-            # ── UEN (SG company registration ID — fully identifying) ──
-            "[REDACTED]": "T26TST0001A",
-            # ── Business descriptions (3 different — generalize SSIC categories) ──
-            "[REDACTED]": "Wholesale of fuels",
-            "[REDACTED]": "Head office activities",
-            "[REDACTED]": "Energy products and services",
-            # ── Policy number (HSBC Life string on 6 sheets at C11) ──
-            "[REDACTED]": "TEST/HSBC/2026-001",
-            # ── Employee names (PII — 18 real people on the slip) ──
-            # NOTE: longer / fuller names FIRST so substring overlap binds correctly.
-            # E.g. "[REDACTED]" must replace before bare "Lee" or "[REDACTED]".
-            "[REDACTED]": "[Employee 18]",
-            "[REDACTED]": "[Employee 5]",
-            "[REDACTED]": "[Employee 13]",
-            "[REDACTED]": "[Employee 3]",
-            "[REDACTED]": "[Employee 4]",
-            "[REDACTED]": "[Employee 10]",
-            "[REDACTED]": "[Employee 15]",
-            "[REDACTED]": "[Employee 8]",
-            "[REDACTED]": "[Employee 11]",
-            "[REDACTED]": "[Employee 16]",
-            "[REDACTED]": "[Employee 2]",
-            "[REDACTED]": "[Employee 9]",
-            "[REDACTED]": "[Employee 1]",
-            "[REDACTED]": "[Employee 6]",
-            "[REDACTED]": "[Employee 6]",
-            "[REDACTED]": "[Employee 17]",
-            "[REDACTED]": "[Employee 7]",
-            "[REDACTED]": "[Employee 14]",
-            "[REDACTED]": "[Employee 12]",
-            # ── Masked NRICs (slip already partially-masks them; full redact) ──
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            "[REDACTED]": "[NRIC]",
-            # ── Catch-alls for remaining bare references (run LAST) ──
-            "[REDACTED]": "Test E",
-            "CHC": "Test E",
-        },
-        "cell_overrides": {},
-        "scale_numeric": [],
-    },
-    # Other fixtures appended in subsequent sessions:
-    # 'stmicro-2026': { ... },
-}
+
+def load_rules(name: str) -> dict[str, Any]:
+    """Load per-fixture anonymization rules from the gitignored config dir.
+
+    Raises with a clear message if the rule file is missing — so a fresh
+    clone of the repo can't accidentally run the anonymizer with empty rules.
+    """
+    rules_path = RULES_DIR / f"{name}.json"
+    if not rules_path.exists():
+        raise SystemExit(
+            f"Rule file not found: {rules_path}\n"
+            f"Per-fixture anonymization rules are gitignored (they contain real PII).\n"
+            f"Create {rules_path} with the schema in scripts/anonymize-slip.py docstring."
+        )
+    return json.loads(rules_path.read_text(encoding="utf-8"))
+
+
+def list_known_fixtures() -> list[str]:
+    """List fixture names by scanning the gitignored rules directory."""
+    if not RULES_DIR.exists():
+        return []
+    return sorted(p.stem for p in RULES_DIR.glob("*.json"))
 
 
 def anonymize_fixture(name: str) -> dict[str, Any]:
-    if name not in FIXTURES:
-        raise SystemExit(
-            f"Unknown fixture {name!r}. Known: {sorted(FIXTURES)}. "
-            f"Add an entry to FIXTURES in {Path(__file__).name}."
-        )
-    cfg = FIXTURES[name]
+    cfg = load_rules(name)
     src = Path(cfg["source"])
     dest_dir = FIXTURES_DIR / name
     dest = dest_dir / "slip.xlsx"
@@ -320,7 +167,9 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
 
     # Snapshot of (sheet, coord) → cached value, for every populated cell.
     cached_values: dict[tuple[str, str], Any] = {}
-    cells_to_change: list[tuple[str, str, str, str]] = []  # for string replacements
+    # cells_to_change: (sheet, coord) — we don't keep before/after text in
+    # any in-memory structure that lands in the audit log.
+    cells_to_change: list[tuple[str, str, str]] = []
     replace_strings = cfg.get("replace_strings", {})
     for sheet_name in wb_values.sheetnames:
         sh = wb_values[sheet_name]
@@ -337,11 +186,14 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
                     if find in new_value:
                         new_value = new_value.replace(find, replace)
                 if new_value != original:
-                    cells_to_change.append((sheet_name, cell.coordinate, new_value, original))
+                    cells_to_change.append((sheet_name, cell.coordinate, new_value))
     wb_values.close()
 
     wb = openpyxl.load_workbook(load_src)
 
+    # Audit entries record only WHERE a change happened, not the values
+    # involved. Including original cell content would re-leak the PII the
+    # script just removed.
     changes: list[dict[str, Any]] = []
 
     # 1. Flatten every formula cell to its cached literal value so save
@@ -364,26 +216,17 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
                 "sheet": "*",
                 "cell": "*",
                 "kind": "flatten_formulas",
-                "before": f"{formulas_flattened} formula cells",
-                "after": "literal cached values",
+                "count": formulas_flattened,
             }
         )
 
     # 2. Apply string replacements (overwriting whatever's there now).
-    for sheet_name, coord, new_value, original in cells_to_change:
+    for sheet_name, coord, new_value in cells_to_change:
         sh = wb[sheet_name]
         sh[coord] = new_value
-        changes.append(
-            {
-                "sheet": sheet_name,
-                "cell": coord,
-                "kind": "string_replace",
-                "before": original,
-                "after": new_value,
-            }
-        )
+        changes.append({"sheet": sheet_name, "cell": coord, "kind": "string_replace"})
 
-    # 2. Per-cell overrides (run after string replacements).
+    # 3. Per-cell overrides (run after string replacements).
     for sheet_name, cell_overrides in cfg.get("cell_overrides", {}).items():
         if sheet_name not in wb.sheetnames:
             print(f"  [warn] cell_override targets missing sheet {sheet_name!r}; skipped")
@@ -392,18 +235,10 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
         for cell_addr, new_value in cell_overrides.items():
             old = sh[cell_addr].value
             if old != new_value:
-                changes.append(
-                    {
-                        "sheet": sheet_name,
-                        "cell": cell_addr,
-                        "kind": "cell_override",
-                        "before": old,
-                        "after": new_value,
-                    }
-                )
+                changes.append({"sheet": sheet_name, "cell": cell_addr, "kind": "cell_override"})
                 sh[cell_addr] = new_value
 
-    # 3. Numeric scaling (e.g. headcount in a basis-of-cover table).
+    # 4. Numeric scaling (e.g. headcount in a basis-of-cover table).
     for rule in cfg.get("scale_numeric", []):
         sheet_name = rule["sheet"]
         if sheet_name not in wb.sheetnames:
@@ -414,43 +249,37 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
             old = sh[cell_addr].value
             if isinstance(old, (int, float)):
                 new_value = round(old * factor, 4)
-                # Preserve int when factor produces an integer
                 if isinstance(old, int) and float(new_value).is_integer():
                     new_value = int(new_value)
-                changes.append(
-                    {
-                        "sheet": sheet_name,
-                        "cell": cell_addr,
-                        "kind": "scale_numeric",
-                        "before": old,
-                        "after": new_value,
-                    }
-                )
+                changes.append({"sheet": sheet_name, "cell": cell_addr, "kind": "scale_numeric"})
                 sh[cell_addr] = new_value
 
-    # 4. Save.
+    # 5. Save.
     dest_dir.mkdir(parents=True, exist_ok=True)
     wb.save(dest)
     wb.close()
 
-    # 5. Write audit log to fixture directory.
+    # 6. Write audit log to fixture directory. Records only WHERE changes
+    # happened and how many of each kind — never the source content.
     audit_path = dest_dir / "_anonymization-audit.json"
     audit_path.write_text(
         json.dumps(
             {
                 "fixture": name,
-                "source_filename": src.name,
                 "dest_filename": dest.name,
-                "rules_applied": {
-                    "string_replacements": len(replace_strings),
-                    "cell_overrides": sum(len(v) for v in cfg.get("cell_overrides", {}).values()),
-                    "numeric_scalings": sum(len(r["cells"]) for r in cfg.get("scale_numeric", [])),
+                "rules_summary": {
+                    "string_replacements_defined": len(replace_strings),
+                    "cell_overrides_defined": sum(
+                        len(v) for v in cfg.get("cell_overrides", {}).values()
+                    ),
+                    "numeric_scalings_defined": sum(
+                        len(r["cells"]) for r in cfg.get("scale_numeric", [])
+                    ),
                 },
-                "total_changes": len(changes),
+                "total_changes_applied": len(changes),
                 "changes": changes,
             },
             indent=2,
-            default=str,
         ),
         encoding="utf-8",
     )
@@ -460,7 +289,7 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
         try:
             converted_temp.unlink()
         except OSError:
-            pass  # leave it; tempdir gets reaped
+            pass
 
     print(f"  changes: {len(changes)}")
     print(f"  audit:   {audit_path.relative_to(REPO_ROOT)}")
@@ -471,16 +300,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     g = parser.add_mutually_exclusive_group(required=True)
     g.add_argument("fixture", nargs="?", help="Fixture name (e.g. cbre-mcst-2026)")
-    g.add_argument("--all", action="store_true", help="Anonymize all fixtures with rules defined")
-    g.add_argument("--list", action="store_true", help="List known fixtures")
+    g.add_argument(
+        "--all", action="store_true", help="Anonymize all fixtures with rule files defined"
+    )
+    g.add_argument(
+        "--list", action="store_true", help="List known fixtures (from gitignored rules dir)"
+    )
     args = parser.parse_args()
 
+    known = list_known_fixtures()
     if args.list:
-        for name in sorted(FIXTURES):
+        if not known:
+            print(f"No rule files found in {RULES_DIR.relative_to(REPO_ROOT)}/")
+        for name in known:
             print(name)
         return 0
 
-    targets = sorted(FIXTURES) if args.all else [args.fixture]
+    targets = known if args.all else [args.fixture]
     for name in targets:
         anonymize_fixture(name)
     return 0

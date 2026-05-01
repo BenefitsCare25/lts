@@ -2,7 +2,7 @@
   "schema": "expected.v1",
   "slip": {
     "filename": "slip.xlsx",
-    "anonymizedFrom": "[REDACTED] [REDACTED] (Singapore commercial real estate management corporation)",
+    "anonymizedFrom": "Anonymized real-world Singapore broker placement slip (Test B)",
     "anonymizedAt": "2026-05-01"
   },
   "tolerances": {

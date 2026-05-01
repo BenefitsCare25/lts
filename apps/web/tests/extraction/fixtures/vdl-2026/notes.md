@@ -1,20 +1,20 @@
 # vdl-2026
 
-**Source:** Anonymized from [REDACTED]'s real placement slip dated 2026 (as at 13 Apr 2026).
+**Source:** Anonymized from a real placement slip dated 2026. Original identifiers replaced; rules in the gitignored `scripts/anonymize-rules/vdl-2026.json`.
 **Anonymized by:** Claude (under user direction), 2026-05-01.
-**Anonymization audit:** see `_anonymization-audit.json` in this directory.
+**Anonymization audit:** see `_anonymization-audit.json` in this directory (records cells changed, no source content).
 
 ## What this fixture covers
 
-A medium-complex slip — 8 logical products / 3 insurers / 3 entities / 778 employees. Source is a legacy `.xls` file (auto-converted to `.xlsx` by `scripts/anonymize-slip.py` via Excel COM). The headline test is **cross-sheet GHS aggregation**: GHS data is split across 3 sheets (Locals / Secondees / Dependants) and the extractor must collapse them into ONE Product.
+A medium-complex slip — 8 logical products / 3 insurers / 3 entities / ~780 employees. Source is a legacy `.xls` file (auto-converted to `.xlsx` by `scripts/anonymize-slip.py` via Excel COM). The headline test is **cross-sheet GHS aggregation**: GHS data is split across 3 sheets (Locals / Secondees / Dependants) and the extractor must collapse them into ONE Product.
 
 ## What's structurally interesting
 
-- **Source format `.xls` (legacy Excel binary).** First fixture exercising the auto-conversion path in `anonymize-slip.py`. ~4 of 7 slips on hand are `.xls` — this format is endemic in the SG broker market.
+- **Source format `.xls` (legacy Excel binary).** First fixture exercising the auto-conversion path in `anonymize-slip.py`. The `.xls` format is endemic in the SG broker market.
 
 - **Cross-sheet GHS aggregation.** Three GHS sheets:
-  - `GHS - Locals` — 778 employees across Plans B3/B2/B1/B/A/A1
-  - `GHS - Secondees` — 2 employees seconded overseas (Plans B/B1)
+  - `GHS - Locals` — main employee cohort across Plans B3/B2/B1/B/A/A1
+  - `GHS - Secondees` — small group seconded overseas (Plans B/B1)
   - `GHS - Dependants` — voluntary dependant cover, plans mirror Locals
   The extractor must recognize these as one logical GHS product (same insurer, same policy, same period). Failing this, it'll emit 3 separate Products and the wizard will show duplicate cards.
 
@@ -24,7 +24,7 @@ A medium-complex slip — 8 logical products / 3 insurers / 3 entities / 778 emp
 
 - **Three insurers, two with label variants.**
   - `Tokio Marine Life` (7 sheets, 5 logical products after GHS aggregation) — in seed catalogue ✓
-  - `Berkshire` on GPA, `Berkshire Hathaway` on WICA — same insurer, two label variants. Extractor must canonicalize to one code (e.g. `BERKSHIRE`). Berkshire is NOT in the seed catalogue — Phase 1 follow-up (same gap as Allied World on PNG).
+  - `Berkshire` on GPA, `Berkshire Hathaway` on WICA — same insurer, two label variants. Extractor must canonicalize to one code (e.g. `BERKSHIRE`). Berkshire is NOT in the seed catalogue — Phase 1 follow-up (same gap as the missing insurer on png-2026).
   - `Chubb` on GBT — in seed catalogue ✓
 
 - **Multi-class WICA with 10 categories.** Largest WICA layout in the corpus. Tests whether the extractor models 10 classes as one Product with 10 Plans/PremiumRates, or fragments them. Fixture asserts plan count only (10 plan codes too verbose to assert individually).
@@ -35,17 +35,17 @@ A medium-complex slip — 8 logical products / 3 insurers / 3 entities / 778 emp
 
 ## Anonymization decisions (reviewer should know)
 
-1. **Headcount NOT scaled.** README rule says scale to ≤100 max per category. For [REDACTED] this would require ~50 cell-overrides with cross-cell premium recomputation (headcount → SI → premium → annual total chain). Decision: skip scaling because (a) `name + address + business` are already replaced, (b) "778-employee electronic components manufacturer with SG main + China subsidiary + USA subsidiary" maps to dozens of SG firms, not one, and (c) the cross-sheet aggregation test value doesn't require scaled headcounts. Future re-anonymization can add scaling if threat model tightens.
+1. **Headcount NOT scaled.** README rule says scale to ≤100 max per category. Skipping the scaling here because the cross-sheet aggregation test doesn't require small headcounts and scaling would require ~50 cross-cell premium recomputations.
 
-2. **Business description generalized.** `[REDACTED]` → `Manufacturing of electronic components`. Broader SSIC family (~10x more candidate firms).
+2. **Business description generalized.** Specific SSIC sub-category replaced with a broader one (~10x more candidate firms).
 
-3. **Subsidiary geographies anonymized to Country B / Country C.** Original [REDACTED] + [REDACTED] (Netherlands) tipoffs are too specific. Generic `Country B` / `Country C` preserves the multi-jurisdiction structure.
+3. **Subsidiary geographies anonymized to Country B / Country C.** Original specific countries removed; generic placeholders preserve the multi-jurisdiction structure.
 
-4. **Real employee names redacted.** Two real human names appeared in extension notes (`[REDACTED]`, `[REDACTED]`) — direct PII. Replaced with `[Employee A]` / `[Employee B]`.
+4. **Real employee names redacted.** Two real human names appeared in extension notes — direct PII. Replaced with `[Employee A]` / `[Employee B]`.
 
-5. **Third-party staffing companies replaced.** 12 real SG staffing firms named in GHS-Locals/GCGP/GCSP extension notes. Replaced with `Test Staffing Partner 1-12 Pte Ltd` to avoid exposing their commercial relationship with the (anonymized) client.
+5. **Third-party staffing companies replaced.** 12 real SG staffing firms named in extension notes. Replaced with `Test Staffing Partner 1-12 Pte Ltd` to avoid exposing their commercial relationship with the (anonymized) client.
 
-6. **Source typo `[REDACTED]` removed.** Entity 2 in source is `[REDACTED]` — the "[REDACTED]" is a real typo in the slip. Replacement `Test D China Ltd` doesn't carry the misspelling forward (cleaner test data).
+6. **Source-slip typos fixed.** The source had a typo in one entity name; the replacement standardizes to clean test data.
 
 ## Slip data summary
 

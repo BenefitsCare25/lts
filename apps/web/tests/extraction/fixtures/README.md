@@ -6,23 +6,19 @@ This is **the empirical truth** for "is extraction accurate?" — opinions don't
 
 ---
 
-## Coverage matrix (working set — 2026-05-01)
+## Coverage matrix (working set)
 
-User has 7 real slips on hand; the working set is 5 fixtures chosen for *coverage*, not volume. Add more as real broker uploads surface novel edge cases.
+5 fixtures chosen for *coverage* of slip-shape patterns, not volume. Add more as real broker uploads surface novel edge cases.
 
-| # | Fixture | Source | Why in the working set |
-|---|---|---|---|
-| 1 | `stmicro-2026/` | [REDACTED] 2026 | **Stress case** — 7 products across 4 insurers (GE Life, Zurich, Chubb, Allianz), 3 master-policy entities, flex bundles in Setup sheet, broker comments sheet, billing-numbers sheet. Multi-parent stacking on GTL Plan D. The hardest slip in the set. |
-| 2 | `cbre-mcst-2026/` | [REDACTED] 2025-2026 | **Simple baseline** — 5 products (GTL, GDD, GHS, GMM, GPA), single entity (`[REDACTED]`), single insurer (Tokio Marine Life). Has both ACRA + Mailing Address fields (slip-shape variation). If extraction can't get this, nothing else matters. |
-| 3 | `vdl-2026/` | [REDACTED] 2026 | **Cross-sheet aggregation** — GHS split into 3 separate sheets (Locals / Secondees / Dependants). Tests whether the runner aggregates them correctly into a single GHS product or treats them as 3. Tokio Marine Life. |
-| 4 | `png-2026/` | [REDACTED] 2026 | **Has summary sheet** — `Renewal Overall Premium` sheet provides declared totals at the workbook level (vs. [REDACTED]'s per-product Annual Premium row). Tests reconciliation when declared comes from a separate sheet, not the product page. Tokio Marine Life. |
-| 5 | `hartree-2026/` | [REDACTED] + [REDACTED] 2026-2027 | **Different insurer + edge cases** — HSBC Life (not GE/TM); Insurope Pool (not Generali); has Dental + GP + GCI products our existing seed catalogue may not register; some sheets have huge max-col counts (Dental: 16135 cols, WICA: 16136) which stresses workbook-to-text serialization. |
+| # | Fixture | Coverage |
+|---|---|---|
+| 1 | `stmicro-2026/` | **Stress case** — 7 products across 4 insurers, 3 master-policy entities, flex bundles, broker comments sheet, billing-numbers sheet, multi-parent plan stacking. The hardest slip in the set. (Pending — fixture not yet built.) |
+| 2 | `cbre-mcst-2026/` | **Simple baseline** — 5 products, single entity, single insurer. Two address fields (ACRA + Mailing). Two-year-billed-annually period. If extraction can't get this, nothing else matters. |
+| 3 | `vdl-2026/` | **Cross-sheet aggregation** — GHS split into 3 sheets (Locals / Secondees / Dependants). Tests whether the runner collapses them into one Product or emits three. Multi-jurisdiction master policy (3 entities). 778-employee scale. Bundling note "(Premium includes GP & SP)". |
+| 4 | `png-2026/` | **Workbook-level summary sheet** — declared totals come from a separate sheet, not the product page. Min-premium clause on WICA. Per-product summary/sheet declared mismatch on GPA. Two-insurer policy. |
+| 5 | `hartree-2026/` | **Pool + edge cases** — first non-null `pool` (`Insurope Pool`). `#VALUE!` formula error in WICA Annual Premium. 16k-col stress sheets (Dental, WICA). HSBC Life + Income Insurance not in seed catalogue. GCI as add-on to GTL. Multi-jurisdiction GBT extension. |
 
-**Slips on hand but NOT in the working set:**
-- [REDACTED] 2025-2026 — too similar to [REDACTED] + [REDACTED] for marginal coverage.
-- Generic `Placement Slips 2026.xls` — 11 products including OSI; rich case but client identity unclear (we'd need the broker to confirm). Add if a future test exposes a gap.
-
-When adding a new slip, document the *why* — what scenario does it cover that the current set doesn't?
+When adding a new slip, document the *why* — what slip-shape pattern does it cover that the current set doesn't?
 
 ---
 
@@ -70,9 +66,9 @@ Real slips MUST be anonymized before the slip file enters this directory. Anyone
 > **Lessons from earlier fixtures — read before starting** (each one bit us once):
 > - **Scan free-text sections, not just headers.** "Additional Arrangements" / "Schedule of Benefits" / extension-notes paragraphs at the bottom of product sheets often leak the most: real employee names, third-party staffing partners, foreign affiliate locations. The structured fields (Policyholder, Address, Policy No.) are the easy 80% — the prose is where the PII hides. Use a comprehensive substring sentinel scan across EVERY cell of EVERY sheet, including any abbreviations or alternate spellings of identifiers.
 > - **`.xls` sources auto-convert.** `scripts/anonymize-slip.py` invokes Excel COM if the source ends in `.xls`. No manual conversion step needed.
-> - **Numeric policy IDs need `cell_overrides`, not `replace_strings`.** The string-replace pass skips non-string cells. If a policy number is stored as an integer (e.g. Tokio Marine's [REDACTED]), use a per-cell override.
+> - **Numeric policy IDs need `cell_overrides`, not `replace_strings`.** The string-replace pass skips non-string cells. If a policy number is stored as an integer rather than a string, use a per-cell override.
 > - **Formula refs propagate cached values past `cell_overrides`.** If you override `H32` but `F37` is `=H32`, the flatten step writes the OLD cached value to F37 before your override runs. Override both.
-> - **Pseudonyms can self-leak.** `TEST/AW/PNG-002` decodes back to "[REDACTED]". Use neutral patterns like `TEST/<insurer>/2026-NNN`.
+> - **Pseudonyms can self-leak.** Avoid abbreviations in placeholder strings that decode back to the source. Use neutral patterns like `TEST/<insurer>/2026-NNN`.
 
 1. Get the original .xls from the broker (with consent or under existing data-handling agreement).
 2. Open in Excel (or via the `scripts/anonymize-slip.py` helper). Apply the rules above.
