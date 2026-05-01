@@ -15,8 +15,8 @@ import {
   type DerivedCategory,
   type EligibilityOverride,
   type GroupOverride,
-  type ProductPlanMap,
   INELIGIBLE,
+  type ProductPlanMap,
   buildProductAssignments,
   categoryUsedByProducts,
   deriveEmployeeCategories,
@@ -242,7 +242,7 @@ function CategoryRow({
       setPredicateText(JSON.stringify(override.predicate ?? category.predicate, null, 2));
       setPredicateError(null);
     }
-  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps -- sync only on open
+  }, [expanded, override.predicate, category.predicate]);
 
   const displayName = override.rename ?? category.displayName;
   const displayDescription = override.description ?? category.description;
