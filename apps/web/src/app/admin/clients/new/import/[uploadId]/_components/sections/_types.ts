@@ -5,7 +5,19 @@
 // server/extraction/heuristic-to-envelope.ts and extractor.ts.
 // =============================================================
 
+import { z } from 'zod';
+
 export type SourceRef = { sheet?: string; cell?: string; range?: string };
+
+// Loose schema — validates the minimum required to render any product
+// card without crashing. Extra fields are preserved via passthrough so
+// the wizard never silently drops data when the envelope schema evolves.
+const wizardExtractedProductSchema = z
+  .object({
+    productTypeCode: z.string().min(1),
+    insurerCode: z.string().min(1),
+  })
+  .passthrough();
 
 export type FieldEnvelope<T> = {
   value: T | null;
@@ -286,12 +298,25 @@ export function suggestionsFromDraft(progress: unknown): WizardSuggestions {
   return obj.suggestions ?? empty;
 }
 
-// Centralised cast for ExtractedProduct[] off the draft. Loose today;
-// tightens to a Zod safeParse when the LLM stage lands and we want
-// to reject malformed payloads.
+// Centralised read for ExtractedProduct[] off the draft. Uses Zod
+// safeParse to drop structurally invalid items without crashing the
+// wizard — a malformed product is logged and skipped rather than
+// propagating as an exception to the page boundary.
 export function extractedProductsFromDraft(raw: unknown): WizardExtractedProduct[] {
   if (!Array.isArray(raw)) return [];
-  return raw as WizardExtractedProduct[];
+  const result: WizardExtractedProduct[] = [];
+  for (const [i, item] of raw.entries()) {
+    const parsed = wizardExtractedProductSchema.safeParse(item);
+    if (parsed.success) {
+      result.push(parsed.data as WizardExtractedProduct);
+    } else {
+      console.warn(
+        `[wizard] extractedProductsFromDraft: dropped item[${i}] — invalid shape:`,
+        parsed.error.issues,
+      );
+    }
+  }
+  return result;
 }
 
 export const BROKER_OVERRIDE_NAMESPACES = [

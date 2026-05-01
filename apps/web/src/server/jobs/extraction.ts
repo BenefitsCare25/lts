@@ -30,6 +30,7 @@ import { prisma } from '@/server/db/client';
 import { createTenantClient } from '@/server/db/tenant';
 import { runAiExtraction } from '@/server/extraction/ai/runner';
 import { type ExtractionResult, extractFromWorkbook } from '@/server/extraction/extractor';
+import { checkExtractedProducts } from '@/server/extraction/persist';
 import { downloadFile } from '@/server/storage/sharepoint';
 import { Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
@@ -225,6 +226,11 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     return;
   }
 
+  const validationIssues = checkExtractedProducts(
+    aiResult.products,
+    `upload:${uploadId}`,
+  );
+
   await prisma.extractionDraft.update({
     where: { id: draft.id },
     data: {
@@ -258,9 +264,12 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
           completedAt: new Date().toISOString(),
         },
       } as unknown as Prisma.InputJsonValue,
-      // Prisma's nullable JSON columns reject the literal `null`; use
-      // `Prisma.DbNull` to clear the column to SQL NULL on success.
-      validationIssues: Prisma.DbNull,
+      // Store any schema violations so the wizard can surface them.
+      // Prisma.DbNull clears to SQL NULL when the AI output is clean.
+      validationIssues:
+        validationIssues.length > 0
+          ? (validationIssues as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
     },
   });
 
