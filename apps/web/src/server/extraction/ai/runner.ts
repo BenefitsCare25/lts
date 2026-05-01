@@ -331,25 +331,12 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
   const productsExtracted = fanOut.successes.length;
   const productsFailed = fanOut.failures.length;
 
-  // Partial-failure policy: as long as at least one product extracted
-  // cleanly, the overall extraction is useful and the wizard surfaces
-  // the failures as warnings. Zero successes => fail the whole run.
-  if (productsExtracted === 0) {
-    const summary = fanOut.failures
-      .slice(0, 5)
-      .map((f) => `- ${f.manifest.productTypeCode}×${f.manifest.insurerCode}: ${f.error}`)
-      .join('\n');
-    return {
-      ok: false,
-      retryable: fanOut.failures.some((f) => f.retryable),
-      error: `All ${productsRequested} per-product extraction passes failed. First failures:\n${summary}`,
-      meta: {
-        workbookChars: workbookText.totalChars,
-        sheetsCount: workbookText.sheets.length,
-        latencyMs: Date.now() - wallStart,
-      },
-    };
-  }
+  // Partial-success policy: discovery output (client, entities,
+  // benefit year, insurers, pool) is surfaced to the wizard as long
+  // as discovery itself succeeded — even when every per-product pass
+  // failed. The broker keeps the cross-cutting work, the failed
+  // products show up as warnings + heuristic-only rows where the
+  // parser had a template, and a re-run can target just the misses.
 
   // ───── Stage 3: merge with heuristic floor ─────
   const aiProducts = fanOut.successes.map((s) => s.product);

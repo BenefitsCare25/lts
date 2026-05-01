@@ -43,9 +43,14 @@ export function ProductsSection({ draft }: Props) {
         <h2>Products</h2>
         <section className="section">
           <Card className="card-padded">
-            <p className="mb-0">
-              No products extracted from this slip. Resolve template-detection issues in the Source
-              section, or upload a slip whose sheet names match a registered insurer template.
+            <p className="mb-2">
+              <strong>No products in the catalogue yet.</strong>
+            </p>
+            <p className="field-help mb-0">
+              The slip-level details (client, entities, benefit year, insurers) are populated, but
+              every per-product extraction pass failed or no template matched. Re-run AI extraction
+              from the Source section to retry, or check the warnings on the wizard banner for
+              specific failures.
             </p>
           </Card>
         </section>

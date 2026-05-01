@@ -29,12 +29,20 @@ export function InsurersPoolSection({ draft }: Props) {
   const poolsQuery = trpc.pools.list.useQuery();
 
   const extracted = extractedProductsFromDraft(draft.extractedProducts);
+  const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
 
-  // Unique insurer codes across all extracted products, with counts.
+  // Unique insurer codes from extracted products, unioned with the
+  // discovery pass's `proposedInsurers`. The union matters when AI
+  // per-product passes fail but discovery still identified the
+  // insurers — the broker can confirm the registry mapping even when
+  // section 6 has no rows yet.
   const insurerSummary = useMemo(() => {
     const counts = new Map<string, number>();
     for (const p of extracted) {
       counts.set(p.insurerCode, (counts.get(p.insurerCode) ?? 0) + 1);
+    }
+    for (const i of aiBundle.proposedInsurers) {
+      if (!counts.has(i.code)) counts.set(i.code, i.productCount);
     }
     const registry = insurersQuery.data ?? [];
     return Array.from(counts.entries()).map(([code, productCount]) => {
@@ -47,9 +55,7 @@ export function InsurersPoolSection({ draft }: Props) {
         active: match?.active ?? false,
       };
     });
-  }, [extracted, insurersQuery.data]);
-
-  const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
+  }, [extracted, aiBundle.proposedInsurers, insurersQuery.data]);
 
   // Pool detection — heuristic fields are the floor; AI fills when no
   // template matched. Workbook-level info repeated across every product
