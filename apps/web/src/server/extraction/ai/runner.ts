@@ -20,6 +20,7 @@ import type {
   FieldEnvelope,
   SourceRef,
 } from '@/server/extraction/heuristic-to-envelope';
+import { isClaudeDeployment } from '@/server/trpc/routers/tenant-ai-provider';
 import { type CatalogueContext, loadCatalogueContext } from './catalogue-context';
 import {
   type FoundryProvider,
@@ -27,7 +28,6 @@ import {
   decryptProviderKey,
   loadActiveProvider,
 } from './foundry-client';
-import { isClaudeDeployment } from '@/server/trpc/routers/tenant-ai-provider';
 import {
   type AiOutput,
   type AiOutputBenefitYear,
