@@ -204,6 +204,16 @@ main {
   padding: 1.25rem 0.75rem;
 }
 
+/* Auto-collapse on routes that ship their own left rail (e.g. the
+   create-client import wizard). Width 0 + display none reclaims the
+   full content area for the wizard's own stepper rail. */
+.admin-aside.is-collapsed {
+  display: none;
+  width: 0;
+  padding: 0;
+  border-right: none;
+}
+
 .admin-main {
   flex: 1;
   min-width: 0;

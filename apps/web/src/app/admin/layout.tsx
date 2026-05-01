@@ -1,4 +1,4 @@
-import { SectionRail } from '@/components/admin/section-rail';
+import { AdminAside } from '@/components/admin/admin-aside';
 import { TopNav } from '@/components/admin/top-nav';
 import { requireSession } from '@/server/auth/session';
 import type { ReactNode } from 'react';
@@ -24,9 +24,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         </div>
       </header>
       <div className="admin-body">
-        <aside className="admin-aside">
-          <SectionRail />
-        </aside>
+        <AdminAside />
         <main className="admin-main">{children}</main>
       </div>
     </div>
