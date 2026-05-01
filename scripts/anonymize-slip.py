@@ -1,12 +1,14 @@
 """Anonymize a real placement slip into a regression-test fixture.
 
 Per-fixture rules live in FIXTURES below. The script:
-  1. Loads the original .xlsx with openpyxl (full mode, preserves formatting).
-  2. Applies string find/replace across every cell of every sheet.
-  3. Applies per-cell overrides (when find/replace would mis-replace).
-  4. Optionally scales numeric cells in headcount/SI columns.
-  5. Saves to apps/web/tests/extraction/fixtures/<name>/slip.xlsx.
-  6. Writes a per-fixture audit log of every change.
+  1. If source is `.xls`, converts to `.xlsx` via Excel COM automation
+     (openpyxl can only read `.xlsx`; many real broker slips are `.xls`).
+  2. Loads the (possibly-converted) `.xlsx` with openpyxl (full mode).
+  3. Applies string find/replace across every cell of every sheet.
+  4. Applies per-cell overrides (when find/replace would mis-replace).
+  5. Optionally scales numeric cells in headcount/SI columns.
+  6. Saves to apps/web/tests/extraction/fixtures/<name>/slip.xlsx.
+  7. Writes a per-fixture audit log of every change.
 
 Usage:
   python scripts/anonymize-slip.py <fixture-name>
@@ -20,8 +22,9 @@ apps/web/tests/extraction/fixtures/README.md), then commit.
 
 import argparse
 import json
-import shutil
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +32,47 @@ import openpyxl
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES_DIR = REPO_ROOT / "apps" / "web" / "tests" / "extraction" / "fixtures"
+
+# Excel SaveAs format code for .xlsx (xlOpenXMLWorkbook).
+_XL_OPEN_XML_WORKBOOK = 51
+
+
+def convert_xls_to_xlsx(src: Path) -> Path:
+    """Convert a legacy .xls file to .xlsx via Excel COM automation.
+
+    Returns the path to a temp .xlsx file. Caller is responsible for cleanup
+    (or just let the OS reap it on next reboot — they're tiny).
+
+    Requires Microsoft Excel installed on Windows. Raises if Excel COM is not
+    available or the file fails to open.
+    """
+    try:
+        import pythoncom
+        import win32com.client
+    except ImportError as e:  # pragma: no cover - explicit error for non-Windows
+        raise SystemExit(
+            f"Source {src.name} is .xls and requires Excel COM to convert. "
+            f"Install: pip install pywin32. Underlying: {e}"
+        ) from e
+
+    tmp_fd, tmp_path_str = tempfile.mkstemp(prefix="anon_", suffix=".xlsx")
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_path_str)
+    if tmp_path.exists():
+        tmp_path.unlink()  # Excel SaveAs requires the target NOT to exist.
+
+    pythoncom.CoInitialize()
+    xl = win32com.client.Dispatch("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    try:
+        wb = xl.Workbooks.Open(str(src), ReadOnly=True)
+        wb.SaveAs(str(tmp_path), FileFormat=_XL_OPEN_XML_WORKBOOK)
+        wb.Close(SaveChanges=False)
+    finally:
+        xl.Quit()
+
+    return tmp_path
 
 # Per-fixture anonymization rules. Each fixture's `source` is the real slip's
 # absolute path on the operator's machine; `dest` is the in-repo fixture path.
@@ -93,8 +137,80 @@ FIXTURES: dict[str, dict[str, Any]] = {
         },
         "scale_numeric": [],
     },
+    "vdl-2026": {
+        "source": r"C:\Users\huien\Desktop\slips\VDL - Placement Slips 2026 (as at 13 Apr 2026).xls",
+        "replace_strings": {
+            # Three legal entities in the slip's "Insured" field. Replacement order
+            # matters: longer strings FIRST so substring overlap doesn't fire early.
+            # Note the source has a typo "Tecnologies" on entity 2 — replace it
+            # explicitly so the output doesn't carry the misspelling.
+            "VDL Enabling Technologies Group (Singapore) Pte Ltd": "Test D Pte Ltd",
+            "VDL Enabling Tecnologies Group of Suzhou Ltd": "Test D China Ltd",
+            "VDL Enabling Technologies Group USA LLC": "Test D Americas LLC",
+            # Alternate abbreviations of the entity name appear in extension notes.
+            "VDL Enabling Tech. Group of Suzhou Ltd": "Test D China Ltd",
+            # Three address locations.
+            "Main Location 1: 259 Jalan Ahmad Ibrahim Singapore 629148": "Main Location 1: 4 Test Lane, Singapore 100004",
+            "Location 2: 16C Tuas Avenue 1 #03-41 Jtc Space @ Tuas Singapore 639535": "Location 2: 5 Test Industrial Park #01-01, Singapore 100005",
+            "Location 3: Mapletree Logistics, 5A Joo Koon Circle, #04-04, Singapore 628535": "Location 3: 6 Test Logistics Hub, Singapore 100006",
+            # Business description — generalize the SSIC category. The slip says
+            # "Manufacturing of high tech equipment for semi-conductors & related industry";
+            # we replace with a broader "electronic components" descriptor so the
+            # combination of headcount + industry doesn't pinpoint the firm.
+            "Manufacturing of high tech equipment for semi-conductors & related industry": "Manufacturing of electronic components",
+            # Berkshire policy numbers (string).
+            "47-AAH-307299": "TEST/BRK/2026-002",
+            "47-ACA-306944-08": "TEST/BRK/2026-003",
+            # ── Extension-notes leaks ───────────────────────────────────────────
+            # "Additional Arrangements" sections at the bottom of every product
+            # sheet contain free-text extensions. These leak: real employee names
+            # (PII), the Dutch parent location, the Suzhou subsidiary location,
+            # and a long list of third-party staffing companies. Replace each.
+            #
+            # Real employee names (PII — must be removed).
+            "Teoh Kok Chuan": "[Employee A]",
+            "Tey Xin Han": "[Employee B]",
+            # Foreign-affiliate location identifiers.
+            "VDL ETG Eindhoven in Netherlands": "Test D affiliate in Country C",
+            "another VDL entity in the Netherlands": "another Test D entity in Country C",
+            # Suzhou must run AFTER the longer "VDL Enabling Tech. Group of Suzhou Ltd"
+            # replacement above so it doesn't truncate that match prematurely.
+            "Suzhou China": "Country B",
+            # Third-party staffing companies. Real SG firms — naming them in
+            # the fixture exposes their commercial relationships with this client.
+            # Note the double-space in "PersolKelly  Singapore" is preserved
+            # verbatim from the source slip.
+            "JOBEE PTE LTD": "Test Staffing Partner 1 Pte Ltd",
+            "Recruit Express Pte Ltd": "Test Staffing Partner 2 Pte Ltd",
+            "CAPITA Pte Ltd": "Test Staffing Partner 3 Pte Ltd",
+            "ACExcellent Consulting Pte Ltd": "Test Staffing Partner 4 Pte Ltd",
+            "Adecco Personnel Pte Ltd": "Test Staffing Partner 5 Pte Ltd",
+            "Achieve Career Consultant Pte Ltd": "Test Staffing Partner 6 Pte Ltd",
+            "Corestaff Pte Ltd": "Test Staffing Partner 7 Pte Ltd",
+            "Rapid Recruitment Asia Pte Ltd": "Test Staffing Partner 8 Pte Ltd",
+            "MCI OUTSOURCING PTE LTD": "Test Staffing Partner 9 Pte Ltd",
+            "CVista HR Consulting Pte Ltd": "Test Staffing Partner 10 Pte Ltd",
+            "PersolKelly  Singapore Pte Ltd": "Test Staffing Partner 11 Pte Ltd",
+            "Talentvis Singapore Pte Ltd": "Test Staffing Partner 12 Pte Ltd",
+            # Catch-all for any remaining bare "VDL" reference (e.g. "with VDL.",
+            # "for VDL"). Run LAST so longer phrases match first.
+            "VDL": "Test D",
+        },
+        "cell_overrides": {
+            # Tokio Marine Life policy number stored as INTEGER (50011843) on every
+            # Tokio Marine sheet (GTL, GHS-Locals, GHS-Secondees, GHS-Dependants,
+            # GMM, GCGP, GCSP). String-replace pass skips numerics.
+            "GTL ": {"C11": "TEST/TM/2026-001"},
+            "GHS - Locals": {"C11": "TEST/TM/2026-001"},
+            "GHS - Secondees": {"C11": "TEST/TM/2026-001"},
+            "GHS - Dependants": {"C11": "TEST/TM/2026-001"},
+            "GMM": {"C11": "TEST/TM/2026-001"},
+            "GCGP": {"C11": "TEST/TM/2026-001"},
+            "GCSP": {"C11": "TEST/TM/2026-001"},
+        },
+        "scale_numeric": [],
+    },
     # Other fixtures appended in subsequent sessions:
-    # 'vdl-2026': { ... },
     # 'hartree-2026': { ... },
     # 'stmicro-2026': { ... },
 }
@@ -118,6 +234,16 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
     print(f"  src:  {src}")
     print(f"  dest: {dest}")
 
+    # If source is legacy .xls, convert to .xlsx via Excel COM first.
+    # The fixture is always saved as .xlsx regardless of source format.
+    converted_temp: Path | None = None
+    load_src = src
+    if src.suffix.lower() == ".xls":
+        print("  note: .xls source - converting to .xlsx via Excel COM...")
+        converted_temp = convert_xls_to_xlsx(src)
+        load_src = converted_temp
+        print(f"  temp: {converted_temp}")
+
     # Two-load pattern:
     #   wb_values (data_only=True)  → resolve formulas to cached values.
     #     Used to (a) detect identifiers hidden behind `=C4`-style refs,
@@ -131,7 +257,7 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
     # using `data_only=True` (which the heuristic parser does) see None
     # until Excel re-opens-and-saves the file. For test fixtures, we just
     # don't need formulas at all; literals are sufficient and readable.
-    wb_values = openpyxl.load_workbook(src, data_only=True)
+    wb_values = openpyxl.load_workbook(load_src, data_only=True)
 
     # Snapshot of (sheet, coord) → cached value, for every populated cell.
     cached_values: dict[tuple[str, str], Any] = {}
@@ -155,7 +281,7 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
                     cells_to_change.append((sheet_name, cell.coordinate, new_value, original))
     wb_values.close()
 
-    wb = openpyxl.load_workbook(src)
+    wb = openpyxl.load_workbook(load_src)
 
     changes: list[dict[str, Any]] = []
 
@@ -269,6 +395,13 @@ def anonymize_fixture(name: str) -> dict[str, Any]:
         ),
         encoding="utf-8",
     )
+
+    # Clean up the temp .xlsx if we converted from .xls.
+    if converted_temp is not None and converted_temp.exists():
+        try:
+            converted_temp.unlink()
+        except OSError:
+            pass  # leave it; tempdir gets reaped
 
     print(f"  changes: {len(changes)}")
     print(f"  audit:   {audit_path.relative_to(REPO_ROOT)}")
