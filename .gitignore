@@ -49,3 +49,9 @@ next-env.d.ts
 
 # Bicep build output
 *.bicepparam.json
+
+# Local audit / scratch dumps under scripts/ (filenames starting with _)
+scripts/_*
+
+# Extraction regression accuracy report (per-run; CI uploads as artifact)
+apps/web/tests/extraction/.accuracy-report.json

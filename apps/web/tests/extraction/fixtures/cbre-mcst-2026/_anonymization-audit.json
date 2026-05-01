@@ -1,0 +1,272 @@
+{
+  "fixture": "cbre-mcst-2026",
+  "source_filename": "Placement Slips - CBRE MCST  (2025-2026).xlsx",
+  "dest_filename": "slip.xlsx",
+  "rules_applied": {
+    "string_replacements": 6,
+    "cell_overrides": 0,
+    "numeric_scalings": 0
+  },
+  "total_changes": 37,
+  "changes": [
+    {
+      "sheet": "*",
+      "cell": "*",
+      "kind": "flatten_formulas",
+      "before": "32 formula cells",
+      "after": "literal cached values"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "6 Battery Road #32-01 Singapore 049909 ",
+      "after": "1 Test Avenue, Singapore 100001 "
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "2 Tanjong Katong Road, #06-01 Paya Lebar Quarter, 437161",
+      "after": "2 Test Boulevard, Singapore 100002"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B19",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B24",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C34",
+      "kind": "string_replace",
+      "before": "CBRE Group",
+      "after": "Test Group"
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "6 Battery Road #32-01 Singapore 049909 ",
+      "after": "1 Test Avenue, Singapore 100001 "
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "2 Tanjong Katong Road, #06-01 Paya Lebar Quarter, 437161",
+      "after": "2 Test Boulevard, Singapore 100002"
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "B19",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "B24",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GDD ",
+      "cell": "C34",
+      "kind": "string_replace",
+      "before": "CBRE Group",
+      "after": "Test Group"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "6 Battery Road #32-01 Singapore 049909 ",
+      "after": "1 Test Avenue, Singapore 100001 "
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "2 Tanjong Katong Road, #06-01 Paya Lebar Quarter, 437161",
+      "after": "2 Test Boulevard, Singapore 100002"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "B20",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "B26",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C32",
+      "kind": "string_replace",
+      "before": "CBRE Group",
+      "after": "Test Group"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "6 Battery Road #32-01 Singapore 049909 ",
+      "after": "1 Test Avenue, Singapore 100001 "
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "2 Tanjong Katong Road, #06-01 Paya Lebar Quarter, 437161",
+      "after": "2 Test Boulevard, Singapore 100002"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "B20",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C33",
+      "kind": "string_replace",
+      "before": "CBRE Group",
+      "after": "Test Group"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "6 Battery Road #32-01 Singapore 049909 ",
+      "after": "1 Test Avenue, Singapore 100001 "
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "2 Tanjong Katong Road, #06-01 Paya Lebar Quarter, 437161",
+      "after": "2 Test Boulevard, Singapore 100002"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C12",
+      "kind": "string_replace",
+      "before": "ZZG8001400SN",
+      "after": "TEST/ZURICH/MCST-001"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B22",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "MCST 1216",
+      "after": "Test B Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C35",
+      "kind": "string_replace",
+      "before": "CBRE Pte Ltd",
+      "after": "Test Pte Ltd"
+    }
+  ]
+}

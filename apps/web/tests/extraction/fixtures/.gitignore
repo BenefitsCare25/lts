@@ -1,0 +1,7 @@
+# Backstop against accidentally committing un-anonymized real slips.
+# Anonymized fixtures live under fixtures/<name>/ and ARE committed.
+# These patterns guard against staging directories used during anonymization.
+_originals/
+**/_original.*
+**/*.original.xls
+**/*.original.xlsx

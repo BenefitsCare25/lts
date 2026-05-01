@@ -1,0 +1,116 @@
+# Extraction fixture corpus
+
+Each subdirectory is one anonymized real-world placement slip plus its golden expected output. The regression test (`../regression.test.ts`) runs the extractor against every fixture and emits a per-fixture + grand-total accuracy delta on every PR.
+
+This is **the empirical truth** for "is extraction accurate?" — opinions don't ship; fixture deltas do.
+
+---
+
+## Coverage matrix (working set — 2026-05-01)
+
+User has 7 real slips on hand; the working set is 5 fixtures chosen for *coverage*, not volume. Add more as real broker uploads surface novel edge cases.
+
+| # | Fixture | Source | Why in the working set |
+|---|---|---|---|
+| 1 | `stmicro-2026/` | STMicroelectronics Asia Pacific 2026 | **Stress case** — 7 products across 4 insurers (GE Life, Zurich, Chubb, Allianz), 3 master-policy entities, flex bundles in Setup sheet, broker comments sheet, billing-numbers sheet. Multi-parent stacking on GTL Plan D. The hardest slip in the set. |
+| 2 | `cbre-mcst-2026/` | CBRE MCST 2025-2026 | **Simple baseline** — 5 products (GTL, GDD, GHS, GMM, GPA), single entity (`MCST 1216`), single insurer (Tokio Marine Life). Has both ACRA + Mailing Address fields (slip-shape variation). If extraction can't get this, nothing else matters. |
+| 3 | `vdl-2026/` | VDL Enabling Technologies 2026 | **Cross-sheet aggregation** — GHS split into 3 separate sheets (Locals / Secondees / Dependants). Tests whether the runner aggregates them correctly into a single GHS product or treats them as 3. Tokio Marine Life. |
+| 4 | `png-2026/` | Papua New Guinea High Commission 2026 | **Has summary sheet** — `Renewal Overall Premium` sheet provides declared totals at the workbook level (vs. STMicro's per-product Annual Premium row). Tests reconciliation when declared comes from a separate sheet, not the product page. Tokio Marine Life. |
+| 5 | `hartree-2026/` | Hartree Partners + CHC Energy 2026-2027 | **Different insurer + edge cases** — HSBC Life (not GE/TM); Insurope Pool (not Generali); has Dental + GP + GCI products our existing seed catalogue may not register; some sheets have huge max-col counts (Dental: 16135 cols, WICA: 16136) which stresses workbook-to-text serialization. |
+
+**Slips on hand but NOT in the working set:**
+- CBRE Group 2025-2026 — too similar to CBRE MCST + STMicro for marginal coverage.
+- Generic `Placement Slips 2026.xls` — 11 products including OSI; rich case but client identity unclear (we'd need the broker to confirm). Add if a future test exposes a gap.
+
+When adding a new slip, document the *why* — what scenario does it cover that the current set doesn't?
+
+---
+
+## Directory shape (per fixture)
+
+```
+fixtures/
+  <fixture-name>/
+    slip.xls              # the anonymized .xls (or .xlsx)
+    expected.json         # golden output the extractor must produce
+    ai-responses.json     # recorded AI mock for replay (no real Anthropic in CI)
+    notes.md              # what's tricky about this slip; anonymization audit log
+```
+
+`expected.json` is checked against the extractor's actual output with per-field tolerance (see `../compare-to-expected.ts`). `ai-responses.json` is replayed when `EXTRACTION_RECORD_AI` is unset (default in CI).
+
+---
+
+## Anonymization rules
+
+Real slips MUST be anonymized before the slip file enters this directory. Anyone reviewing a PR will look at the slip cells.
+
+| Field | Replace with |
+|---|---|
+| Policyholder legal name | `Test <Letter> Pte Ltd` (sequential per fixture: A, B, C, …) |
+| Insured entity names | Same root, with optional facility suffix (e.g. `Test A Pte Ltd HQ`, `Test A Pte Ltd Plant 1`) |
+| UEN | `199900<NNN>X` where NNN unique per fixture |
+| Address — full | A fictional Singapore postal address (use street names from the public OneMap test set) |
+| Business description | Keep the SSIC category but generalize (e.g. "Manufacture of printed circuit boards" → "Manufacture of electronic components") |
+| Contact name / email | Drop entirely (set to null) |
+| Headcount per category | **Keep proportions, scale max to ≤ 100** per category. Premium math integrity preserved (multiplier × headcount × rate sums proportionally). |
+| Sum Insured (per category) | Scale proportionally with headcount |
+| Premium rates (per S$1,000 etc.) | **KEEP EXACT** — rates don't disclose identity |
+| Annual Premium (per product, declared) | Scale proportionally so it still ≈ headcount × SI × rate / 1000 |
+| Policy number | `TEST/<insurer>/<NNN>` |
+
+**Why scale headcounts:** real corporate headcounts are PII-ish (combined with industry context can identify the firm). Scaling preserves the math integrity (so reconciliation tests still validate computed-vs-declared) without identification risk.
+
+**Privacy review gate:** every fixture PR must be reviewed by a team lead before merge. Add `CODEOWNERS` rule once team grows past one person.
+
+---
+
+## Adding a new fixture (process)
+
+1. Get the original .xls from the broker (with consent or under existing data-handling agreement).
+2. Open in Excel (or via the `scripts/anonymize-slip.py` helper once it exists). Apply the rules above.
+3. Save as `slip.xls` in a new `fixtures/<name>/` directory.
+4. Run the extractor in record mode:
+   ```
+   EXTRACTION_RECORD_AI=true \
+     pnpm --filter web test -- tests/extraction/regression.test.ts -t '<fixture-name>'
+   ```
+   This calls real Anthropic and writes `ai-responses.json`. Cost: $0.50–$2 per slip. (BYOK: comes out of the tenant's AI Foundry budget.)
+5. Hand-verify the AI's output against the slip. Build `expected.json` from the verified envelope (with tolerances, `_required` markers, expected warnings).
+6. Re-run replay (default — no API calls):
+   ```
+   pnpm --filter web test -- tests/extraction/regression.test.ts -t '<fixture-name>'
+   ```
+   Should pass with score ≥ 0.85.
+7. Write `notes.md` (template below).
+8. Commit. CI now runs the new fixture on every PR.
+
+---
+
+## Per-fixture `notes.md` template
+
+```md
+# <fixture-name>
+
+**Source:** Anonymized from <broker>'s real slip dated <yyyy-mm>.
+**Anonymized by:** <name>, <date>.
+**Anonymization audit:** all 9 categories above checked; PR review by <lead> on <date>.
+
+## What's tricky
+
+- ...
+
+## Expected gotchas
+
+- ...
+
+## Acceptance floor
+
+`expected._minScore: 0.85`
+```
+
+---
+
+## Slip files NOT in this directory
+
+The user keeps un-anonymized originals at `C:\Users\huien\Desktop\slips\` (gitignored at user-level). Never copy raw originals into `apps/web/tests/extraction/fixtures/` — they'll get committed and PR-reviewed (PDPA exposure). The `.gitignore` in this directory blocks `_originals/` and any file with `_original` in the name as a backstop.
