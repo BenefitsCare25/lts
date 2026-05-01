@@ -1,0 +1,123 @@
+{
+  "schema": "expected.v1",
+  "slip": {
+    "filename": "slip.xlsx",
+    "anonymizedFrom": "[REDACTED] [REDACTED] (Singapore commercial real estate management corporation)",
+    "anonymizedAt": "2026-05-01"
+  },
+  "tolerances": {
+    "ratePerThousand": 0.01,
+    "headcount": 0,
+    "sumAssured": 1,
+    "grandComputedPct": 1
+  },
+
+  "_min_score_comment": "Conservative floor; raise to 0.92 once extraction is wired in Phase 0 final and we have a real baseline number to anchor on.",
+  "_minScore": 0.85,
+
+  "client": {
+    "legalName": "Test B Pte Ltd",
+    "address": "1 Test Avenue, Singapore 100001",
+    "uen": null,
+    "industry": null,
+    "countryOfIncorporation": "SG",
+    "_broker_fills": ["uen", "industry", "primaryContactName", "primaryContactEmail"]
+  },
+
+  "policyEntities": [
+    {
+      "legalName": "Test B Pte Ltd",
+      "policyNumber": null,
+      "isMaster": true,
+      "headcountEstimate": 14
+    }
+  ],
+
+  "_benefitYear_comment": "Slip's GTL/GDD/GHS/GMM say period 01/07/2024 - 30/06/2026 (a 2-year contract billed annually). GPA is 01/07/2025 - 30/06/2026. The wizard models BenefitYear as annual; AI should extract the current billing year (2025-07-01 → 2026-06-30) — or, if it picks the longest span, the test still passes because we accept either via tolerance below.",
+  "benefitYear": {
+    "startDate": "2025-07-01",
+    "endDate": "2026-06-30"
+  },
+
+  "insurers": [{ "code": "TM_LIFE", "productCount": 4 }, { "code": "ZURICH", "productCount": 1 }],
+
+  "pool": null,
+
+  "products": [
+    {
+      "productTypeCode": "GTL",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 1209.6,
+      "_planCount": 1,
+      "plans": [
+        { "code": "PA", "coverBasis": "fixed_amount", "schedule": { "sumAssured": 80000 } }
+      ],
+      "premiumRates": [{ "planCode": "PA", "ratePerThousand": 1.26, "basis": "per_thousand_si" }],
+      "categories": [{ "category": "All employees", "headcount": 12, "sumInsured": 960000 }]
+    },
+    {
+      "productTypeCode": "GDD",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 700.8,
+      "_planCount": 1,
+      "plans": [
+        { "code": "PA", "coverBasis": "fixed_amount", "schedule": { "sumAssured": 40000 } }
+      ],
+      "premiumRates": [{ "planCode": "PA", "ratePerThousand": 1.46, "basis": "per_thousand_si" }],
+      "categories": [{ "category": "All employees", "headcount": 12, "sumInsured": 480000 }]
+    },
+    {
+      "productTypeCode": "GHS",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 3384,
+      "_planCount": 1,
+      "_plans_comment": "Slip uses Plan 8 with cover-tier rates (EO=282, others NA). The per-tier rate is per-employee per-year (282 × 12 employees = 3384 declared). Schema (Phase 1) introduces basis='per_employee' for this case. For now the test asserts at least the plan code + headcount + premium.",
+      "plans": [{ "code": "P8", "coverBasis": "per_cover_tier" }],
+      "categories": [{ "category": "All employees", "headcount": 12 }]
+    },
+    {
+      "productTypeCode": "GMM",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 996,
+      "_planCount": 1,
+      "plans": [{ "code": "P8", "coverBasis": "per_cover_tier" }],
+      "categories": [{ "category": "All employees", "headcount": 12 }]
+    },
+    {
+      "productTypeCode": "GPA",
+      "insurerCode": "ZURICH",
+      "declaredPremium": 105,
+      "_planCount": 1,
+      "plans": [
+        { "code": "PA", "coverBasis": "fixed_amount", "schedule": { "sumAssured": 100000 } }
+      ],
+      "premiumRates": [{ "planCode": "PA", "ratePerThousand": 0.075, "basis": "per_thousand_si" }],
+      "categories": [{ "category": "All employees", "headcount": 14, "sumInsured": 1400000 }]
+    }
+  ],
+
+  "reconciliation": {
+    "_grand_comment": "Sum of declaredPremium across all 5 products = 1209.6 + 700.8 + 3384 + 996 + 105 = 6395.4. Allow 1% tolerance.",
+    "grandDeclared": 6395.4,
+    "grandComputed_min": 6300,
+    "grandComputed_max": 6500,
+    "perProduct": [
+      { "productTypeCode": "GTL", "insurerCode": "TM_LIFE", "status": ["OK"] },
+      { "productTypeCode": "GDD", "insurerCode": "TM_LIFE", "status": ["OK"] },
+      {
+        "productTypeCode": "GHS",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "GMM",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      { "productTypeCode": "GPA", "insurerCode": "ZURICH", "status": ["OK"] }
+    ]
+  },
+
+  "_expectedWarnings_comment": "AI should surface these as workbook-level warnings when extraction completes. Substring matches; case-insensitive.",
+  "expectedWarnings": ["two address fields"]
+}

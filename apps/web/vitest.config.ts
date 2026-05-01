@@ -4,7 +4,12 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
+    include: [
+      'src/**/*.test.ts',
+      'tests/unit/**/*.test.ts',
+      'tests/integration/**/*.test.ts',
+      'tests/extraction/**/*.test.ts',
+    ],
     exclude: ['node_modules', '.next', 'tests/e2e/**'],
     reporters: ['default'],
     // Integration test files (cross-tenant, rls-app-role, publish) all
