@@ -154,6 +154,95 @@ export const extractionDraftsRouter = router({
       });
     }),
 
+  // Persist the wizard's broker-edited form state under a single key
+  // on draft.progress. The wizard auto-saves (debounced 1s) so a page
+  // reload, route change, or tab close never loses the broker's work.
+  // The wizard's hydration path reads progress.brokerForm if present
+  // before the per-section AI seeders fire, so AI/heuristic fills only
+  // run when the broker hasn't yet started editing.
+  //
+  // Stored shape mirrors DraftFormState in the wizard's _registry.ts.
+  // We accept it as JSON via passthrough — strict validation lives on
+  // the apply path which has all required fields.
+  updateBrokerForm: adminProcedure
+    .input(
+      z.object({
+        draftId: z.string().min(1),
+        brokerForm: z.unknown(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const draft = await loadDraftForTenant(ctx.tenantId, input.draftId);
+      if (draft.status === 'APPLIED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot edit an already-applied draft.',
+        });
+      }
+      const previous =
+        draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
+          ? (draft.progress as Record<string, unknown>)
+          : {};
+      return prisma.extractionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          progress: {
+            ...previous,
+            brokerForm: input.brokerForm as Prisma.InputJsonValue,
+            brokerFormUpdatedAt: new Date().toISOString(),
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }),
+
+  // Persist per-section broker overrides (insurer mapping, eligibility
+  // edits, schema decisions, reconciliation overrides). The wizard writes
+  // a single namespaced patch — each call merges with what's already on
+  // progress.brokerOverrides so multiple sections can update concurrently
+  // without trampling one another.
+  updateBrokerOverrides: adminProcedure
+    .input(
+      z.object({
+        draftId: z.string().min(1),
+        // 'insurers' | 'eligibility' | 'schemaDecisions' | 'reconciliation' | 'pool'
+        namespace: z.string().min(1).max(40),
+        // The override payload. Shapes vary per namespace and live in
+        // wizard code — passthrough here.
+        value: z.unknown(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const draft = await loadDraftForTenant(ctx.tenantId, input.draftId);
+      if (draft.status === 'APPLIED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot edit an already-applied draft.',
+        });
+      }
+      const previous =
+        draft.progress && typeof draft.progress === 'object' && !Array.isArray(draft.progress)
+          ? (draft.progress as Record<string, unknown>)
+          : {};
+      const previousOverrides =
+        previous.brokerOverrides &&
+        typeof previous.brokerOverrides === 'object' &&
+        !Array.isArray(previous.brokerOverrides)
+          ? (previous.brokerOverrides as Record<string, unknown>)
+          : {};
+      return prisma.extractionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          progress: {
+            ...previous,
+            brokerOverrides: {
+              ...previousOverrides,
+              [input.namespace]: input.value as Prisma.InputJsonValue,
+            },
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }),
+
   // Kick off AI extraction for an existing upload. The draft transitions
   // to EXTRACTING immediately; a BullMQ worker picks it up off the
   // request hot-path. The wizard polls byUploadId every 2s while the

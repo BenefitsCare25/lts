@@ -278,10 +278,31 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     };
   }
 
+  // ───── Insurer-code canonicalisation ─────
+  // Heuristic codes come from ProductType.parsingRules keys (often a
+  // legacy short form like `GE`, `CI`, `ZI`); discovery codes come from
+  // the AI which prefers the catalogue's official Insurer.code (e.g.
+  // `GE_LIFE`, `CHUBB`, `ZURICH`). Without aliasing, the heuristic and
+  // AI products never merge — `mergeProducts` keys on `productTypeCode::
+  // insurerCode` so `GTL::GE` and `GTL::GE_LIFE` survive as duplicates.
+  // We resolve both sides to a single canonical code BEFORE fan-out so
+  // every downstream stage (fan-out, merge, suggestions, apply) sees one
+  // entry per real product.
+  const insurerAlias = buildInsurerAliasMap({
+    heuristicCodes: Array.from(new Set(heuristicProducts.map((h) => h.insurerCode))),
+    proposedInsurers: discovery.output.proposedInsurers,
+    catalogueInsurers: catalogue.insurers,
+  });
+  const canonicalisedHeuristic = applyInsurerAliasToProducts(heuristicProducts, insurerAlias);
+  const canonicalisedManifest = discovery.output.productManifest.map((m) => ({
+    ...m,
+    insurerCode: insurerAlias.get(m.insurerCode) ?? m.insurerCode,
+  }));
+
   // ───── Stage 2: per-product fan-out ─────
-  const heuristicByKey = indexHeuristic(heuristicProducts);
-  const total = discovery.output.productManifest.length;
-  const manifests = discovery.output.productManifest.map((m) => ({
+  const heuristicByKey = indexHeuristic(canonicalisedHeuristic);
+  const total = canonicalisedManifest.length;
+  const manifests = canonicalisedManifest.map((m) => ({
     manifest: m,
     heuristicProduct: heuristicByKey.get(productKey(m)) ?? null,
   }));
@@ -339,8 +360,24 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
   // parser had a template, and a re-run can target just the misses.
 
   // ───── Stage 3: merge with heuristic floor ─────
-  const aiProducts = fanOut.successes.map((s) => s.product);
-  const merged = mergeProducts(heuristicProducts, aiProducts);
+  // AI products inherit the canonical manifest insurerCode via the
+  // per-product pass; canonicalisedHeuristic is already aliased.
+  // Re-apply the alias defensively in case a per-product pass returned
+  // a different code than the manifest told it to (the schema doesn't
+  // forbid that today).
+  const aiProducts = applyInsurerAliasToProducts(
+    fanOut.successes.map((s) => s.product),
+    insurerAlias,
+  );
+  const merged = mergeProducts(canonicalisedHeuristic, aiProducts);
+  // Likewise fold the AI's proposed-insurer list onto canonical codes
+  // so the wizard's Section 5 doesn't show GE alongside GE_LIFE.
+  const canonicalisedProposedInsurers = dedupeProposedInsurers(
+    discovery.output.proposedInsurers.map((p) => ({
+      ...p,
+      code: insurerAlias.get(p.code) ?? p.code,
+    })),
+  );
 
   // Aggregate token usage and latency.
   const discoveryUsage = discovery.usage;
@@ -375,7 +412,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     proposedClient: discovery.output.proposedClient,
     proposedPolicyEntities: discovery.output.proposedPolicyEntities,
     proposedBenefitYear: discovery.output.proposedBenefitYear,
-    proposedInsurers: discovery.output.proposedInsurers,
+    proposedInsurers: canonicalisedProposedInsurers,
     proposedPool: discovery.output.proposedPool,
     warnings: combinedWarnings,
     meta: {
@@ -443,6 +480,130 @@ function indexHeuristic(products: ExtractedProduct[]): Map<string, ExtractedProd
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return `${s.slice(0, max)}…`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Insurer-code canonicalisation
+// ─────────────────────────────────────────────────────────────
+//
+// The tenant's ProductType.parsingRules templates may be keyed under
+// short or legacy insurer codes (e.g. `GE`, `ZI`, `CI`) while the
+// Insurer registry holds the canonical codes (`GE_LIFE`, `ZURICH`,
+// `CHUBB`). The AI discovery pass receives the catalogue insurer list
+// as context and tends to emit the canonical form, while the heuristic
+// parser emits whatever key the tenant used in parsingRules. Without
+// an alias step, the same real-world insurer ends up with two distinct
+// productKey values and `mergeProducts` cannot dedupe.
+//
+// Resolution:
+// 1. Catalogue-aware match: any heuristic code that matches a catalogue
+//    insurer's `code` or `name` (case-insensitive, alphanumeric-only,
+//    short ⊂ long) gets aliased to the catalogue's canonical code.
+// 2. Discovery-aware match: any AI-proposed code whose rawLabel matches
+//    a catalogue insurer's name gets aliased to the catalogue code.
+// 3. Heuristic ↔ AI bridging: if the heuristic code shares a fuzzy
+//    label with a discovery proposal but neither maps to a catalogue
+//    code, prefer the AI's code (it's the longer, more explicit form).
+//
+// The map is one-way: `from` (legacy) → `to` (canonical). A code that
+// is already canonical is absent from the map and survives unchanged.
+function buildInsurerAliasMap(args: {
+  heuristicCodes: string[];
+  proposedInsurers: AiOutputInsurer[];
+  catalogueInsurers: CatalogueContext['insurers'];
+}): Map<string, string> {
+  const aliasMap = new Map<string, string>();
+  const addAlias = (from: string, to: string) => {
+    if (!from || !to || from === to) return;
+    // Avoid alias chains (a → b → c). The first canonical wins.
+    if (aliasMap.has(from)) return;
+    aliasMap.set(from, to);
+  };
+
+  // Step 1: heuristic codes → catalogue codes.
+  // For each heuristic code that is NOT already a catalogue code,
+  // try to find a catalogue insurer it overlaps with.
+  for (const h of args.heuristicCodes) {
+    if (args.catalogueInsurers.some((c) => c.code === h)) continue;
+    const hit = args.catalogueInsurers.find(
+      (c) => insurerLabelsMatch(c.code, h) || insurerLabelsMatch(c.name, h),
+    );
+    if (hit) addAlias(h, hit.code);
+  }
+
+  // Step 2: AI proposed codes → catalogue codes.
+  // The AI may invent a synonymous code (`GREAT_EASTERN` vs `GE_LIFE`)
+  // even though the catalogue has the official one. Alias to catalogue.
+  for (const p of args.proposedInsurers) {
+    if (args.catalogueInsurers.some((c) => c.code === p.code)) continue;
+    const hit = args.catalogueInsurers.find(
+      (c) => insurerLabelsMatch(c.name, p.rawLabel) || insurerLabelsMatch(c.code, p.code),
+    );
+    if (hit) addAlias(p.code, hit.code);
+  }
+
+  // Step 3: bridging — heuristic code that didn't map to catalogue but
+  // does fuzzy-match an AI proposed insurer. Prefer the AI's code.
+  for (const h of args.heuristicCodes) {
+    if (aliasMap.has(h) || args.catalogueInsurers.some((c) => c.code === h)) continue;
+    const proposed = args.proposedInsurers.find(
+      (p) => insurerLabelsMatch(p.code, h) || insurerLabelsMatch(p.rawLabel, h),
+    );
+    if (proposed) addAlias(h, aliasMap.get(proposed.code) ?? proposed.code);
+  }
+
+  return aliasMap;
+}
+
+// Two insurer labels match if one is a substring of the other after
+// normalising (lowercase, alphanumeric-only). Tuned for short-vs-long
+// pairs like `GE` ⊂ `GE_LIFE`, `ZI` ⊂ `ZURICH_INSURANCE`. Bare
+// equality also counts. Empty strings never match.
+function insurerLabelsMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const na = norm(a);
+  const nb = norm(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // Require at least 2 chars in the shorter string to count as a hit;
+  // otherwise we'd alias single letters to anything containing them.
+  const shorter = na.length <= nb.length ? na : nb;
+  const longer = na.length <= nb.length ? nb : na;
+  if (shorter.length < 2) return false;
+  return longer.includes(shorter);
+}
+
+function applyInsurerAliasToProducts(
+  products: ExtractedProduct[],
+  alias: Map<string, string>,
+): ExtractedProduct[] {
+  if (alias.size === 0) return products;
+  return products.map((p) => {
+    const aliased = alias.get(p.insurerCode);
+    return aliased && aliased !== p.insurerCode ? { ...p, insurerCode: aliased } : p;
+  });
+}
+
+// After aliasing, two proposed-insurer rows can collapse onto the same
+// canonical code. Fold them, summing productCount and keeping the
+// highest confidence + the longer rawLabel.
+function dedupeProposedInsurers(rows: AiOutputInsurer[]): AiOutputInsurer[] {
+  const map = new Map<string, AiOutputInsurer>();
+  for (const r of rows) {
+    const existing = map.get(r.code);
+    if (!existing) {
+      map.set(r.code, r);
+      continue;
+    }
+    map.set(r.code, {
+      code: r.code,
+      rawLabel: r.rawLabel.length > existing.rawLabel.length ? r.rawLabel : existing.rawLabel,
+      productCount: existing.productCount + r.productCount,
+      confidence: Math.max(existing.confidence, r.confidence),
+    });
+  }
+  return Array.from(map.values());
 }
 
 function buildMetaForZeroProducts(args: {

@@ -46,6 +46,16 @@ export function buildDiscoveryUserPrompt(
               `(${p.plans.length} plan(s), ${p.premiumRates.length} rate row(s))`,
           ),
           '',
+          '**Important — insurerCode canonicalisation.** The heuristic insurer codes above ' +
+            "(e.g. 'GE', 'ZI', 'CI') are the tenant's registered codes for those insurers. " +
+            'Re-use them verbatim in your `productManifest` and `proposedInsurers` entries — ' +
+            "do NOT invent a different short or long form (e.g. 'GE_LIFE' vs 'GE'), even if " +
+            'the catalogue insurer list shows a different code. The downstream merge step ' +
+            'keys on `productTypeCode::insurerCode`; mismatched casing or alternate forms ' +
+            "produce duplicate products in the wizard. If the catalogue's official code for " +
+            'an insurer differs from the heuristic code, still emit the heuristic code here — ' +
+            'the runtime canonicalises both sides separately.',
+          '',
         ]
       : [];
 
@@ -73,15 +83,22 @@ export function buildDiscoveryUserPrompt(
     '  share.',
     '- proposedPolicyEntities: every legal entity covered by the master policy. Mark exactly',
     '  one entity as `isMaster: true` (the entity whose policy number is the headline number',
-    '  on the slip cover page).',
+    '  on the slip cover page). If the same `legalName` appears with different `policyNumber`',
+    '  values across rows (e.g. "STMICROELECTRONICS PTE LTD" with both G0005088 (AMK) and',
+    '  G0005089 (TPY) in a billing-numbers sheet), emit ONE row per (legalName, policyNumber)',
+    '  pair — they are distinct policy entities even when the legal name is shared. Use the',
+    '  location/branch hint in `address` if the slip provides one.',
     '- proposedBenefitYear: `policyName` is typically "<Year> Renewal — Employee Benefits",',
     '  `startDate`/`endDate` come from the period of insurance row most products share.',
     '  `ageBasis` defaults to POLICY_START unless the slip mentions hire-date or event-based',
     '  age computation explicitly.',
     '- proposedInsurers: one entry per unique insurer the slip references, with productCount',
     '  matching the number of manifest entries for that insurer.',
-    '- proposedPool: only set when the slip mentions a captive / industry pool (e.g. "NTUC',
-    '  GBT", "PAP-CARE Pool"). Match against the catalogue list when possible. Null otherwise.',
+    '- proposedPool: only set when the slip mentions a captive / industry pool. Look for a',
+    '  `Pool : <name>` row (singular or plural) on every product sheet — STM-style aggregator',
+    '  slips repeat the same pool on each product sheet (e.g. "Generali Pool - Captive",',
+    '  "NTUC GBT", "PAP-CARE Pool"). Treat values like "NA", "N.A", "N/A" as no pool. Match',
+    '  against the catalogue list when possible. Null otherwise.',
     '- warnings: caveats the broker should know — contradictions between sheets, ambiguous',
     '  plan stacking, missing rate cells, illegible cell text, etc.',
     '',

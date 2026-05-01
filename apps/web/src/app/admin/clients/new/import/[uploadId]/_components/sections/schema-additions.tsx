@@ -16,27 +16,78 @@
 
 import { Card } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SectionId } from './_registry';
 import { suggestionsFromDraft } from './_types';
 
 type Resolution = 'ADD' | 'MAP' | 'DROP';
 
+type Decision = { resolution: Resolution; mapTo?: string };
+
 type Props = {
-  draft: { progress: unknown };
+  draft: { id: string; progress: unknown };
+  markSectionDirty?: (id: SectionId) => void;
 };
 
-export function SchemaAdditionsSection({ draft }: Props) {
+export function SchemaAdditionsSection({ draft, markSectionDirty }: Props) {
   const suggestions = suggestionsFromDraft(draft.progress);
   const employeeSchema = trpc.employeeSchema.get.useQuery();
 
-  // Local state — broker's resolution choice per field path.
-  const [decisions, setDecisions] = useState<
-    Record<string, { resolution: Resolution; mapTo?: string }>
-  >(() => {
-    const init: Record<string, { resolution: Resolution; mapTo?: string }> = {};
+  // Hydrate from draft.progress.brokerOverrides.schemaDecisions when
+  // present so reload preserves the broker's choices. Otherwise default
+  // every missing field to ADD.
+  const persisted = useMemo<Record<string, Decision>>(() => {
+    if (!draft.progress || typeof draft.progress !== 'object' || Array.isArray(draft.progress)) {
+      return {};
+    }
+    const obj = draft.progress as { brokerOverrides?: Record<string, unknown> };
+    const v = obj.brokerOverrides?.schemaDecisions as Record<string, Decision> | undefined;
+    return v && typeof v === 'object' ? { ...v } : {};
+  }, [draft.progress]);
+
+  const [decisions, setDecisions] = useState<Record<string, Decision>>(() => {
+    if (Object.keys(persisted).length > 0) return persisted;
+    const init: Record<string, Decision> = {};
     for (const f of suggestions.missingPredicateFields) init[f.fieldPath] = { resolution: 'ADD' };
     return init;
   });
+
+  // Debounced persistence to draft.progress.brokerOverrides.schemaDecisions.
+  const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
+  // Stable ref to mutate avoids re-arming the timer on every render.
+  // tRPC's useMutation returns a fresh object per render but the
+  // mutate handler itself is internally stable; we ref it to be safe.
+  const mutateRef = useRef(saveOverride.mutate);
+  useEffect(() => {
+    mutateRef.current = saveOverride.mutate;
+  }, [saveOverride.mutate]);
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    if (!dirtyRef.current) return;
+    const timer = window.setTimeout(() => {
+      mutateRef.current({
+        draftId: draft.id,
+        namespace: 'schemaDecisions',
+        value: decisions,
+      });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [decisions, draft.id]);
+
+  const markDirty = useCallback(() => {
+    dirtyRef.current = true;
+    markSectionDirty?.('schema_additions');
+  }, [markSectionDirty]);
+
+  // Wrapper around setDecisions that flips the dirty flag so reloads
+  // and apply read the same persisted state.
+  const updateDecision = useCallback(
+    (fieldPath: string, decision: Decision) => {
+      markDirty();
+      setDecisions((prev) => ({ ...prev, [fieldPath]: decision }));
+    },
+    [markDirty],
+  );
 
   const existingFields = useMemo(() => {
     if (!employeeSchema.data) return [];
@@ -102,12 +153,7 @@ export function SchemaAdditionsSection({ draft }: Props) {
                         name={`res-${field.fieldPath}`}
                         value="ADD"
                         checked={decision.resolution === 'ADD'}
-                        onChange={() =>
-                          setDecisions((prev) => ({
-                            ...prev,
-                            [field.fieldPath]: { resolution: 'ADD' },
-                          }))
-                        }
+                        onChange={() => updateDecision(field.fieldPath, { resolution: 'ADD' })}
                       />
                       Add as CUSTOM field to employee schema
                     </label>
@@ -117,16 +163,14 @@ export function SchemaAdditionsSection({ draft }: Props) {
                         name={`res-${field.fieldPath}`}
                         value="MAP"
                         checked={decision.resolution === 'MAP'}
-                        onChange={() =>
-                          setDecisions((prev) => {
-                            const existing = prev[field.fieldPath];
-                            const next: { resolution: Resolution; mapTo?: string } = {
-                              resolution: 'MAP',
-                              ...(existing?.mapTo ? { mapTo: existing.mapTo } : {}),
-                            };
-                            return { ...prev, [field.fieldPath]: next };
-                          })
-                        }
+                        onChange={() => {
+                          const existing = decisions[field.fieldPath];
+                          const next: Decision = {
+                            resolution: 'MAP',
+                            ...(existing?.mapTo ? { mapTo: existing.mapTo } : {}),
+                          };
+                          updateDecision(field.fieldPath, next);
+                        }}
                       />
                       Map to existing field
                     </label>
@@ -137,13 +181,12 @@ export function SchemaAdditionsSection({ draft }: Props) {
                           style={{ marginLeft: '1.5rem', width: 'auto' }}
                           value={decision.mapTo ?? ''}
                           onChange={(e) =>
-                            setDecisions((prev) => ({
-                              ...prev,
-                              [field.fieldPath]:
-                                e.target.value === ''
-                                  ? { resolution: 'MAP' }
-                                  : { resolution: 'MAP', mapTo: e.target.value },
-                            }))
+                            updateDecision(
+                              field.fieldPath,
+                              e.target.value === ''
+                                ? { resolution: 'MAP' }
+                                : { resolution: 'MAP', mapTo: e.target.value },
+                            )
                           }
                           aria-invalid={decision.mapTo ? undefined : true}
                         >
@@ -170,12 +213,7 @@ export function SchemaAdditionsSection({ draft }: Props) {
                         name={`res-${field.fieldPath}`}
                         value="DROP"
                         checked={decision.resolution === 'DROP'}
-                        onChange={() =>
-                          setDecisions((prev) => ({
-                            ...prev,
-                            [field.fieldPath]: { resolution: 'DROP' },
-                          }))
-                        }
+                        onChange={() => updateDecision(field.fieldPath, { resolution: 'DROP' })}
                       />
                       Drop predicate term ({field.referencedBy.length} predicate
                       {field.referencedBy.length === 1 ? '' : 's'} affected)

@@ -148,6 +148,36 @@ const stringField = (raw: unknown, sourceRef?: SourceRef): StringField => {
   };
 };
 
+// Detect placeholder values commonly used in placement slips when a
+// number isn't yet assigned (e.g. "TBA", "TBC", "Pending", "N/A").
+// Returns true when the trimmed string is one of those — the caller
+// should treat the field as null rather than persisting the literal
+// placeholder, which would otherwise flow into Apply as a fake policy
+// number / UEN / value and trip downstream uniqueness or format checks.
+const POLICY_NUMBER_PLACEHOLDER_RE = /^(?:tba|tbc|tbd|pending|n\.?\s*a\.?|n\/a|nil|none|-+)$/i;
+const looksLikePlaceholder = (s: string): boolean => POLICY_NUMBER_PLACEHOLDER_RE.test(s.trim());
+
+// Like `stringField` but treats placeholder strings (TBA, TBC, pending,
+// N/A, etc.) as null with confidence 0 — preserving the original raw
+// value so the wizard can show "captured but unassigned" hints.
+const policyNumberField = (raw: unknown, sourceRef?: SourceRef): StringField => {
+  const trimmed = raw == null ? '' : String(raw).trim();
+  if (trimmed.length === 0 || looksLikePlaceholder(trimmed)) {
+    return {
+      value: null,
+      raw,
+      confidence: 0,
+      ...(sourceRef ? { sourceRef } : {}),
+    };
+  }
+  return {
+    value: trimmed,
+    raw,
+    confidence: 1.0,
+    ...(sourceRef ? { sourceRef } : {}),
+  };
+};
+
 const numberField = (raw: unknown, sourceRef?: SourceRef): NumberField => {
   const n = typeof raw === 'number' ? raw : Number.parseFloat(String(raw ?? ''));
   return {
@@ -349,11 +379,21 @@ function envelopeProduct(
   // them after pulling parsingRules.rate_column_map.
   const premiumRates: PremiumRateField[] = [];
 
+  // Per-product warnings for the extraction meta. Surfacing TBA-style
+  // policy-number placeholders here lets the wizard's banner remind
+  // brokers the slip didn't carry a real value yet.
+  const productWarnings: string[] = [];
+  if (policyNumberRaw && looksLikePlaceholder(policyNumberRaw)) {
+    productWarnings.push(
+      `${productTypeCode} (${insurerCode}): policy number on the slip is "${policyNumberRaw.trim()}" — broker must fill before apply.`,
+    );
+  }
+
   return {
     productTypeCode,
     insurerCode,
     header: {
-      policyNumber: stringField(policyNumberRaw, headerSourceRef('policy_numbers_csv')),
+      policyNumber: policyNumberField(policyNumberRaw, headerSourceRef('policy_numbers_csv')),
       period: parsePeriod(periodRaw, headerSourceRef('period_of_insurance')),
       lastEntryAge: numberField(
         Number.parseInt(String(fields.last_entry_age ?? '').match(/\d+/)?.[0] ?? '', 10),
@@ -394,7 +434,7 @@ function envelopeProduct(
     extractionMeta: {
       overallConfidence: 0.85,
       extractorVersion: EXTRACTOR_VERSION,
-      warnings: [],
+      warnings: productWarnings,
     },
   };
 }
