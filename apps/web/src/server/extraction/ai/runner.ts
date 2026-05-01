@@ -502,9 +502,58 @@ export function mergeProducts(
     merged.push(mergeOneProduct(h, a));
   }
   for (const a of ai) {
-    if (!seenKeys.has(productKey(a))) merged.push(a);
+    if (!seenKeys.has(productKey(a))) merged.push(canonicaliseExtractionMeta(a));
   }
   return merged;
+}
+
+// AI-only products bypass mergeOneProduct, so their extractionMeta is
+// whatever the model emitted. The schema is now lax (extractionMeta is
+// optional and accepts unknown keys) so the model output may be absent
+// or malformed. Force it to the canonical shape so downstream code can
+// trust extractionMeta.overallConfidence and extractionMeta.extractorVersion.
+function canonicaliseExtractionMeta(p: ExtractedProduct): ExtractedProduct {
+  const overall = computeOverallConfidence(p);
+  const aiMeta = (p.extractionMeta ?? {}) as {
+    overallConfidence?: number;
+    warnings?: string[];
+  };
+  return {
+    ...p,
+    extractionMeta: {
+      overallConfidence:
+        typeof aiMeta.overallConfidence === 'number' &&
+        aiMeta.overallConfidence >= 0 &&
+        aiMeta.overallConfidence <= 1
+          ? Math.max(aiMeta.overallConfidence, overall)
+          : overall,
+      extractorVersion: AI_EXTRACTOR_VERSION,
+      warnings: Array.isArray(aiMeta.warnings) ? aiMeta.warnings : [],
+    },
+  };
+}
+
+// Average confidence across the leaf envelopes, weighted equally. Empty
+// products fall back to 0.5 — the broker should review these manually.
+function computeOverallConfidence(p: ExtractedProduct): number {
+  const samples: number[] = [];
+  const push = (e: { confidence?: number } | undefined): void => {
+    if (e && typeof e.confidence === 'number') samples.push(e.confidence);
+  };
+  push(p.header.policyNumber);
+  push(p.header.period);
+  push(p.header.lastEntryAge);
+  push(p.header.administrationType);
+  push(p.header.currency);
+  push(p.policyholder.legalName);
+  push(p.policyholder.uen);
+  push(p.policyholder.address);
+  for (const pl of p.plans) push(pl);
+  for (const r of p.premiumRates) push(r);
+  for (const b of p.benefits) push(b);
+  if (samples.length === 0) return 0.5;
+  const sum = samples.reduce((a, b) => a + b, 0);
+  return Math.max(0, Math.min(1, sum / samples.length));
 }
 
 function mergeOneProduct(h: ExtractedProduct, a: ExtractedProduct): ExtractedProduct {

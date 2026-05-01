@@ -18,6 +18,17 @@ type Props = {
   draft: { progress: unknown };
 };
 
+// Variance bands:
+//   <1%   green pill   — within tolerance
+//   1-5%  amber pill   — review
+//   >5%   red pill     — likely block-on-apply once declared totals wire in
+function varianceClass(variancePct: number): string {
+  const abs = Math.abs(variancePct);
+  if (abs < 1) return 'pill pill-success';
+  if (abs <= 5) return 'pill pill-warn';
+  return 'pill pill-error';
+}
+
 export function ReconciliationSection({ draft }: Props) {
   const suggestions = suggestionsFromDraft(draft.progress);
   const { reconciliation } = suggestions;
@@ -66,13 +77,7 @@ export function ReconciliationSection({ draft }: Props) {
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {row.variancePct != null ? (
-                          <span
-                            className={
-                              Math.abs(row.variancePct) < 1
-                                ? 'pill pill-success'
-                                : 'pill pill-muted'
-                            }
-                          >
+                          <span className={varianceClass(row.variancePct)}>
                             {row.variancePct.toFixed(2)}%
                           </span>
                         ) : (
@@ -99,7 +104,9 @@ export function ReconciliationSection({ draft }: Props) {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {reconciliation.grandVariancePct != null ? (
-                        `${reconciliation.grandVariancePct.toFixed(2)}%`
+                        <span className={varianceClass(reconciliation.grandVariancePct)}>
+                          {reconciliation.grandVariancePct.toFixed(2)}%
+                        </span>
                       ) : (
                         <span className="text-muted">—</span>
                       )}

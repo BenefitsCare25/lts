@@ -95,11 +95,15 @@ export function ClientSection({ form, setForm, draft, aiFilled, markSectionDirty
     setForm((prev) => ({ ...prev, client: { ...prev.client, [key]: value } }));
   };
 
-  // Best-effort confidence — when extracted source confidence ships,
-  // wire it through here. For now, "high" if the parser supplied a
-  // non-empty seed value, undefined otherwise.
+  // Confidence comes from the AI proposal when available; falls back
+  // to 0.7 ("medium") for heuristic-only seeds since the heuristic
+  // parser doesn't track per-field confidence today.
   const seededLegalName = Boolean(form.client.legalName);
   const seededAddress = Boolean(form.client.address);
+  const seedConfidence =
+    typeof aiBundle.proposedClient?.confidence === 'number'
+      ? aiBundle.proposedClient.confidence
+      : 0.7;
 
   return (
     <>
@@ -112,7 +116,9 @@ export function ClientSection({ form, setForm, draft, aiFilled, markSectionDirty
             <div className="field">
               <label className="field-label" htmlFor="cli-legal">
                 Legal entity name
-                {seededLegalName ? <ConfidenceBadge confidence={0.9} variant="dot" /> : null}
+                {seededLegalName ? (
+                  <ConfidenceBadge confidence={seedConfidence} variant="dot" />
+                ) : null}
               </label>
               <input
                 id="cli-legal"
@@ -192,7 +198,9 @@ export function ClientSection({ form, setForm, draft, aiFilled, markSectionDirty
             <div className="field">
               <label className="field-label" htmlFor="cli-address">
                 Registered address
-                {seededAddress ? <ConfidenceBadge confidence={0.9} variant="dot" /> : null}
+                {seededAddress ? (
+                  <ConfidenceBadge confidence={seedConfidence} variant="dot" />
+                ) : null}
               </label>
               <textarea
                 id="cli-address"
