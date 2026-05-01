@@ -11,11 +11,14 @@
 // Excluded from production bundle (tests/ tree, not src/).
 // =============================================================
 
-import { PARSING_RULES_PER_PRODUCT, PRODUCT_TYPE_STRATEGIES } from './catalogue-data';
-import type { CatalogueLookup, ExtractedProduct } from '../../src/server/extraction/heuristic-to-envelope';
+import type {
+  CatalogueLookup,
+  ExtractedProduct,
+} from '../../src/server/extraction/heuristic-to-envelope';
 import { envelopeFromParseResult } from '../../src/server/extraction/heuristic-to-envelope';
 import { reconcile } from '../../src/server/extraction/reconciliation';
 import { parsePlacementSlip } from '../../src/server/ingestion/parser';
+import { PARSING_RULES_PER_PRODUCT, PRODUCT_TYPE_STRATEGIES } from './catalogue-data';
 
 // Shape the regression test's compareToExpected() expects.
 export type ActualExtraction = {
@@ -61,6 +64,8 @@ function synthesiseCrossCutting(products: ExtractedProduct[]): {
     };
   }
 
+  // products.length > 0 is guaranteed by the early return above.
+  // biome-ignore lint/style/noNonNullAssertion: guarded by length check
   const first = products[0]!;
 
   const proposedClient = {
@@ -134,7 +139,14 @@ function synthesiseCrossCutting(products: ExtractedProduct[]): {
   // Collect extraction warnings from all products.
   const warnings = products.flatMap((p) => p.extractionMeta.warnings);
 
-  return { proposedClient, proposedPolicyEntities, proposedBenefitYear, proposedInsurers, proposedPool: null, warnings };
+  return {
+    proposedClient,
+    proposedPolicyEntities,
+    proposedBenefitYear,
+    proposedInsurers,
+    proposedPool: null,
+    warnings,
+  };
 }
 
 // Run the heuristic extractor against a slip buffer.

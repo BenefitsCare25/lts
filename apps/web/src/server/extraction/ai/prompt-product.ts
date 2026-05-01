@@ -111,7 +111,7 @@ export function buildProductUserPrompt(
     '  product). Set `{ value: <number>, raw: <verbatim cell>, confidence: 0.95,',
     '  sourceRef: { sheet, cell } }`. Leave null when not stated.',
     '- **bundledWithProductCode**: set to the productTypeCode of the carrier product when this',
-    '  product\'s premium is rolled into another product\'s rates (e.g. SP premium listed under',
+    "  product's premium is rolled into another product's rates (e.g. SP premium listed under",
     '  "Part of GHS"). Leave null when this product has its own declared premium.',
     '',
     ...anchorBlock,

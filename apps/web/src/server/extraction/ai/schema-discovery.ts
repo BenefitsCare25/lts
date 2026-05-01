@@ -101,7 +101,8 @@ const proposedPolicyEntitiesSchema = {
       address: { type: ['string', 'null'] },
       siteCode: {
         type: ['string', 'null'],
-        description: 'Short branch/site code (e.g. AMK, TPY, HQ) when the slip only provides a code rather than a full registered address.',
+        description:
+          'Short branch/site code (e.g. AMK, TPY, HQ) when the slip only provides a code rather than a full registered address.',
       },
       headcountEstimate: { type: ['integer', 'null'], minimum: 0 },
       isMaster: { type: 'boolean' },

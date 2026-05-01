@@ -18,7 +18,11 @@
 // have content".
 // =============================================================
 
-import { type CoverBasis, COVER_BASIS_BY_STRATEGY, excelColumnIndex } from '@/server/catalogue/premium-strategy';
+import {
+  COVER_BASIS_BY_STRATEGY,
+  type CoverBasis,
+  excelColumnIndex,
+} from '@/server/catalogue/premium-strategy';
 import type {
   ParseResult,
   ParsedPolicyEntity,

@@ -211,7 +211,14 @@
         "name": { "type": "string", "description": "Canonical/display name" },
         "coverBasis": {
           "type": "string",
-          "enum": ["per_cover_tier", "salary_multiple", "fixed_amount", "per_region", "earnings_based", "per_employee_flat"]
+          "enum": [
+            "per_cover_tier",
+            "salary_multiple",
+            "fixed_amount",
+            "per_region",
+            "earnings_based",
+            "per_employee_flat"
+          ]
         },
         "stacksOnRawCode": {
           "type": ["string", "null"],
