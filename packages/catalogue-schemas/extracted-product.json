@@ -12,8 +12,7 @@
     "eligibility",
     "plans",
     "premiumRates",
-    "benefits",
-    "extractionMeta"
+    "benefits"
   ],
   "additionalProperties": false,
   "properties": {
@@ -77,9 +76,8 @@
       "items": { "$ref": "#/definitions/BenefitField" }
     },
     "extractionMeta": {
+      "description": "Optional metadata block. The runner overrides this with canonical values after the AI call (overallConfidence aggregated from envelopes, extractorVersion = AI_EXTRACTOR_VERSION constant), so the model is not required to populate it.",
       "type": "object",
-      "additionalProperties": false,
-      "required": ["overallConfidence", "extractorVersion"],
       "properties": {
         "overallConfidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "extractorVersion": { "type": "string" },
@@ -100,7 +98,6 @@
     },
     "FieldEnvelope": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["confidence"],
       "properties": {
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },

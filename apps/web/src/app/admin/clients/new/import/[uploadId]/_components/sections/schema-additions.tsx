@@ -131,24 +131,38 @@ export function SchemaAdditionsSection({ draft }: Props) {
                       Map to existing field
                     </label>
                     {decision.resolution === 'MAP' ? (
-                      <select
-                        className="input"
-                        style={{ marginLeft: '1.5rem', width: 'auto' }}
-                        value={decision.mapTo ?? ''}
-                        onChange={(e) =>
-                          setDecisions((prev) => ({
-                            ...prev,
-                            [field.fieldPath]: { resolution: 'MAP', mapTo: e.target.value },
-                          }))
-                        }
-                      >
-                        <option value="">— Pick a field —</option>
-                        {existingFields.map((f) => (
-                          <option key={f.name} value={f.name}>
-                            {f.label} ({f.name}, {f.type})
-                          </option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          className="input"
+                          style={{ marginLeft: '1.5rem', width: 'auto' }}
+                          value={decision.mapTo ?? ''}
+                          onChange={(e) =>
+                            setDecisions((prev) => ({
+                              ...prev,
+                              [field.fieldPath]:
+                                e.target.value === ''
+                                  ? { resolution: 'MAP' }
+                                  : { resolution: 'MAP', mapTo: e.target.value },
+                            }))
+                          }
+                          aria-invalid={decision.mapTo ? undefined : true}
+                        >
+                          <option value="">— Pick a field —</option>
+                          {existingFields.map((f) => (
+                            <option key={f.name} value={f.name}>
+                              {f.label} ({f.name}, {f.type})
+                            </option>
+                          ))}
+                        </select>
+                        {decision.mapTo ? null : (
+                          <p
+                            className="field-help text-warn"
+                            style={{ marginLeft: '1.5rem', marginTop: '0.25rem' }}
+                          >
+                            Pick a target field, or switch to ADD or DROP.
+                          </p>
+                        )}
+                      </>
                     ) : null}
                     <label className="chip">
                       <input
@@ -175,16 +189,19 @@ export function SchemaAdditionsSection({ draft }: Props) {
           <div className="mt-3">
             <h4 className="mb-2">Resolution summary</h4>
             <ul className="kv-list">
-              {Object.entries(decisions).map(([fieldPath, decision]) => (
-                <li key={fieldPath}>
-                  <code>{fieldPath}</code> →{' '}
-                  {decision.resolution === 'ADD'
-                    ? 'add as CUSTOM'
-                    : decision.resolution === 'MAP'
-                      ? `map to ${decision.mapTo ?? '— pick —'}`
-                      : 'drop term'}
-                </li>
-              ))}
+              {Object.entries(decisions).map(([fieldPath, decision]) => {
+                const incomplete = decision.resolution === 'MAP' && !decision.mapTo;
+                return (
+                  <li key={fieldPath} className={incomplete ? 'text-warn' : undefined}>
+                    <code>{fieldPath}</code> →{' '}
+                    {decision.resolution === 'ADD'
+                      ? 'add as CUSTOM'
+                      : decision.resolution === 'MAP'
+                        ? `map to ${decision.mapTo ?? 'unresolved (pick a target)'}`
+                        : 'drop term'}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </Card>

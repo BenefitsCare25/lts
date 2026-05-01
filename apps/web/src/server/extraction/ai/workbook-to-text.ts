@@ -183,6 +183,17 @@ function sheetToMarkdown(
 // Cells are unions of strings, numbers, dates, formulas (with cached
 // values), errors, and rich-text. We coerce each shape to a stable
 // stringified form so the same cell renders identically on every run.
+//
+// Sentinel returns:
+//   '#ERR'      — Excel error cell (e.g. #REF!, #N/A)
+//   '#FORMULA'  — formula present but no cached result (workbook never
+//                 calculated; LibreOffice/exceljs cannot evaluate
+//                 cross-sheet refs at load time). The model treats this
+//                 as "value is in the formula text but not extractable".
+//   '#UNKNOWN'  — exceljs returned a shape we don't recognise. Better to
+//                 surface a sentinel than render `[object Object]`,
+//                 which the LLM has been observed to copy verbatim into
+//                 its narrative warnings.
 function cellToText(cell: ExcelJS.Cell): string {
   const v = cell.value;
   if (v == null) return '';
@@ -204,28 +215,45 @@ function cellToText(cell: ExcelJS.Cell): string {
   }
   if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
   if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v !== 'object') return String(v).trim();
+
   // Rich-text — concat the runs.
-  if (typeof v === 'object' && 'richText' in v && Array.isArray(v.richText)) {
+  if ('richText' in v && Array.isArray(v.richText)) {
     return v.richText
       .map((run) => (run as { text?: unknown }).text ?? '')
       .join('')
       .trim();
   }
-  // Formula — prefer the cached result if present.
-  if (typeof v === 'object' && 'result' in v && v.result != null) {
-    return cellToText({
-      value: v.result,
-      numFmt: (cell as { numFmt?: string }).numFmt,
-    } as ExcelJS.Cell);
+  // Errors — render as `#ERR` so the model knows the cell isn't blank
+  // but also isn't trustworthy. Checked before formula because some
+  // error cells carry a `formula` field too.
+  if ('error' in v) return '#ERR';
+  // Formula — prefer the cached result. ExcelJS represents this as
+  // `{ formula | sharedFormula, result?: ... }`. If the workbook was
+  // saved without recomputation (very common for `.xls` files round-
+  // tripped through LibreOffice), `result` is undefined and we surface
+  // a sentinel rather than the stringified formula object.
+  if ('formula' in v || 'sharedFormula' in v) {
+    if ('result' in v && v.result != null) {
+      return cellToText({
+        value: v.result,
+        numFmt: (cell as { numFmt?: string }).numFmt,
+      } as ExcelJS.Cell);
+    }
+    const formulaText =
+      typeof (v as { formula?: unknown }).formula === 'string'
+        ? `=${(v as { formula: string }).formula}`
+        : typeof (v as { sharedFormula?: unknown }).sharedFormula === 'string'
+          ? `=${(v as { sharedFormula: string }).sharedFormula}`
+          : '';
+    return formulaText ? `#FORMULA(${formulaText})` : '#FORMULA';
   }
   // Hyperlink — show the visible text.
-  if (typeof v === 'object' && 'text' in v && typeof v.text === 'string') {
-    return v.text.trim();
+  if ('text' in v && typeof (v as { text?: unknown }).text === 'string') {
+    return ((v as { text: string }).text as string).trim();
   }
-  // Errors — render as `#ERR` so the model knows the cell isn't blank
-  // but also isn't trustworthy.
-  if (typeof v === 'object' && 'error' in v) return '#ERR';
-  return String(v).trim();
+  // Last resort: shape we don't recognise. Avoid `[object Object]`.
+  return '#UNKNOWN';
 }
 
 // 1 → "A", 27 → "AA", 702 → "ZZ". Excel's column lettering.

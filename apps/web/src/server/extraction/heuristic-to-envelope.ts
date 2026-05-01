@@ -167,14 +167,19 @@ function parsePeriod(raw: unknown, sourceRef?: SourceRef): PeriodField {
   if (!text) {
     return { value: null, raw, confidence: 0, ...ref };
   }
+  // Parse failure: confidence 0 (not 0.3) so the wizard treats this
+  // exactly like "field absent" rather than "low-confidence value
+  // present" — the latter mis-styles the form input as if it has data.
+  // The original raw text stays in `raw` so the AI runner and the
+  // source-ref hover still see what was on the slip.
   const segments = text.split(/\s*(?:-|to|→|–)\s*/);
   if (segments.length < 2) {
-    return { value: null, raw, confidence: 0.3, ...ref };
+    return { value: null, raw, confidence: 0, ...ref };
   }
   const from = parseDmyOrIso(segments[0]);
   const to = parseDmyOrIso(segments[1]);
   if (!from || !to) {
-    return { value: null, raw, confidence: 0.3, ...ref };
+    return { value: null, raw, confidence: 0, ...ref };
   }
   return { value: { from, to }, raw, confidence: 0.9, ...ref };
 }
@@ -217,14 +222,31 @@ function parseDmyOrIso(s: string | undefined): string | null {
   return null;
 }
 
-// Heuristic plan-code derivation. "Plan A: HJG 16+" → "PA";
-// numeric-prefix labels ("1", "2") → "P1"; falls back to index.
+// Heuristic plan-code derivation. Order:
+//   "Plan A: HJG 16+"   → "PA"
+//   "1.5"               → "P1_5"  (numeric, decimal preserved)
+//   "Executive Plus"    → "PEXECPL" (first 6 alnum chars after P-prefix)
+//   "—" / unicode-only  → `P_${index+1}` (last-resort fallback)
+//
+// Why deterministic-from-label beats index-based: re-uploading the
+// same slip with reordered sheets must produce stable plan codes.
+// The previous `P${index + 1}` fallback rotated codes when sheet
+// order shifted, breaking downstream rate matching.
 function derivePlanCode(label: string, index: number): string {
   const planMatch = label.match(/^Plan\s+([A-Z0-9]+)/i);
   if (planMatch) return `P${planMatch[1]?.toUpperCase()}`;
-  const numMatch = label.match(/^(\d+)\b/);
-  if (numMatch) return `P${numMatch[1]}`;
-  return `P${index + 1}`;
+  const numMatch = label.match(/^(\d+(?:[.,]\d+)?)\b/);
+  if (numMatch) {
+    const normalized = numMatch[1]?.replace(/[.,]/g, '_');
+    return `P${normalized}`;
+  }
+  // Strip non-ASCII-alphanumeric, take first 6 chars as the slug.
+  const slug = label
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '')
+    .slice(0, 6);
+  if (slug.length > 0) return `P${slug}`;
+  return `P_${index + 1}`;
 }
 
 // Sniff "additional above Plan X" → "X" (the rider-base hint that
@@ -352,12 +374,17 @@ function envelopeProduct(
     },
     eligibility: {
       freeText: stringField(fields.eligibility_text, headerSourceRef('eligibility_text')),
+      // Confidence 0.3: the heuristic only knows the plan label;
+      // headcount, sumInsuredFormula, and participation are all null.
+      // Prior 0.7 over-promised — pick.confidence comparisons in the
+      // AI merger would discard a richer AI category in favour of this
+      // empty placeholder. 0.3 lets the AI override cleanly.
       categories: parsed.plans.map((p, i) => ({
         category: String(p.code).trim(),
         headcount: null,
         sumInsuredFormula: null,
         participation: null,
-        confidence: 0.7,
+        confidence: 0.3,
         sourceRef: headerSourceRef(`plans-block-row-${i}`),
       })),
     },
