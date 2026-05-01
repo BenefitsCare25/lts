@@ -13,6 +13,7 @@ import type { AppRouter } from '@/server/trpc/router';
 import type { inferRouterOutputs } from '@trpc/server';
 import { useEffect, useMemo, useRef } from 'react';
 import type { DraftFormState } from './_registry';
+import { aiBundleFromDraft } from './_types';
 
 type Props = {
   form: DraftFormState;
@@ -30,28 +31,44 @@ export function ClientSection({ form, setForm, draft }: Props) {
   const countries = trpc.referenceData.countries.useQuery();
   const industries = trpc.referenceData.industries.useQuery();
 
-  // Seed legalName / address from the first parsed product header
-  // exactly once per draft load — refetches don't re-seed.
+  const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
+
+  // Seed once per draft load. Priority: AI proposals (richer, higher
+  // recall) → heuristic parser fallback. Only fills empty fields so
+  // broker edits made before AI completes are preserved. The ref is
+  // set only AFTER AI proposals are available so the seed runs once
+  // the extraction finishes (the component remounts polling deps).
   const seededDraftIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (seededDraftIdRef.current === draft.id) return;
-    seededDraftIdRef.current = draft.id;
+
+    const proposed = aiBundle.proposedClient;
     const result = draft.upload.parseResult as ParseResultLite | null;
     const firstProductFields = result?.products?.[0]?.fields ?? {};
-    const seededLegalName = String(firstProductFields.policyholder_name ?? '').trim();
-    const seededAddress = String(firstProductFields.address ?? '').trim();
-    setForm((prev) => {
-      if (prev.client.legalName || prev.client.address) return prev;
-      return {
-        ...prev,
-        client: {
-          ...prev.client,
-          legalName: prev.client.legalName || seededLegalName,
-          address: prev.client.address || seededAddress,
-        },
-      };
-    });
-  }, [draft, setForm]);
+    const heuristicLegalName = String(firstProductFields.policyholder_name ?? '').trim();
+    const heuristicAddress = String(firstProductFields.address ?? '').trim();
+
+    // Skip if no source has any data yet (AI still running, parser empty).
+    if (!proposed && !heuristicLegalName && !heuristicAddress) return;
+
+    seededDraftIdRef.current = draft.id;
+    setForm((prev) => ({
+      ...prev,
+      client: {
+        legalName: prev.client.legalName || proposed?.legalName || heuristicLegalName || '',
+        tradingName: prev.client.tradingName || proposed?.tradingName || '',
+        uen: prev.client.uen || proposed?.uen || '',
+        countryOfIncorporation:
+          prev.client.countryOfIncorporation === 'SG' && proposed?.countryOfIncorporation
+            ? proposed.countryOfIncorporation
+            : prev.client.countryOfIncorporation,
+        address: prev.client.address || proposed?.address || heuristicAddress || '',
+        industry: prev.client.industry || proposed?.industry || '',
+        primaryContactName: prev.client.primaryContactName || proposed?.primaryContactName || '',
+        primaryContactEmail: prev.client.primaryContactEmail || proposed?.primaryContactEmail || '',
+      },
+    }));
+  }, [draft.id, draft.upload.parseResult, aiBundle.proposedClient, setForm]);
 
   const country = useMemo(
     () => countries.data?.find((c) => c.code === form.client.countryOfIncorporation) ?? null,
