@@ -67,8 +67,15 @@ Real slips MUST be anonymized before the slip file enters this directory. Anyone
 
 ## Adding a new fixture (process)
 
+> **Lessons from earlier fixtures — read before starting** (each one bit us once):
+> - **Scan free-text sections, not just headers.** "Additional Arrangements" / "Schedule of Benefits" / extension-notes paragraphs at the bottom of product sheets often leak the most: real employee names, third-party staffing partners, foreign affiliate locations. The structured fields (Policyholder, Address, Policy No.) are the easy 80% — the prose is where the PII hides. Use a comprehensive substring sentinel scan across EVERY cell of EVERY sheet, including any abbreviations or alternate spellings of identifiers.
+> - **`.xls` sources auto-convert.** `scripts/anonymize-slip.py` invokes Excel COM if the source ends in `.xls`. No manual conversion step needed.
+> - **Numeric policy IDs need `cell_overrides`, not `replace_strings`.** The string-replace pass skips non-string cells. If a policy number is stored as an integer (e.g. Tokio Marine's [REDACTED]), use a per-cell override.
+> - **Formula refs propagate cached values past `cell_overrides`.** If you override `H32` but `F37` is `=H32`, the flatten step writes the OLD cached value to F37 before your override runs. Override both.
+> - **Pseudonyms can self-leak.** `TEST/AW/PNG-002` decodes back to "[REDACTED]". Use neutral patterns like `TEST/<insurer>/2026-NNN`.
+
 1. Get the original .xls from the broker (with consent or under existing data-handling agreement).
-2. Open in Excel (or via the `scripts/anonymize-slip.py` helper once it exists). Apply the rules above.
+2. Open in Excel (or via the `scripts/anonymize-slip.py` helper). Apply the rules above.
 3. Save as `slip.xls` in a new `fixtures/<name>/` directory.
 4. Run the extractor in record mode:
    ```
