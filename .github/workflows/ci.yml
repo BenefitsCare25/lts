@@ -57,34 +57,13 @@ env:
 # ---------------------------------------------------------------------------
 
 jobs:
-  ci:
-    name: lint • typecheck • test • build
+  # ---------------------------------------------------------------------------
+  # lint — Biome + TypeScript + Bicep syntax. No DB needed; runs fast.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint • typecheck • bicep
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    services:
-      # Postgres for integration tests (cross-tenant isolation suite).
-      # The DB is ephemeral per job — no persistence, no shared state.
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: insurance_saas_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      # DATABASE_URL: tooling default; integration tests use INTEGRATION_DATABASE_URL.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas_test?schema=public
-      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas_test?schema=public
-      REDIS_URL: redis://localhost:6379
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    timeout-minutes: 8
 
     steps:
       - name: Checkout
@@ -119,26 +98,83 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Apply migrations to test DB
-        # Migrations are required for the integration test suite. The
-        # test setup truncates tables before seeding, so the DB must
-        # have its schema in place first.
-        run: pnpm prisma migrate deploy
-
-      - name: Unit + integration tests
-        run: pnpm test
-
-      - name: Build
-        run: pnpm build
-
       - name: Bicep compile (infra/)
         # Compile-check the Azure templates on every push. Catches syntax
         # errors and lint warnings before they hit a real deployment.
         run: az bicep build --file infra/bicep/main.bicep --stdout > /dev/null
 
+  # ---------------------------------------------------------------------------
+  # test — migrations + Vitest. Runs in parallel with lint.
+  # next build is intentionally omitted — the Docker build in the deploy job
+  # covers it, and the GHA layer cache makes it fast on repeat pushes.
+  # ---------------------------------------------------------------------------
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      # Postgres for integration tests (cross-tenant isolation suite).
+      # The DB is ephemeral per job — no persistence, no shared state.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: insurance_saas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas_test?schema=public
+      INTEGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/insurance_saas_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations to test DB
+        run: pnpm prisma migrate deploy
+
+      - name: Unit + integration tests
+        run: pnpm test
+
+  # ---------------------------------------------------------------------------
+  # deploy — builds image, migrates, seeds (if schema changed), deploys.
+  # ---------------------------------------------------------------------------
   deploy:
     name: deploy → staging
-    needs: ci
+    needs: [lint, test]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -157,17 +193,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history needed for accurate infra diff
+          fetch-depth: 0  # full history needed for accurate infra + migration diff
 
       - name: Detect infra changes
         id: infra
         run: |
           BEFORE="${{ github.event.before }}"
-          # First push to branch or manual dispatch — run full Bicep to be safe.
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             DIFF=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- infra/ 2>/dev/null || true)
+            [ -n "$DIFF" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect migration changes
+        id: migrations
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            DIFF=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- prisma/ 2>/dev/null || true)
             [ -n "$DIFF" ] && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -198,7 +244,6 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ steps.acr.outputs.server }}
-          # ACR token-based auth uses the fixed UUID below as the username.
           username: 00000000-0000-0000-0000-000000000000
           password: ${{ steps.acr-token.outputs.token }}
 
@@ -215,24 +260,22 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Setup Node (for prisma migrate + seed)
+        if: steps.migrations.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
 
       - name: Enable Corepack
+        if: steps.migrations.outputs.changed == 'true'
         run: corepack enable
 
       - name: Install Prisma deps
-        # Production runs migrations + seed via the same Prisma version as the
-        # app image. We need only @prisma/client + prisma + tsx to seed; the
-        # rest of the workspace install would just slow this step down.
+        if: steps.migrations.outputs.changed == 'true'
         run: pnpm install --frozen-lockfile --ignore-scripts && pnpm exec prisma generate
 
       - name: Migrate + seed staging Postgres
+        if: steps.migrations.outputs.changed == 'true'
         env:
-          # Pull the live DATABASE_URL from the Container App's secret bag —
-          # avoids storing yet another GitHub secret in sync with Postgres.
-          # Runner reaches Postgres via the AllowAzureServices firewall rule.
           AZURE_CONTAINERAPP: ${{ env.CONTAINER_APP }}
         run: |
           DB_URL=$(az containerapp secret show \
@@ -258,10 +301,6 @@ jobs:
         if: steps.infra.outputs.changed == 'true'
         env:
           POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
-          # SharePoint credentials. Empty values (e.g. on a fresh repo
-          # without the secrets configured) leave the corresponding
-          # Container App secrets/env vars unset, and the app falls
-          # back to inline-marker storage — no deploy failure.
           SHAREPOINT_TENANT_ID: ${{ secrets.SHAREPOINT_TENANT_ID }}
           SHAREPOINT_CLIENT_ID: ${{ secrets.SHAREPOINT_CLIENT_ID }}
           SHAREPOINT_CLIENT_SECRET: ${{ secrets.SHAREPOINT_CLIENT_SECRET }}
