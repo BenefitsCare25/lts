@@ -27,6 +27,7 @@ import {
   decryptProviderKey,
   loadActiveProvider,
 } from './foundry-client';
+import { isClaudeDeployment } from '@/server/trpc/routers/tenant-ai-provider';
 import {
   type AiOutput,
   type AiOutputBenefitYear,
@@ -113,6 +114,11 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     };
   }
 
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log(
+    `[ai-extraction] provider deployment=${provider.deploymentName} protocol=${isClaudeDeployment(provider.deploymentName) ? 'anthropic' : 'openai-compat'} endpoint=${provider.endpoint}`,
+  );
+
   let workbookText: WorkbookText;
   try {
     workbookText = await workbookToText(workbookBuffer);
@@ -124,6 +130,11 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
       meta: {},
     };
   }
+
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log(
+    `[ai-extraction] workbook sheets=${workbookText.sheets.length} chars=${workbookText.totalChars} truncated=${workbookText.truncated}`,
+  );
 
   if (workbookText.sheets.length === 0) {
     return {
@@ -318,8 +329,23 @@ async function callOnce(args: {
     };
   }
 
+  // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+  console.log(
+    `[ai-extraction] foundry response model=${result.model} latencyMs=${result.latencyMs} inputTokens=${result.usage.inputTokens} outputTokens=${result.usage.outputTokens} cacheRead=${result.usage.cacheReadTokens}`,
+  );
+
   const validator = getOutputValidator();
   const valid = validator(result.output);
+  if (!valid) {
+    console.error(
+      '[ai-extraction] schema validation failed errors:',
+      formatAjvErrors(validator.errors),
+    );
+    console.error(
+      '[ai-extraction] raw output (first 2000 chars):',
+      JSON.stringify(result.output).slice(0, 2000),
+    );
+  }
   return {
     kind: 'ok',
     output: result.output,
