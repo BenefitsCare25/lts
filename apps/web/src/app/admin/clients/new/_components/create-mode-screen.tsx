@@ -46,6 +46,32 @@ function ModePicker({ onPick }: { onPick: (mode: Mode) => void }) {
   const orphans = trpc.extractionDrafts.listOrphans.useQuery();
   const router = useRouter();
 
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteOrphan = trpc.extractionDrafts.deleteOrphan.useMutation({
+    onSuccess: async () => {
+      await orphans.refetch();
+      setPendingDeleteId(null);
+    },
+    onError: (err) => {
+      setDeleteError(err.message);
+      setPendingDeleteId(null);
+    },
+  });
+
+  const handleDelete = (draftId: string, filename: string) => {
+    setDeleteError(null);
+    if (
+      !window.confirm(
+        `Delete the import for "${filename}"? This removes the upload, the AI draft, and the SharePoint copy. Cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setPendingDeleteId(draftId);
+    deleteOrphan.mutate({ draftId });
+  };
+
   return (
     <>
       <section className="section">
@@ -81,6 +107,7 @@ function ModePicker({ onPick }: { onPick: (mode: Mode) => void }) {
       {orphans.data && orphans.data.length > 0 ? (
         <section className="section">
           <h3 className="mb-3">Resume in-progress imports</h3>
+          {deleteError ? <p className="field-error mb-3">{deleteError}</p> : null}
           <div className="table-wrap">
             <table className="table">
               <thead>
@@ -93,29 +120,41 @@ function ModePicker({ onPick }: { onPick: (mode: Mode) => void }) {
                 </tr>
               </thead>
               <tbody>
-                {orphans.data.map((draft) => (
-                  <tr key={draft.id}>
-                    <td>{draft.upload.filename}</td>
-                    <td>{draft.upload.insurerTemplate ?? '—'}</td>
-                    <td>
-                      <span className="pill pill-muted">{draft.status}</span>
-                    </td>
-                    <td>{new Date(draft.upload.createdAt).toLocaleString()}</td>
-                    <td>
-                      <div className="row-end">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() =>
-                            router.push(`/admin/clients/new/import/${draft.upload.id}`)
-                          }
-                        >
-                          Resume →
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {orphans.data.map((draft) => {
+                  const isDeleting = pendingDeleteId === draft.id;
+                  return (
+                    <tr key={draft.id}>
+                      <td>{draft.upload.filename}</td>
+                      <td>{draft.upload.insurerTemplate ?? '—'}</td>
+                      <td>
+                        <span className="pill pill-muted">{draft.status}</span>
+                      </td>
+                      <td>{new Date(draft.upload.createdAt).toLocaleString()}</td>
+                      <td>
+                        <div className="row-end">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() =>
+                              router.push(`/admin/clients/new/import/${draft.upload.id}`)
+                            }
+                            disabled={isDeleting}
+                          >
+                            Resume →
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-error"
+                            onClick={() => handleDelete(draft.id, draft.upload.filename)}
+                            disabled={isDeleting}
+                          >
+                            {isDeleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
