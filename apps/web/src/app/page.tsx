@@ -15,9 +15,6 @@ export default function HomePage() {
       <p>
         <a href="/admin">Open admin →</a>
       </p>
-      <p>
-        See <code>docs/PHASE_1_BUILD_PLAN_v2.md</code> in the repository for the full plan.
-      </p>
       <section>
         <h2>tRPC health</h2>
         {ping.isLoading ? (
