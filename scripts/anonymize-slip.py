@@ -210,8 +210,67 @@ FIXTURES: dict[str, dict[str, Any]] = {
         },
         "scale_numeric": [],
     },
+    "hartree-2026": {
+        "source": r"C:\Users\huien\Desktop\slips\[REDACTED] & [REDACTED] - Placement slips 2026 - 2027 (1).xlsx",
+        "replace_strings": {
+            # ── Entity names (longer-first; Japan affiliate before bare CHC) ──
+            "[REDACTED]": "Test E Pte Ltd",
+            "[REDACTED]": "Test E Japan K.K.",
+            "[REDACTED]": "Test E Japan K.K.",
+            "[REDACTED]": "Test E Energy Pte Ltd",
+            # ── Address (3 case/format variants of the same physical address) ──
+            "[REDACTED]": "7 Test Boulevard #20-02, Singapore 100007",
+            "[REDACTED]": "7 TEST BOULEVARD #20-02, SINGAPORE 100007",
+            "[REDACTED]": "7 Test Boulevard #18-02, Singapore 100007",
+            # ── UEN (SG company registration ID — fully identifying) ──
+            "[REDACTED]": "T26TST0001A",
+            # ── Business descriptions (3 different — generalize SSIC categories) ──
+            "[REDACTED]": "Wholesale of fuels",
+            "[REDACTED]": "Head office activities",
+            "[REDACTED]": "Energy products and services",
+            # ── Policy number (HSBC Life string on 6 sheets at C11) ──
+            "[REDACTED]": "TEST/HSBC/2026-001",
+            # ── Employee names (PII — 18 real people on the slip) ──
+            # NOTE: longer / fuller names FIRST so substring overlap binds correctly.
+            # E.g. "[REDACTED]" must replace before bare "Lee" or "[REDACTED]".
+            "[REDACTED]": "[Employee 18]",
+            "[REDACTED]": "[Employee 5]",
+            "[REDACTED]": "[Employee 13]",
+            "[REDACTED]": "[Employee 3]",
+            "[REDACTED]": "[Employee 4]",
+            "[REDACTED]": "[Employee 10]",
+            "[REDACTED]": "[Employee 15]",
+            "[REDACTED]": "[Employee 8]",
+            "[REDACTED]": "[Employee 11]",
+            "[REDACTED]": "[Employee 16]",
+            "[REDACTED]": "[Employee 2]",
+            "[REDACTED]": "[Employee 9]",
+            "[REDACTED]": "[Employee 1]",
+            "[REDACTED]": "[Employee 6]",
+            "[REDACTED]": "[Employee 6]",
+            "[REDACTED]": "[Employee 17]",
+            "[REDACTED]": "[Employee 7]",
+            "[REDACTED]": "[Employee 14]",
+            "[REDACTED]": "[Employee 12]",
+            # ── Masked NRICs (slip already partially-masks them; full redact) ──
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            "[REDACTED]": "[NRIC]",
+            # ── Catch-alls for remaining bare references (run LAST) ──
+            "[REDACTED]": "Test E",
+            "CHC": "Test E",
+        },
+        "cell_overrides": {},
+        "scale_numeric": [],
+    },
     # Other fixtures appended in subsequent sessions:
-    # 'hartree-2026': { ... },
     # 'stmicro-2026': { ... },
 }
 
