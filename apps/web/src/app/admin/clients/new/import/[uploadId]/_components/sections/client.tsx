@@ -12,13 +12,16 @@ import { trpc } from '@/lib/trpc/client';
 import type { AppRouter } from '@/server/trpc/router';
 import type { inferRouterOutputs } from '@trpc/server';
 import { useEffect, useMemo, useRef } from 'react';
-import type { DraftFormState } from './_registry';
+import type { DraftFormState, SectionId } from './_registry';
 import { aiBundleFromDraft } from './_types';
+import { AiFilledBanner } from './ai-filled-banner';
 
 type Props = {
   form: DraftFormState;
   setForm: React.Dispatch<React.SetStateAction<DraftFormState>>;
   draft: inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
+  aiFilled: boolean;
+  markSectionDirty: (id: SectionId) => void;
 };
 
 interface ParseResultLite {
@@ -27,7 +30,7 @@ interface ParseResultLite {
   }[];
 }
 
-export function ClientSection({ form, setForm, draft }: Props) {
+export function ClientSection({ form, setForm, draft, aiFilled, markSectionDirty }: Props) {
   const countries = trpc.referenceData.countries.useQuery();
   const industries = trpc.referenceData.industries.useQuery();
 
@@ -87,7 +90,10 @@ export function ClientSection({ form, setForm, draft }: Props) {
   const update = <K extends keyof DraftFormState['client']>(
     key: K,
     value: DraftFormState['client'][K],
-  ) => setForm((prev) => ({ ...prev, client: { ...prev.client, [key]: value } }));
+  ) => {
+    markSectionDirty('client');
+    setForm((prev) => ({ ...prev, client: { ...prev.client, [key]: value } }));
+  };
 
   // Best-effort confidence — when extracted source confidence ships,
   // wire it through here. For now, "high" if the parser supplied a
@@ -98,6 +104,7 @@ export function ClientSection({ form, setForm, draft }: Props) {
   return (
     <>
       <h2>Client details</h2>
+      <AiFilledBanner aiFilled={aiFilled} hint="From the AI's discovery pass." />
 
       <section className="section">
         <Card className="card-padded">

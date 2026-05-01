@@ -22,7 +22,7 @@
 
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExtractionProgress } from './extraction-progress';
 import {
   type DraftFormState,
@@ -32,6 +32,19 @@ import {
 } from './sections/_registry';
 import { aiBundleFromDraft } from './sections/_types';
 import { SECTION_COMPONENTS } from './sections/section-components';
+
+const EMPTY_DIRTY_FLAGS: Record<SectionId, boolean> = {
+  source: false,
+  client: false,
+  entities: false,
+  benefit_year: false,
+  insurers: false,
+  products: false,
+  eligibility: false,
+  schema_additions: false,
+  reconciliation: false,
+  review: false,
+};
 
 type Props = { uploadId: string };
 
@@ -53,6 +66,13 @@ export function WizardShell({ uploadId }: Props) {
 
   const [activeSection, setActiveSection] = useState<SectionId>('source');
   const [form, setForm] = useState<DraftFormState>(() => emptyDraftFormState());
+  // Per-section dirty flag. Set when the broker edits a field; the
+  // AI/heuristic seeders use setForm directly without flipping this,
+  // so the rail shows "🤖 AI-filled" until the broker touches a field.
+  const [dirtyFlags, setDirtyFlags] = useState<Record<SectionId, boolean>>(EMPTY_DIRTY_FLAGS);
+  const markSectionDirty = useCallback((id: SectionId) => {
+    setDirtyFlags((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
+  }, []);
 
   // Keep activeSection in sync with the URL hash so reloads land on
   // the same section. Setting via UI updates both.
@@ -102,6 +122,10 @@ export function WizardShell({ uploadId }: Props) {
   // The shell does not re-seed centrally — single ownership.
 
   const sectionStatus = useMemo(() => computeSectionStatus(form, draft.data), [form, draft.data]);
+  const aiFilled = useMemo(
+    () => computeAiFilled(form, draft.data, dirtyFlags),
+    [form, draft.data, dirtyFlags],
+  );
   const applyReadiness = useMemo(() => {
     const total = SECTIONS.length;
     const ready = SECTIONS.filter((s) => sectionStatus[s.id] === 'complete').length;
@@ -167,6 +191,7 @@ export function WizardShell({ uploadId }: Props) {
                 >
                   <span className="wizard-rail__num">{idx + 1}</span>
                   <span className="wizard-rail__label">{s.label}</span>
+                  <RailSourceBadge aiFilled={aiFilled[s.id]} edited={dirtyFlags[s.id]} />
                   <span className="wizard-rail__status" aria-label={sectionStatus[s.id]}>
                     {sectionStatus[s.id] === 'complete'
                       ? '✓'
@@ -192,6 +217,9 @@ export function WizardShell({ uploadId }: Props) {
                 setForm={setForm}
                 sectionStatus={sectionStatus}
                 applyReadiness={applyReadiness}
+                aiFilled={aiFilled[activeSection]}
+                edited={dirtyFlags[activeSection]}
+                markSectionDirty={markSectionDirty}
               />
             );
           })()}
@@ -313,6 +341,84 @@ function renderAiBanner(
 // BenefitYearSection each seed their own slice of the form from
 // aiBundle.proposed* via their own useEffect. The shell no longer
 // owns the seed logic.
+
+// Small inline badge in the rail showing data provenance:
+//   🤖 AI    — section auto-filled by AI/heuristic, broker hasn't touched it
+//   ✏️ Edit  — broker edited at least one field in the section
+//   (none)  — section never had auto-fill data (or section is read-only)
+function RailSourceBadge({ aiFilled, edited }: { aiFilled: boolean; edited: boolean }) {
+  if (edited) {
+    return (
+      <span
+        style={{
+          fontSize: 'var(--text-2xs)',
+          color: 'var(--text-tertiary)',
+          marginLeft: 'auto',
+          marginRight: 'var(--space-1)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        ✏️ Edited
+      </span>
+    );
+  }
+  if (aiFilled) {
+    return (
+      <span
+        style={{
+          fontSize: 'var(--text-2xs)',
+          color: 'var(--accent)',
+          marginLeft: 'auto',
+          marginRight: 'var(--space-1)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        🤖 AI-filled
+      </span>
+    );
+  }
+  return null;
+}
+
+function computeAiFilled(
+  form: DraftFormState,
+  draft: DraftLike,
+  dirty: Record<SectionId, boolean>,
+): Record<SectionId, boolean> {
+  const extracted = (draft?.extractedProducts as Array<unknown> | null) ?? [];
+  const progress = draft?.progress as {
+    proposedInsurers?: unknown[];
+    suggestions?: { missingPredicateFields?: unknown[]; benefitGroups?: unknown[] };
+  } | null;
+  const proposedInsurersCount = Array.isArray(progress?.proposedInsurers)
+    ? progress.proposedInsurers.length
+    : 0;
+  const benefitGroupsCount = Array.isArray(progress?.suggestions?.benefitGroups)
+    ? progress.suggestions.benefitGroups.length
+    : 0;
+  const missingFieldsCount = Array.isArray(progress?.suggestions?.missingPredicateFields)
+    ? progress.suggestions.missingPredicateFields.length
+    : 0;
+
+  // A section is "AI-filled" when it has auto-fill data AND the
+  // broker hasn't touched it. Read-only sections (1, 10) never get
+  // the badge — the broker has nothing to "edit" there.
+  return {
+    source: false,
+    review: false,
+    client:
+      !dirty.client && Boolean(form.client.legalName || form.client.uen || form.client.address),
+    entities: !dirty.entities && form.policyEntities.length > 0,
+    benefit_year:
+      !dirty.benefit_year &&
+      Boolean(form.benefitYear.startDate || form.benefitYear.endDate || form.policy.name),
+    insurers: extracted.length > 0 || proposedInsurersCount > 0,
+    products: extracted.length > 0,
+    eligibility: extracted.length > 0 || benefitGroupsCount > 0,
+    schema_additions: missingFieldsCount > 0 || extracted.length > 0,
+    reconciliation: extracted.length > 0,
+  };
+}
 
 // Naive section-status derivation. Each section reports its own
 // completeness against `form` (broker-edited) and the draft (AI-

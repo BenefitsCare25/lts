@@ -11,16 +11,19 @@ import { Card } from '@/components/ui';
 import type { AppRouter } from '@/server/trpc/router';
 import type { inferRouterOutputs } from '@trpc/server';
 import { useEffect, useMemo, useRef } from 'react';
-import type { DraftFormState } from './_registry';
+import type { DraftFormState, SectionId } from './_registry';
 import { aiBundleFromDraft } from './_types';
+import { AiFilledBanner } from './ai-filled-banner';
 
 type Props = {
   form: DraftFormState;
   setForm: React.Dispatch<React.SetStateAction<DraftFormState>>;
   draft: inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
+  aiFilled: boolean;
+  markSectionDirty: (id: SectionId) => void;
 };
 
-export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
+export function PolicyEntitiesSection({ form, setForm, draft, aiFilled, markSectionDirty }: Props) {
   const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
 
   // Seed entity rows from the AI's proposedPolicyEntities, once per
@@ -51,6 +54,7 @@ export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
   }, [draft.id, aiBundle.proposedPolicyEntities, setForm]);
 
   const update = (index: number, patch: Partial<DraftFormState['policyEntities'][number]>) => {
+    markSectionDirty('entities');
     setForm((prev) => ({
       ...prev,
       policyEntities: prev.policyEntities.map((e, i) => (i === index ? { ...e, ...patch } : e)),
@@ -58,6 +62,7 @@ export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
   };
 
   const setMaster = (index: number) => {
+    markSectionDirty('entities');
     setForm((prev) => ({
       ...prev,
       policyEntities: prev.policyEntities.map((e, i) => ({ ...e, isMaster: i === index })),
@@ -65,6 +70,7 @@ export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
   };
 
   const addRow = () => {
+    markSectionDirty('entities');
     setForm((prev) => ({
       ...prev,
       policyEntities: [
@@ -81,6 +87,7 @@ export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
   };
 
   const removeRow = (index: number) => {
+    markSectionDirty('entities');
     setForm((prev) => {
       const removed = prev.policyEntities[index];
       const next = prev.policyEntities.filter((_, i) => i !== index);
@@ -97,6 +104,7 @@ export function PolicyEntitiesSection({ form, setForm, draft }: Props) {
   return (
     <>
       <h2>Policy entities</h2>
+      <AiFilledBanner aiFilled={aiFilled} hint="From the AI's discovery pass." />
 
       <section className="section">
         <Card className="card-padded">
