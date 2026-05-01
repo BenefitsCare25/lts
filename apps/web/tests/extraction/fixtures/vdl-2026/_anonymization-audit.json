@@ -1,0 +1,706 @@
+{
+  "fixture": "vdl-2026",
+  "source_filename": "[REDACTED]",
+  "dest_filename": "slip.xlsx",
+  "rules_applied": {
+    "string_replacements": 28,
+    "cell_overrides": 7,
+    "numeric_scalings": 0
+  },
+  "total_changes": 99,
+  "changes": [
+    {
+      "sheet": "*",
+      "cell": "*",
+      "kind": "flatten_formulas",
+      "before": "116 formula cells",
+      "after": "literal cached values"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "B61",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - [REDACTED], Salary paid by [REDACTED].",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - Country B, Salary paid by Test D China Ltd."
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "B62",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by [REDACTED] but it will be cross-charge to Singapore",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by Test D Americas LLC but it will be cross-charge to Singapore"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "B64",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "B65",
+      "kind": "string_replace",
+      "before": "Employee [REDACTED] is Overseas Work Exchange Program (OWEP) and will be temporarily working at [REDACTED] for six months.11 October 2024 \u2013 10 April 2025",
+      "after": "Employee [Employee B] is Overseas Work Exchange Program (OWEP) and will be temporarily working at another Test D entity in Country C for six months.11 October 2024 \u2013 10 April 2025"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "B30",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "B141",
+      "kind": "string_replace",
+      "before": "Extension to cover sponsored interns for inpatient and outpatient  (name to be provided) for the full period of insurance including when they are not working with [REDACTED].",
+      "after": "Extension to cover sponsored interns for inpatient and outpatient  (name to be provided) for the full period of insurance including when they are not working with Test D."
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "B144",
+      "kind": "string_replace",
+      "before": "Extension to cover employees employed under [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED] ,[REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED] seconded to work for [REDACTED] as full time contract time wef 04 June 2010. Covered only for PCP - Inpatient & Outpatient.",
+      "after": "Extension to cover employees employed under Test Staffing Partner 1 Pte Ltd, Test Staffing Partner 2 Pte Ltd, Test Staffing Partner 3 Pte Ltd, Test Staffing Partner 4 Pte Ltd, Test Staffing Partner 5 Pte Ltd, Test Staffing Partner 6 Pte Ltd, Test Staffing Partner 7 Pte Ltd ,Test Staffing Partner 8 Pte Ltd, Test Staffing Partner 9 Pte Ltd, Test Staffing Partner 10 Pte Ltd, Test Staffing Partner 11 Pte Ltd, Test Staffing Partner 12 Pte Ltd seconded to work for Test D as full time contract time wef 04 June 2010. Covered only for PCP - Inpatient & Outpatient."
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "B147",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "B148",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to [REDACTED]",
+      "after": "An employee ([Employee B]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "B26",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "B118",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - [REDACTED], Salary paid by [REDACTED].",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - Country B, Salary paid by Test D China Ltd."
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "B119",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by [REDACTED] but it will be cross-charge to Singapore",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by Test D Americas LLC but it will be cross-charge to Singapore"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "B123",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "B124",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to [REDACTED]",
+      "after": "An employee ([Employee B]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "B25",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "B34",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "B138",
+      "kind": "string_replace",
+      "before": "Extension to cover dependents of seconded overseas (Postees): 1 - [REDACTED], Salary paid by [REDACTED].",
+      "after": "Extension to cover dependents of seconded overseas (Postees): 1 - Country B, Salary paid by Test D China Ltd."
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "B139",
+      "kind": "string_replace",
+      "before": "Extension to cover dependents of seconded overseas (Postees): 1 - USA, Salary paid by [REDACTED] but it will be cross-charge to Singapore",
+      "after": "Extension to cover dependents of seconded overseas (Postees): 1 - USA, Salary paid by Test D Americas LLC but it will be cross-charge to Singapore"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "B29",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B30",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B109",
+      "kind": "string_replace",
+      "before": "Extension to cover sponsored Interns for inpatient & Outpatient (name to be provided) for the full period of insurance including when they are not working with [REDACTED].",
+      "after": "Extension to cover sponsored Interns for inpatient & Outpatient (name to be provided) for the full period of insurance including when they are not working with Test D."
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B111",
+      "kind": "string_replace",
+      "before": "Extension to cover employees employed under [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED] ,[REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED] seconded to work for [REDACTED] as full time contract time wef 04 June 2010. Covered only for PCP - Inpatient & Outpatient.",
+      "after": "Extension to cover employees employed under Test Staffing Partner 1 Pte Ltd, Test Staffing Partner 2 Pte Ltd, Test Staffing Partner 3 Pte Ltd, Test Staffing Partner 4 Pte Ltd, Test Staffing Partner 5 Pte Ltd, Test Staffing Partner 6 Pte Ltd, Test Staffing Partner 7 Pte Ltd ,Test Staffing Partner 8 Pte Ltd, Test Staffing Partner 9 Pte Ltd, Test Staffing Partner 10 Pte Ltd, Test Staffing Partner 11 Pte Ltd, Test Staffing Partner 12 Pte Ltd seconded to work for Test D as full time contract time wef 04 June 2010. Covered only for PCP - Inpatient & Outpatient."
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B115",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B116",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to [REDACTED]",
+      "after": "An employee ([Employee B]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B30",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B121",
+      "kind": "string_replace",
+      "before": "Extension to cover sponsored Interns for inpatient & Outpatient (name to be provided) for the full period of insurance including when they are not working with [REDACTED].",
+      "after": "Extension to cover sponsored Interns for inpatient & Outpatient (name to be provided) for the full period of insurance including when they are not working with Test D."
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B124",
+      "kind": "string_replace",
+      "before": "Extension to cover employees employed under [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED] ,[REDACTED], [REDACTED], [REDACTED], [REDACTED], [REDACTED] seconded to work for [REDACTED] as full time contract time wef 04 June 2010. Covered only for PCP - Inpatient & Outpatient.",
+      "after": "Extension to cover employees employed under Test Staffing Partner 1 Pte Ltd, Test Staffing Partner 2 Pte Ltd, Test Staffing Partner 3 Pte Ltd, Test Staffing Partner 4 Pte Ltd, Test Staffing Partner 5 Pte Ltd, Test Staffing Partner 6 Pte Ltd, Test Staffing Partner 7 Pte Ltd ,Test Staffing Partner 8 Pte Ltd, Test Staffing Partner 9 Pte Ltd, Test Staffing Partner 10 Pte Ltd, Test Staffing Partner 11 Pte Ltd, Test Staffing Partner 12 Pte Ltd seconded to work for Test D as full time contract time wef 04 June 2010. Covered only for PCP - Inpatient & Outpatient."
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B131",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B132",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to [REDACTED]",
+      "after": "An employee ([Employee B]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "TEST/BRK/2026-002"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B97",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - [REDACTED], Salary paid by [REDACTED].",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - Country B, Salary paid by Test D China Ltd."
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B98",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by [REDACTED] but it will be cross-charge to Singapore",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by Test D Americas LLC but it will be cross-charge to Singapore"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B99",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B100",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to [REDACTED]",
+      "after": "An employee ([Employee B]) was assigned on an overseas work exchange program effective 11 October 2024 \u2013 10 April 2025, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "C7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "GBT",
+      "cell": "B25",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]",
+      "after": "1. Test D Pte Ltd"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "D4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test D Pte Ltd"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "D5",
+      "kind": "string_replace",
+      "before": "1. [REDACTED]\n2. [REDACTED]\n3. [REDACTED] ",
+      "after": "1. Test D Pte Ltd\n2. Test D China Ltd\n3. Test D Americas LLC "
+    },
+    {
+      "sheet": "WICA",
+      "cell": "D6",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n[REDACTED]\n[REDACTED]",
+      "after": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "D7",
+      "kind": "string_replace",
+      "before": "[REDACTED]: [REDACTED]",
+      "after": "Test D Pte Ltd: Manufacturing of electronic components"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "D10",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "TEST/BRK/2026-003"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B19",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n\nACRA/ UEN: 200612788C",
+      "after": "Test D Pte Ltd\n\nACRA/ UEN: 200612788C"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B31",
+      "kind": "string_replace",
+      "before": "[REDACTED]\n\nACRA/ UEN: 200612788C",
+      "after": "Test D Pte Ltd\n\nACRA/ UEN: 200612788C"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B81",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - [REDACTED], Salary paid by [REDACTED].",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - Country B, Salary paid by Test D China Ltd."
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B82",
+      "kind": "string_replace",
+      "before": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by [REDACTED] but it will be cross-charge to Singapore",
+      "after": "Extension to cover employees seconded overseas (Postees): 1 - USA, Salary paid by Test D Americas LLC but it will be cross-charge to Singapore"
+    },
+    {
+      "sheet": "WICA",
+      "cell": "B88",
+      "kind": "string_replace",
+      "before": "An employee ([REDACTED]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to [REDACTED]",
+      "after": "An employee ([Employee A]) was assigned on an overseas work exchange program effective 2 Nov 2023 to 1 May 2024, to Test D affiliate in Country C"
+    },
+    {
+      "sheet": "GTL ",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GHS - Locals",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GHS - Secondees",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GHS - Dependants",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GMM",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    }
+  ]
+}

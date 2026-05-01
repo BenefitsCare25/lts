@@ -1,0 +1,199 @@
+{
+  "schema": "expected.v1",
+  "slip": {
+    "filename": "slip.xlsx",
+    "anonymizedFrom": "[REDACTED] (Singapore semiconductor manufacturer with multi-jurisdiction subsidiaries)",
+    "anonymizedAt": "2026-05-01"
+  },
+  "tolerances": {
+    "ratePerThousand": 0.01,
+    "headcount": 0,
+    "sumAssured": 1,
+    "grandComputedPct": 5
+  },
+
+  "_min_score_comment": "Conservative floor; raise to 0.92 once extraction is wired in Phase 0 final and we have a real baseline number to anchor on. Wider grandComputedPct (5%) than other fixtures because the GHS/GP/SP bundling makes computed totals inherently fuzzy.",
+  "_minScore": 0.85,
+
+  "client": {
+    "legalName": "Test D Pte Ltd",
+    "address": "Main Location 1: 4 Test Lane, Singapore 100004\nLocation 2: 5 Test Industrial Park #01-01, Singapore 100005\nLocation 3: 6 Test Logistics Hub, Singapore 100006",
+    "uen": null,
+    "industry": null,
+    "countryOfIncorporation": "SG",
+    "_broker_fills": ["uen", "industry", "primaryContactName", "primaryContactEmail"]
+  },
+
+  "_policyEntities_comment": "[REDACTED] slip lists 3 entities under 'Insured': Test D Pte Ltd (SG main, master policy), Test D China Ltd, Test D Americas LLC. The wizard's PolicyEntity model handles this multi-jurisdiction case via isMaster + sibling rows.",
+  "policyEntities": [
+    {
+      "legalName": "Test D Pte Ltd",
+      "policyNumber": null,
+      "isMaster": true,
+      "headcountEstimate": 778
+    },
+    {
+      "legalName": "Test D China Ltd",
+      "policyNumber": null,
+      "isMaster": false
+    },
+    {
+      "legalName": "Test D Americas LLC",
+      "policyNumber": null,
+      "isMaster": false
+    }
+  ],
+
+  "benefitYear": {
+    "startDate": "2026-01-01",
+    "endDate": "2026-12-31"
+  },
+
+  "_insurers_comment": "Three insurers: Tokio Marine Life (7 sheets but 5 products after GHS aggregation), Berkshire (GPA + WICA — slip uses two label variants 'Berkshire' and 'Berkshire Hathaway', extractor should canonicalize to one code), Chubb (GBT). Berkshire is NOT in the current seed catalogue — Phase 1 follow-up.",
+  "insurers": [
+    { "code": "TM_LIFE", "productCount": 5 },
+    { "code": "BERKSHIRE", "productCount": 2 },
+    { "code": "CHUBB", "productCount": 1 }
+  ],
+
+  "pool": null,
+
+  "_products_comment": "8 logical products (after collapsing 3 GHS sheets into 1). The cross-sheet GHS aggregation is the headline test for this fixture. GHS-Locals declares '(Premium includes GP & SP)' — extractor should flag potential bundling overlap with the standalone GP/SP product totals.",
+  "products": [
+    {
+      "productTypeCode": "GTL",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 102731.93,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "salary_multiple" }],
+      "premiumRates": [{ "planCode": "P1", "ratePerThousand": 1.4, "basis": "per_thousand_si" }],
+      "_categories_comment": "GTL has 2 categories: Board of Directors (36x salary) and All Others incl. Secondees (24x salary). Both compulsory.",
+      "categories": [
+        { "category": "Board of Directors", "headcount": 2, "sumInsured": 1334376 },
+        { "category": "All Others incl. Secondees", "headcount": 778, "sumInsured": 72045576 }
+      ]
+    },
+    {
+      "_aggregation_comment": "GHS spans 3 sheets (Locals + Secondees + Dependants). The extractor must aggregate these into ONE Product. Locals premium 182348 'includes GP & SP' per slip note — flag potential double-count with standalone GP/SP entries below.",
+      "productTypeCode": "GHS",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 182872,
+      "_planCount": 6,
+      "_plans_comment": "GHS uses 6 cover-tier plans (B3, B2, B1, B, A, A1) with per-employee rates (Phase 1 introduces basis='per_employee').",
+      "plans": [
+        { "code": "B3", "coverBasis": "per_cover_tier" },
+        { "code": "B2", "coverBasis": "per_cover_tier" },
+        { "code": "B1", "coverBasis": "per_cover_tier" },
+        { "code": "B", "coverBasis": "per_cover_tier" },
+        { "code": "A", "coverBasis": "per_cover_tier" },
+        { "code": "A1", "coverBasis": "per_cover_tier" }
+      ],
+      "expectedWarnings": ["includes GP", "cross-sheet"]
+    },
+    {
+      "productTypeCode": "GMM",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 41242,
+      "_planCount": 4,
+      "plans": [
+        { "code": "B2", "coverBasis": "per_cover_tier" },
+        { "code": "B1", "coverBasis": "per_cover_tier" },
+        { "code": "B3", "coverBasis": "per_cover_tier" },
+        { "code": "A1", "coverBasis": "per_cover_tier" }
+      ]
+    },
+    {
+      "_bundling_comment": "GP standalone shows 230474. Slip says GHS-Locals premium 'includes GP & SP'. Either GP is bundled (declaredPremium effectively 0 for billing) or both are billed (potential double-count). Extractor should surface this as a warning.",
+      "productTypeCode": "GP",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 230474,
+      "_planCount": 6,
+      "plans": [
+        { "code": "B3", "coverBasis": "per_cover_tier" },
+        { "code": "B2", "coverBasis": "per_cover_tier" },
+        { "code": "B1", "coverBasis": "per_cover_tier" },
+        { "code": "B", "coverBasis": "per_cover_tier" },
+        { "code": "A", "coverBasis": "per_cover_tier" },
+        { "code": "A1", "coverBasis": "per_cover_tier" }
+      ]
+    },
+    {
+      "productTypeCode": "SP",
+      "insurerCode": "TM_LIFE",
+      "declaredPremium": 147042,
+      "_planCount": 6,
+      "plans": [
+        { "code": "B3", "coverBasis": "per_cover_tier" },
+        { "code": "B2", "coverBasis": "per_cover_tier" },
+        { "code": "B1", "coverBasis": "per_cover_tier" },
+        { "code": "B", "coverBasis": "per_cover_tier" },
+        { "code": "A", "coverBasis": "per_cover_tier" },
+        { "code": "A1", "coverBasis": "per_cover_tier" }
+      ]
+    },
+    {
+      "productTypeCode": "GPA",
+      "insurerCode": "BERKSHIRE",
+      "declaredPremium": 7118.83,
+      "_planCount": 1,
+      "plans": [{ "code": "P1", "coverBasis": "salary_multiple" }],
+      "premiumRates": [{ "planCode": "P1", "ratePerThousand": 0.105, "basis": "per_thousand_si" }],
+      "categories": [
+        { "category": "Board of Directors", "headcount": 2, "sumInsured": 1334376 },
+        { "category": "All Others incl. Secondees", "headcount": 677, "sumInsured": 66463968 }
+      ]
+    },
+    {
+      "_bgt_comment": "Group Business Travel — annual flat premium per region/plan, not per-employee. Single plan A.",
+      "productTypeCode": "GBT",
+      "insurerCode": "CHUBB",
+      "declaredPremium": 2051.5,
+      "_planCount": 1,
+      "plans": [{ "code": "PlanA", "coverBasis": "per_region" }]
+    },
+    {
+      "_wica_comment": "10 employee categories with per-class rates. Berkshire Hathaway label variant should canonicalize to BERKSHIRE.",
+      "productTypeCode": "WICI",
+      "insurerCode": "BERKSHIRE",
+      "declaredPremium": 302114.15,
+      "_planCount": 10,
+      "_plans_comment": "Each category gets its own rate. Test asserts plan count, not individual codes (too verbose to enumerate)."
+    }
+  ],
+
+  "reconciliation": {
+    "_grand_comment": "Two interpretations of grand total because of the GHS/GP/SP bundling: (a) all premiums summed naively = 1,015,646 (likely double-counts GP+SP). (b) GP+SP excluded (treated as bundled into GHS-Locals 182348) = 638,130. Allow wide range to accept either interpretation.",
+    "grandDeclared": 1015646,
+    "grandComputed_min": 600000,
+    "grandComputed_max": 1100000,
+    "perProduct": [
+      { "productTypeCode": "GTL", "insurerCode": "TM_LIFE", "status": ["OK"] },
+      {
+        "productTypeCode": "GHS",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "GMM",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "GP",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "BUNDLED", "INCOMPLETE_SCHEDULE"]
+      },
+      {
+        "productTypeCode": "SP",
+        "insurerCode": "TM_LIFE",
+        "status": ["OK", "BUNDLED", "INCOMPLETE_SCHEDULE"]
+      },
+      { "productTypeCode": "GPA", "insurerCode": "BERKSHIRE", "status": ["OK"] },
+      { "productTypeCode": "GBT", "insurerCode": "CHUBB", "status": ["OK", "INCOMPLETE_SCHEDULE"] },
+      { "productTypeCode": "WICI", "insurerCode": "BERKSHIRE", "status": ["OK"] }
+    ]
+  },
+
+  "_expectedWarnings_comment": "Workbook-level warnings — substring match, case-insensitive.",
+  "expectedWarnings": ["berkshire", "cross-sheet", "includes gp"]
+}
