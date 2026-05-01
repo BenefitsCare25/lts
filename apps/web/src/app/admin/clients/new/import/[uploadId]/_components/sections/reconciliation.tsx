@@ -1,28 +1,11 @@
-// =============================================================
-// ReconciliationSection — per-product premium totals computed
-// from the extracted rates vs the slip's declared totals.
-//
-// Editable:
-//   - Declared total per product (broker overrides the AI/heuristic
-//     if the source-cell extraction was wrong).
-//   - Variance threshold (default 1%) — Apply step blocks when any
-//     product breaches this (Phase 3 wiring).
-//
-// Persisted under draft.progress.brokerOverrides.reconciliation:
-//   {
-//     declaredOverrides: Record<`${productTypeCode}::${insurerCode}`, number | null>,
-//     variancePctThreshold: number,  // e.g. 1 for 1%
-//     acknowledged: boolean,         // broker tick-acknowledges variance
-//   }
-// =============================================================
-
 'use client';
 
 import { Card } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
+import { useCallback, useMemo, useState } from 'react';
 import type { SectionId } from './_registry';
-import { suggestionsFromDraft } from './_types';
+import { readBrokerOverride, suggestionsFromDraft } from './_types';
 
 type Props = {
   draft: { id: string; progress: unknown };
@@ -52,53 +35,34 @@ export function ReconciliationSection({ draft, markSectionDirty }: Props) {
   const suggestions = suggestionsFromDraft(draft.progress);
   const { reconciliation } = suggestions;
 
-  const persisted = useMemo<ReconciliationOverride>(() => {
-    const fallback: ReconciliationOverride = {
-      declaredOverrides: {},
-      variancePctThreshold: DEFAULT_THRESHOLD_PCT,
-      acknowledged: false,
-    };
-    if (!draft.progress || typeof draft.progress !== 'object' || Array.isArray(draft.progress)) {
-      return fallback;
-    }
-    const obj = draft.progress as { brokerOverrides?: Record<string, unknown> };
-    const v = obj.brokerOverrides?.reconciliation as Partial<ReconciliationOverride> | undefined;
-    if (!v || typeof v !== 'object') return fallback;
+  const [override, setOverride] = useState<ReconciliationOverride>(() => {
+    const persisted = readBrokerOverride<Partial<ReconciliationOverride>>(
+      draft.progress,
+      'reconciliation',
+      {},
+    );
     return {
       declaredOverrides:
-        v.declaredOverrides && typeof v.declaredOverrides === 'object'
-          ? { ...v.declaredOverrides }
+        persisted.declaredOverrides && typeof persisted.declaredOverrides === 'object'
+          ? { ...persisted.declaredOverrides }
           : {},
       variancePctThreshold:
-        typeof v.variancePctThreshold === 'number' ? v.variancePctThreshold : DEFAULT_THRESHOLD_PCT,
-      acknowledged: Boolean(v.acknowledged),
+        typeof persisted.variancePctThreshold === 'number'
+          ? persisted.variancePctThreshold
+          : DEFAULT_THRESHOLD_PCT,
+      acknowledged: Boolean(persisted.acknowledged),
     };
-  }, [draft.progress]);
-
-  const [override, setOverride] = useState<ReconciliationOverride>(persisted);
+  });
 
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
-  const mutateRef = useRef(saveOverride.mutate);
-  useEffect(() => {
-    mutateRef.current = saveOverride.mutate;
-  }, [saveOverride.mutate]);
-  const dirtyRef = useRef(false);
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    const timer = window.setTimeout(() => {
-      mutateRef.current({
-        draftId: draft.id,
-        namespace: 'reconciliation',
-        value: override,
-      });
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [override, draft.id]);
+  const markAutosaveDirty = useDebouncedAutosave(override, (value) =>
+    saveOverride.mutate({ draftId: draft.id, namespace: 'reconciliation', value }),
+  );
 
   const markDirty = useCallback(() => {
-    dirtyRef.current = true;
+    markAutosaveDirty();
     markSectionDirty?.('reconciliation');
-  }, [markSectionDirty]);
+  }, [markAutosaveDirty, markSectionDirty]);
 
   const setDeclared = (key: string, value: number | null) => {
     markDirty();

@@ -1,24 +1,11 @@
-// =============================================================
-// SchemaAdditionsSection — surfaces every field a suggested
-// predicate references that doesn't exist in the tenant's
-// EmployeeSchema yet. Each row offers three resolution paths:
-//   ◉ Add as CUSTOM field
-//   ○ Map to existing field
-//   ○ Drop the predicate term (the predicate it referenced
-//     becomes weaker but still saveable)
-//
-// Apply later commits the chosen actions: ADD inserts a CUSTOM
-// row into EmployeeSchema.fields, MAP rewrites every predicate's
-// "var" reference, DROP rewrites the predicate to omit the term.
-// =============================================================
-
 'use client';
 
 import { Card } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
+import { useCallback, useMemo, useState } from 'react';
 import type { SectionId } from './_registry';
-import { suggestionsFromDraft } from './_types';
+import { readBrokerOverride, suggestionsFromDraft } from './_types';
 
 type Resolution = 'ADD' | 'MAP' | 'DROP';
 
@@ -33,54 +20,30 @@ export function SchemaAdditionsSection({ draft, markSectionDirty }: Props) {
   const suggestions = suggestionsFromDraft(draft.progress);
   const employeeSchema = trpc.employeeSchema.get.useQuery();
 
-  // Hydrate from draft.progress.brokerOverrides.schemaDecisions when
-  // present so reload preserves the broker's choices. Otherwise default
-  // every missing field to ADD.
-  const persisted = useMemo<Record<string, Decision>>(() => {
-    if (!draft.progress || typeof draft.progress !== 'object' || Array.isArray(draft.progress)) {
-      return {};
-    }
-    const obj = draft.progress as { brokerOverrides?: Record<string, unknown> };
-    const v = obj.brokerOverrides?.schemaDecisions as Record<string, Decision> | undefined;
-    return v && typeof v === 'object' ? { ...v } : {};
-  }, [draft.progress]);
-
   const [decisions, setDecisions] = useState<Record<string, Decision>>(() => {
-    if (Object.keys(persisted).length > 0) return persisted;
+    const persisted = readBrokerOverride<Record<string, Decision>>(
+      draft.progress,
+      'schemaDecisions',
+      {},
+    );
+    if (Object.keys(persisted).length > 0) return { ...persisted };
     const init: Record<string, Decision> = {};
     for (const f of suggestions.missingPredicateFields) init[f.fieldPath] = { resolution: 'ADD' };
     return init;
   });
 
-  // Debounced persistence to draft.progress.brokerOverrides.schemaDecisions.
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
-  // Stable ref to mutate avoids re-arming the timer on every render.
-  // tRPC's useMutation returns a fresh object per render but the
-  // mutate handler itself is internally stable; we ref it to be safe.
-  const mutateRef = useRef(saveOverride.mutate);
-  useEffect(() => {
-    mutateRef.current = saveOverride.mutate;
-  }, [saveOverride.mutate]);
-  const dirtyRef = useRef(false);
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    const timer = window.setTimeout(() => {
-      mutateRef.current({
-        draftId: draft.id,
-        namespace: 'schemaDecisions',
-        value: decisions,
-      });
-    }, 600);
-    return () => window.clearTimeout(timer);
-  }, [decisions, draft.id]);
+  const markAutosaveDirty = useDebouncedAutosave(
+    decisions,
+    (value) => saveOverride.mutate({ draftId: draft.id, namespace: 'schemaDecisions', value }),
+    { delayMs: 600 },
+  );
 
   const markDirty = useCallback(() => {
-    dirtyRef.current = true;
+    markAutosaveDirty();
     markSectionDirty?.('schema_additions');
-  }, [markSectionDirty]);
+  }, [markAutosaveDirty, markSectionDirty]);
 
-  // Wrapper around setDecisions that flips the dirty flag so reloads
-  // and apply read the same persisted state.
   const updateDecision = useCallback(
     (fieldPath: string, decision: Decision) => {
       markDirty();

@@ -21,6 +21,7 @@
 'use client';
 
 import { trpc } from '@/lib/trpc/client';
+import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ExtractionProgress } from './extraction-progress';
@@ -74,22 +75,13 @@ export function WizardShell({ uploadId }: Props) {
     setDirtyFlags((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
   }, []);
 
-  // Auto-save mutation for the broker's form state. Debounced via the
-  // effect below so we don't fire on every keystroke. We deliberately
-  // don't invalidate the byUploadId query on success — the wizard owns
-  // form state and would lose its place if we re-fetched.
+  // Has the broker started editing? Until the first dirty flag flips,
+  // skip auto-save so we don't overwrite the AI's seed with an empty
+  // form on first load. We deliberately don't invalidate the byUploadId
+  // query on success — the wizard owns form state and would lose its
+  // place if we re-fetched.
+  const hasBrokerEdits = Object.values(dirtyFlags).some(Boolean);
   const saveBrokerForm = trpc.extractionDrafts.updateBrokerForm.useMutation();
-  // Stable ref to mutate — useMutation returns a new object per render
-  // but we only want the ref so the debounced effect doesn't re-arm
-  // its timer needlessly.
-  const saveFormMutateRef = useRef(saveBrokerForm.mutate);
-  useEffect(() => {
-    saveFormMutateRef.current = saveBrokerForm.mutate;
-  }, [saveBrokerForm.mutate]);
-  // Has the broker started editing? Set true the first time any section
-  // is marked dirty. Until then we don't auto-save (avoids overwriting
-  // the AI's seed with an empty form on first load).
-  const hasBrokerEdits = useMemo(() => Object.values(dirtyFlags).some(Boolean), [dirtyFlags]);
 
   // Keep activeSection in sync with the URL hash so reloads land on
   // the same section. Setting via UI updates both.
@@ -170,15 +162,17 @@ export function WizardShell({ uploadId }: Props) {
   // dirty flag, so this stays quiet until the human takes over.
   const draftId = draft.data?.id ?? null;
   const draftStatus = draft.data?.status ?? null;
-  useEffect(() => {
-    if (!draftId) return;
-    if (!hasBrokerEdits) return;
-    if (draftStatus === 'APPLIED') return;
-    const timer = window.setTimeout(() => {
-      saveFormMutateRef.current({ draftId, brokerForm: form });
-    }, 1_000);
-    return () => window.clearTimeout(timer);
-  }, [form, hasBrokerEdits, draftId, draftStatus]);
+  useDebouncedAutosave(
+    form,
+    (value) => {
+      if (!draftId) return;
+      saveBrokerForm.mutate({ draftId, brokerForm: value });
+    },
+    {
+      delayMs: 1_000,
+      enabled: Boolean(draftId) && hasBrokerEdits && draftStatus !== 'APPLIED',
+    },
+  );
 
   // AI seeding lives per-section (ClientSection, PolicyEntitiesSection,
   // BenefitYearSection each own their useEffect that reads
@@ -583,7 +577,6 @@ function computeSectionStatus(
           >;
         };
         schemaDecisions?: Record<string, { resolution: string; mapTo?: string }>;
-        reconciliation?: { variancePctThreshold?: number; acknowledged?: boolean };
       };
     } | null) ?? null;
   const missingFieldsCount = progressObj?.suggestions?.missingPredicateFields?.length ?? 0;
@@ -638,8 +631,6 @@ function computeSectionStatus(
   } else if (includedGroups.length === 0) {
     eligibilityStatus = 'has_issues';
   } else {
-    const productCodes = extracted.map((p) => p.insurerCode); // unused for keying, kept for length
-    void productCodes;
     const productKeys = extracted.map(
       (p) => (p as ExtractedShape & { productTypeCode: string }).productTypeCode,
     );
@@ -667,20 +658,10 @@ function computeSectionStatus(
   const schemaStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' =
     missingFieldsCount === 0 ? 'complete' : allDecided ? 'complete' : 'has_issues';
 
-  // Section 9 — Reconciliation. Complete when no per-product variance
-  // breaches threshold, OR broker explicitly acknowledged.
-  // Lives entirely on broker overrides; the section component computes
-  // variance from the same draft data so the rule below mirrors it.
-  const reconOverrides = progressObj?.brokerOverrides?.reconciliation;
-  const reconAcknowledged = Boolean(reconOverrides?.acknowledged);
-  // We don't recompute breach here (would duplicate the section's
-  // logic) — `complete` unless acknowledged-required-but-missing.
-  // Conservative default: if any extraction happened, reconciliation
-  // is "complete" because the broker can revisit any time.
-  const reconStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' =
-    extracted.length === 0 ? 'complete' : reconAcknowledged ? 'complete' : 'complete';
-  // (kept unified at 'complete' to avoid blocking apply on a soft signal;
-  // tighten to 'has_issues' once Phase 1.5 wires declared totals.)
+  // Section 9 — Reconciliation. Always complete today: the section
+  // surfaces variance but doesn't block apply on it. Tighten to
+  // 'has_issues' once Phase 1.5 wires declared totals into the gate.
+  const reconStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' = 'complete';
 
   const result: Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> = {
     source: 'complete', // read-only summary; always complete once loaded

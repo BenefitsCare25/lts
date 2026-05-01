@@ -1,35 +1,12 @@
-// =============================================================
-// InsurersPoolSection — surfaces the insurer codes detected on the
-// slip and cross-checks each against the tenant's Insurer registry.
-// Pool is read from the first product's heuristic fields.
-//
-// Editable:
-//   - Per-insurer registry mapping. The broker can re-point a detected
-//     code at a different registry entry (handy when discovery picks
-//     the wrong insurer — see GBT-Chubb-vs-Zurich on STM slips).
-//   - Pool selection. Combobox over the tenant's Pool registry, plus a
-//     "no pool" option.
-//
-// Adding insurers / pools to the registry is a click-out to the
-// existing /admin/catalogue surfaces — no inline create here keeps
-// the wizard focused.
-//
-// Persistence:
-//   - Insurer mapping: progress.brokerOverrides.insurers
-//       { codeToRegistryId: Record<string, string | null> }
-//   - Pool selection:  progress.brokerOverrides.pool
-//       { poolId: string | null, name: string | null }
-// Apply (Phase 3) reads these overrides when committing the rows.
-// =============================================================
-
 'use client';
 
 import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
+import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { SectionId } from './_registry';
-import { aiBundleFromDraft, extractedProductsFromDraft } from './_types';
+import { aiBundleFromDraft, extractedProductsFromDraft, readBrokerOverride } from './_types';
 
 type Props = {
   draft: {
@@ -60,68 +37,33 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
   const extracted = extractedProductsFromDraft(draft.extractedProducts);
   const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
 
-  // Pull persisted overrides off the draft progress so a reload
-  // restores the broker's prior choices.
-  const persistedOverrides = useMemo(() => {
-    if (!draft.progress || typeof draft.progress !== 'object' || Array.isArray(draft.progress)) {
-      return null;
-    }
-    const obj = draft.progress as { brokerOverrides?: Record<string, unknown> };
-    return obj.brokerOverrides ?? null;
-  }, [draft.progress]);
-
   const [insurerOverride, setInsurerOverride] = useState<InsurerOverride>(() => {
-    const seed = persistedOverrides?.insurers;
-    if (
-      seed &&
-      typeof seed === 'object' &&
-      !Array.isArray(seed) &&
-      'codeToRegistryId' in (seed as object)
-    ) {
-      const v = (seed as InsurerOverride).codeToRegistryId;
-      if (v && typeof v === 'object') return { codeToRegistryId: { ...v } };
-    }
-    return { codeToRegistryId: {} };
+    const persisted = readBrokerOverride<InsurerOverride>(draft.progress, 'insurers', {
+      codeToRegistryId: {},
+    });
+    return { codeToRegistryId: { ...(persisted.codeToRegistryId ?? {}) } };
   });
   const [poolOverride, setPoolOverride] = useState<PoolOverride>(() => {
-    const seed = persistedOverrides?.pool;
-    if (seed && typeof seed === 'object' && !Array.isArray(seed)) {
-      const v = seed as PoolOverride;
-      return { poolId: v.poolId ?? null, name: v.name ?? null };
-    }
-    return { poolId: null, name: null };
+    const persisted = readBrokerOverride<PoolOverride>(draft.progress, 'pool', {
+      poolId: null,
+      name: null,
+    });
+    return { poolId: persisted.poolId ?? null, name: persisted.name ?? null };
   });
 
-  // Debounced persistence — both maps land in progress.brokerOverrides.
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
-  const mutateRef = useRef(saveOverride.mutate);
-  useEffect(() => {
-    mutateRef.current = saveOverride.mutate;
-  }, [saveOverride.mutate]);
-  const dirtyRef = useRef(false);
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    const timer = window.setTimeout(() => {
-      mutateRef.current({
-        draftId: draft.id,
-        namespace: 'insurers',
-        value: insurerOverride,
-      });
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [insurerOverride, draft.id]);
-  useEffect(() => {
-    if (!dirtyRef.current) return;
-    const timer = window.setTimeout(() => {
-      mutateRef.current({ draftId: draft.id, namespace: 'pool', value: poolOverride });
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [poolOverride, draft.id]);
+  const markInsurerDirty = useDebouncedAutosave(insurerOverride, (value) =>
+    saveOverride.mutate({ draftId: draft.id, namespace: 'insurers', value }),
+  );
+  const markPoolDirty = useDebouncedAutosave(poolOverride, (value) =>
+    saveOverride.mutate({ draftId: draft.id, namespace: 'pool', value }),
+  );
 
   const markDirty = useCallback(() => {
-    dirtyRef.current = true;
+    markInsurerDirty();
+    markPoolDirty();
     markSectionDirty?.('insurers');
-  }, [markSectionDirty]);
+  }, [markInsurerDirty, markPoolDirty, markSectionDirty]);
 
   // Unique insurer codes from extracted products + AI's discovery pass.
   const insurerSummary = useMemo(() => {
