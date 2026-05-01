@@ -1,0 +1,363 @@
+{
+  "fixture": "png-2026",
+  "source_filename": "[REDACTED] - Placement Slips 2026.xlsx",
+  "dest_filename": "slip.xlsx",
+  "rules_applied": {
+    "string_replacements": 4,
+    "cell_overrides": 11,
+    "numeric_scalings": 0
+  },
+  "total_changes": 50,
+  "changes": [
+    {
+      "sheet": "*",
+      "cell": "*",
+      "kind": "flatten_formulas",
+      "before": "38 formula cells",
+      "after": "literal cached values"
+    },
+    {
+      "sheet": "Renewal Overall Premium",
+      "cell": "B2",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "B25",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "B22",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B22",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B22",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GD",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GD",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GD",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "GD",
+      "cell": "B22",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GD",
+      "cell": "B27",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "C11",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "TEST/AW/2026-002"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B21",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GPA",
+      "cell": "B26",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "D4",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "D5",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "D6",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "3 Test Crescent, Singapore 100003"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "D10",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "TEST/AW/2026-003"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "B32",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "B37",
+      "kind": "string_replace",
+      "before": "[REDACTED]",
+      "after": "Test C Pte Ltd"
+    },
+    {
+      "sheet": "GTL",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GHS",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GCGP",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GCSP",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "GD",
+      "cell": "C11",
+      "kind": "cell_override",
+      "before": [REDACTED],
+      "after": "TEST/TM/2026-001"
+    },
+    {
+      "sheet": "WICI",
+      "cell": "H32",
+      "kind": "cell_override",
+      "before": 57864.53,
+      "after": 60000
+    },
+    {
+      "sheet": "WICI",
+      "cell": "H33",
+      "kind": "cell_override",
+      "before": 55354.62,
+      "after": 55000
+    },
+    {
+      "sheet": "WICI",
+      "cell": "F37",
+      "kind": "cell_override",
+      "before": 57864.53,
+      "after": 60000
+    },
+    {
+      "sheet": "WICI",
+      "cell": "F38",
+      "kind": "cell_override",
+      "before": 55354.62,
+      "after": 55000
+    },
+    {
+      "sheet": "WICI",
+      "cell": "H37",
+      "kind": "cell_override",
+      "before": 24.3031026,
+      "after": 25.2
+    },
+    {
+      "sheet": "WICI",
+      "cell": "H38",
+      "kind": "cell_override",
+      "before": 138.38655,
+      "after": 137.5
+    }
+  ]
+}

@@ -52,8 +52,48 @@ FIXTURES: dict[str, dict[str, Any]] = {
         "cell_overrides": {},
         "scale_numeric": [],
     },
+    "png-2026": {
+        "source": r"C:\Users\huien\Desktop\slips\[REDACTED] - Placement Slips 2026.xlsx",
+        "replace_strings": {
+            # Direct identifier (appears on every product sheet at C4/C5/B21/B25/B27 etc.
+            # and on the Renewal Overall Premium summary at B2).
+            "[REDACTED]": "Test C Pte Ltd",
+            # Address (only one in this slip).
+            "[REDACTED]": "3 Test Crescent, Singapore 100003",
+            # Allied World policy numbers (string, anonymized to neutral form —
+            # avoid abbreviations like 'PNG' which themselves identify the source).
+            "[REDACTED]": "TEST/AW/2026-002",
+            "[REDACTED]": "TEST/AW/2026-003",
+        },
+        "cell_overrides": {
+            # Tokio Marine Life policy number is stored as an INTEGER ([REDACTED]) on
+            # GTL/GHS/GCGP/GCSP/GD!C11. The string-replace pass only touches text cells,
+            # so we override these explicitly.
+            "GTL": {"C11": "TEST/TM/2026-001"},
+            "GHS": {"C11": "TEST/TM/2026-001"},
+            "GCGP": {"C11": "TEST/TM/2026-001"},
+            "GCSP": {"C11": "TEST/TM/2026-001"},
+            "GD": {"C11": "TEST/TM/2026-001"},
+            # Round the WICA estimated annual earnings to clean numbers — exact salaries
+            # are mildly identifying. Ratio preserved (Class 1 ~ 60000, Class 2 ~ 55000).
+            # H32/H33 are the basis-of-cover declared wages; F37/F38 are formula refs
+            # `=H32`/`=H33` in the rate-calculation table that get FLATTENED to their
+            # cached value before this override runs, so we override them too.
+            # H37/H38 are `=F37*G37` etc. — recompute the products manually.
+            # Note: WICA Annual Premium does NOT reconcile to wages × rate (slip applies
+            # a SGD250 minimum); these rounded values preserve that mismatch, see notes.md.
+            "WICI": {
+                "H32": 60000,
+                "H33": 55000,
+                "F37": 60000,
+                "F38": 55000,
+                "H37": 25.2,    # 60000 * 0.00042
+                "H38": 137.5,   # 55000 * 0.0025
+            },
+        },
+        "scale_numeric": [],
+    },
     # Other fixtures appended in subsequent sessions:
-    # 'png-2026': { ... },
     # 'vdl-2026': { ... },
     # 'hartree-2026': { ... },
     # 'stmicro-2026': { ... },
