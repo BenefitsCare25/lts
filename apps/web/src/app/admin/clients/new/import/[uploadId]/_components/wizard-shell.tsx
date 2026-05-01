@@ -273,7 +273,7 @@ function renderAiBanner(
   }
   if (status === 'FAILED' && bundle.failure) {
     return (
-      <div className="card card-padded" style={{ borderColor: 'var(--color-error)' }}>
+      <div className="card card-padded" style={{ borderColor: 'var(--color-danger)' }}>
         <p className="mb-2">
           <strong>AI extraction failed</strong> at stage <code>{bundle.failure.stage}</code>.
         </p>
@@ -283,7 +283,7 @@ function renderAiBanner(
   }
   if (status === 'READY' && bundle.warnings.length > 0) {
     return (
-      <div className="card card-padded" style={{ borderColor: 'var(--color-warn)' }}>
+      <div className="card card-padded" style={{ borderColor: 'var(--color-warning)' }}>
         <p className="mb-2">
           <strong>AI extraction completed with warnings:</strong>
         </p>
@@ -326,8 +326,17 @@ function computeSectionStatus(
 ): Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> {
   const extracted = (draft?.extractedProducts as Array<{ insurerCode: string }> | null) ?? [];
   const progressObj =
-    (draft?.progress as { suggestions?: { missingPredicateFields?: unknown[] } } | null) ?? null;
+    (draft?.progress as {
+      suggestions?: { missingPredicateFields?: unknown[] };
+      proposedInsurers?: unknown[];
+    } | null) ?? null;
   const missingFieldsCount = progressObj?.suggestions?.missingPredicateFields?.length ?? 0;
+  // Discovery's proposedInsurers is independent of per-product passes.
+  // If discovery succeeded but every per-product pass failed, the
+  // broker still has a usable insurer list — mark section 5 complete.
+  const proposedInsurersCount = Array.isArray(progressObj?.proposedInsurers)
+    ? progressObj.proposedInsurers.length
+    : 0;
   const result: Record<SectionId, 'complete' | 'in_progress' | 'has_issues' | 'pending'> = {
     source: 'complete', // read-only summary; always complete once loaded
     client: 'pending',
@@ -337,7 +346,7 @@ function computeSectionStatus(
     // for now — they're "complete" the moment the draft is READY because
     // the broker isn't required to touch them before Apply (apply uses
     // form state for the foundational rows; per-product apply is next slice).
-    insurers: extracted.length > 0 ? 'complete' : 'pending',
+    insurers: extracted.length > 0 || proposedInsurersCount > 0 ? 'complete' : 'pending',
     products: extracted.length > 0 ? 'complete' : 'pending',
     eligibility: 'complete',
     // Schema additions: complete only if there are no missing fields,
