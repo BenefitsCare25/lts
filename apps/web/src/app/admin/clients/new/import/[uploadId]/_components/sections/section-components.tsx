@@ -29,6 +29,15 @@ export type SectionRenderProps = {
   setForm: React.Dispatch<React.SetStateAction<DraftFormState>>;
   sectionStatus: SectionStatusMap;
   applyReadiness: number;
+  // True when the section's data came from AI/heuristic and the
+  // broker hasn't touched it. Sections render an info banner.
+  aiFilled: boolean;
+  // True when the broker has edited at least one field in this
+  // section. Set via markSectionDirty in input handlers.
+  edited: boolean;
+  // Call from any field-edit handler in the section to mark it as
+  // broker-touched. Idempotent.
+  markSectionDirty: (id: SectionId) => void;
 };
 
 // Each section gets the same prop bag and destructures what it needs.

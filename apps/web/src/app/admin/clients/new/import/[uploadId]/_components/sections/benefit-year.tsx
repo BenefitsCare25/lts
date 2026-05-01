@@ -11,16 +11,19 @@ import { Card } from '@/components/ui';
 import type { AppRouter } from '@/server/trpc/router';
 import type { inferRouterOutputs } from '@trpc/server';
 import { useEffect, useMemo, useRef } from 'react';
-import type { DraftFormState } from './_registry';
+import type { DraftFormState, SectionId } from './_registry';
 import { aiBundleFromDraft } from './_types';
+import { AiFilledBanner } from './ai-filled-banner';
 
 type Props = {
   form: DraftFormState;
   setForm: React.Dispatch<React.SetStateAction<DraftFormState>>;
   draft: inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
+  aiFilled: boolean;
+  markSectionDirty: (id: SectionId) => void;
 };
 
-export function BenefitYearSection({ form, setForm, draft }: Props) {
+export function BenefitYearSection({ form, setForm, draft, aiFilled, markSectionDirty }: Props) {
   const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
 
   // Seed once per draft from the AI's proposedBenefitYear. Only fills
@@ -53,16 +56,23 @@ export function BenefitYearSection({ form, setForm, draft }: Props) {
   const updatePolicy = <K extends keyof DraftFormState['policy']>(
     key: K,
     value: DraftFormState['policy'][K],
-  ) => setForm((prev) => ({ ...prev, policy: { ...prev.policy, [key]: value } }));
+  ) => {
+    markSectionDirty('benefit_year');
+    setForm((prev) => ({ ...prev, policy: { ...prev.policy, [key]: value } }));
+  };
 
   const updateBy = <K extends keyof DraftFormState['benefitYear']>(
     key: K,
     value: DraftFormState['benefitYear'][K],
-  ) => setForm((prev) => ({ ...prev, benefitYear: { ...prev.benefitYear, [key]: value } }));
+  ) => {
+    markSectionDirty('benefit_year');
+    setForm((prev) => ({ ...prev, benefitYear: { ...prev.benefitYear, [key]: value } }));
+  };
 
   return (
     <>
       <h2>Benefit year</h2>
+      <AiFilledBanner aiFilled={aiFilled} hint="From the AI's discovery pass." />
 
       <section className="section">
         <Card className="card-padded">
