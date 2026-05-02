@@ -1,23 +1,3 @@
-// =============================================================
-// ExtractionProgress — live status card for the AI extraction run.
-//
-// Drives off WizardAiBundle.live (populated by jobs/extraction.ts as
-// the runner streams events). Polled at 2s by the wizard shell, so
-// updates feel real-time without WebSockets.
-//
-// Layout:
-//   [stage label]                                  [elapsed time]
-//   [progress bar — animated 0→100%]
-//   [Discovery]  [Products N/M]  [Finalising]   ← stage steps
-//   [per-product list with status icons]
-//
-// Visual rules:
-//   - Semantic CSS variables only (no hardcoded colours)
-//   - Full perimeter borders only (no directional accent borders —
-//     project rule from CLAUDE.md)
-//   - prefers-reduced-motion respected on the bar shimmer
-// =============================================================
-
 'use client';
 
 import { Card } from '@/components/ui';
@@ -25,8 +5,6 @@ import { useEffect, useState } from 'react';
 import type { LiveStage, WizardAiBundle } from './sections/_types';
 
 type Props = {
-  // Subset of the bundle the card actually renders. Keeps callers
-  // from threading the whole bundle when they only need progress.
   live: NonNullable<WizardAiBundle['live']>;
 };
 
@@ -39,25 +17,47 @@ export function ExtractionProgress({ live }: Props) {
   const stageLabel = stageHeading(live.stage, completed, total);
 
   return (
-    <Card className="card-padded border-[var(--accent-soft)] bg-[var(--accent-tint)]">
-      <div className="row mb-3 items-baseline justify-between gap-3">
+    <Card
+      className="card-padded"
+      style={{
+        background: 'var(--accent-tint)',
+        border: '1px solid var(--accent-soft)',
+      }}
+    >
+      <div
+        className="row mb-3"
+        style={{
+          flexWrap: 'nowrap',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 'var(--space-3)',
+        }}
+      >
         <div>
-          <div className="text-xs font-semibold tracking-[0.04em] uppercase text-[var(--accent)] mb-1">
+          <p className="eyebrow mb-1" style={{ color: 'var(--accent)' }}>
             AI extraction in progress
-          </div>
+          </p>
           <h3 className="mb-0">{stageLabel}</h3>
         </div>
-        <div
+        <span
           aria-label="elapsed time"
-          className="[font-variant-numeric:tabular-nums] text-[var(--text-tertiary)] text-sm"
+          style={{
+            fontVariantNumeric: 'tabular-nums',
+            color: 'var(--text-tertiary)',
+            fontSize: 'var(--text-sm)',
+            flexShrink: 0,
+          }}
         >
           {formatElapsed(elapsedSec)}
-        </div>
+        </span>
       </div>
 
       <ProgressBar percent={percent} />
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div
+        className="mt-3"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)' }}
+      >
         <StageStep
           label="Discovery"
           status={
@@ -87,7 +87,10 @@ export function ExtractionProgress({ live }: Props) {
       </div>
 
       {total > 0 ? (
-        <div className="mt-4 flex flex-col gap-1">
+        <div
+          className="mt-4"
+          style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}
+        >
           {live.productKeys.map((key) => {
             const status = live.statuses[key] ?? 'queued';
             return <ProductRow key={key} productKey={key} status={status} />;
@@ -95,7 +98,7 @@ export function ExtractionProgress({ live }: Props) {
         </div>
       ) : null}
 
-      <p className="field-help mb-0 mt-3 text-[var(--text-tertiary)]">
+      <p className="field-help mb-0 mt-3" style={{ color: 'var(--text-tertiary)' }}>
         Keep editing other sections — the wizard auto-fills sections as products complete.
         {failed > 0
           ? ` ${failed} product${failed === 1 ? '' : 's'} failed (see warnings after the run).`
@@ -114,35 +117,55 @@ function ProgressBar({ percent }: { percent: number }) {
       aria-valuemax={100}
       aria-label="AI extraction progress"
       tabIndex={-1}
-      className="h-2 w-full bg-[var(--bg-active)] rounded-full overflow-hidden relative"
+      style={{
+        height: '0.5rem',
+        width: '100%',
+        background: 'var(--bg-active)',
+        borderRadius: 'var(--radius-pill)',
+        overflow: 'hidden',
+        position: 'relative',
+      }}
     >
       <div
-        className="h-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--color-info)_100%)] rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.22,0.61,0.36,1)]"
-        style={{ width: `${percent}%` }}
+        style={{
+          height: '100%',
+          width: `${percent}%`,
+          background: 'linear-gradient(90deg, var(--accent) 0%, var(--color-info) 100%)',
+          borderRadius: 'var(--radius-pill)',
+          transition: 'width 0.5s cubic-bezier(0.22, 0.61, 0.36, 1)',
+        }}
       />
     </div>
   );
 }
 
 function StageStep({ label, status }: { label: string; status: 'pending' | 'running' | 'done' }) {
-  const tone = status === 'done' ? 'success' : status === 'running' ? 'accent' : 'muted';
   const bg =
-    tone === 'success'
+    status === 'done'
       ? 'var(--confidence-high-soft)'
-      : tone === 'accent'
+      : status === 'running'
         ? 'var(--accent-soft)'
         : 'var(--bg-hover)';
-  const fg =
-    tone === 'success'
+  const color =
+    status === 'done'
       ? 'var(--color-success)'
-      : tone === 'accent'
+      : status === 'running'
         ? 'var(--accent)'
         : 'var(--text-tertiary)';
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium"
-      style={{ background: bg, color: fg }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-2)',
+        padding: '0.375rem 0.75rem',
+        borderRadius: 'var(--radius-md)',
+        background: bg,
+        color,
+        fontSize: 'var(--text-sm)',
+        fontWeight: 500,
+      }}
     >
       <StatusDot status={status} />
       <span>{label}</span>
@@ -162,18 +185,24 @@ function StatusDot({
   if (status === 'running') {
     return <Spinner color="var(--accent)" />;
   }
-  // pending / queued
   return (
     <span
       aria-hidden
-      className="inline-block w-[10px] h-[10px] rounded-full border-[1.5px] border-[var(--text-quaternary)]"
+      style={{
+        display: 'inline-block',
+        width: 10,
+        height: 10,
+        borderRadius: 'var(--radius-pill)',
+        border: '1.5px solid var(--text-quaternary)',
+        flexShrink: 0,
+      }}
     />
   );
 }
 
 function CheckIcon({ color }: { color: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" className="shrink-0">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0 }}>
       <title>Done</title>
       <circle cx="7" cy="7" r="7" fill={color} />
       <path
@@ -190,7 +219,7 @@ function CheckIcon({ color }: { color: string }) {
 
 function CrossIcon({ color }: { color: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" className="shrink-0">
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0 }}>
       <title>Failed</title>
       <circle cx="7" cy="7" r="7" fill={color} />
       <path
@@ -211,8 +240,7 @@ function Spinner({ color }: { color: string }) {
       height="14"
       viewBox="0 0 24 24"
       aria-hidden="true"
-      className="shrink-0"
-      style={{ animation: 'extraction-spin 0.9s linear infinite' }}
+      style={{ flexShrink: 0, animation: 'extraction-spin 0.9s linear infinite' }}
     >
       <title>In progress</title>
       <circle
@@ -238,7 +266,7 @@ function ProductRow({
   productKey: string;
   status: 'queued' | 'running' | 'ok' | 'failed';
 }) {
-  const fg =
+  const color =
     status === 'ok'
       ? 'var(--color-success)'
       : status === 'failed'
@@ -256,15 +284,27 @@ function ProductRow({
           : 'queued';
   return (
     <div
-      className="flex items-center gap-2 px-2 py-1 rounded-[var(--radius-sm)] text-sm [font-variant-numeric:tabular-nums]"
       style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-2)',
+        padding: '0.2rem 0.5rem',
+        borderRadius: 'var(--radius-sm)',
         background: status === 'running' ? 'var(--bg-hover)' : 'transparent',
-        color: fg,
+        color,
+        fontSize: 'var(--text-sm)',
+        fontVariantNumeric: 'tabular-nums',
       }}
     >
       <StatusDot status={status} />
-      <span className="font-[var(--font-mono)] text-xs">{productKey}</span>
-      <span className="ml-auto text-xs text-[var(--text-quaternary)]">{label}</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+        {productKey}
+      </span>
+      <span
+        style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-quaternary)' }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
@@ -294,8 +334,6 @@ function formatElapsed(seconds: number): string {
 }
 
 function calcPercent(stage: LiveStage, completed: number, total: number): number {
-  // Discovery alone weighted at ~15% of perceived progress.
-  // Per-product fan-out is the bulk (15-95%).
   if (stage === 'AI_DISCOVERY') return 8;
   if (total === 0) return 12;
   return Math.min(95, 15 + Math.round((completed / total) * 80));
@@ -305,9 +343,5 @@ function stageHeading(stage: LiveStage, completed: number, total: number): strin
   if (stage === 'AI_DISCOVERY') return 'Identifying products in the workbook…';
   if (total === 0) return 'Preparing per-product extraction…';
   if (completed === total) return 'Finalising extraction…';
-  // Up to 3 products run in parallel (fan-out concurrency). Saying
-  // "extracting product N of M" with N = completed+1 contradicts the
-  // visible list when callers haven't yet flipped status to running.
-  // `completed of total` matches the per-product list exactly.
   return `Extracting products… (${completed} of ${total} done)`;
 }
