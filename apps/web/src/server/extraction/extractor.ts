@@ -176,14 +176,71 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
   };
 }
 
+// ── Grade-range utilities for cross-product matching ─────────
+type GradeRange = {
+  min: number;
+  max: number; // Infinity for "and above"
+  isForeignWorker: boolean;
+};
+
+function parseGradeRange(label: string): GradeRange | null {
+  const lower = label.toLowerCase();
+  if (!/\bgrade\b/.test(lower)) return null;
+
+  const nums = [...lower.matchAll(/\b(\d{2,})\b/g)]
+    .map((m) => Number(m[1]))
+    .sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+
+  const hasAbove = /\b(?:above|over)\b/.test(lower);
+  const hasBelow = /\b(?:below|under)\b/.test(lower);
+  const isFw = /work\s*permit|s[\s-]*pass|foreign\s*worker/.test(lower);
+
+  let min: number;
+  let max: number;
+  if (hasAbove && !hasBelow) {
+    min = nums[0]!;
+    max = Infinity;
+  } else if (hasBelow && !hasAbove) {
+    min = 0;
+    max = nums[nums.length - 1]!;
+  } else if (nums.length >= 2) {
+    min = nums[0]!;
+    max = nums[nums.length - 1]!;
+  } else {
+    min = nums[0]!;
+    max = nums[0]!;
+  }
+
+  return { min, max, isForeignWorker: isFw };
+}
+
+function gradeRangeContains(outer: GradeRange, inner: GradeRange): boolean {
+  if (outer.isForeignWorker !== inner.isForeignWorker) return false;
+  return inner.min >= outer.min && inner.max <= outer.max;
+}
+
+function gradeRangeOverlap(a: GradeRange, b: GradeRange): number {
+  if (a.isForeignWorker !== b.isForeignWorker) return 0;
+  const capA = a.max === Infinity ? 999 : a.max;
+  const capB = b.max === Infinity ? 999 : b.max;
+  const lo = Math.max(a.min, b.min);
+  const hi = Math.min(capA, capB);
+  return hi >= lo ? hi - lo + 1 : 0;
+}
+
 // Builds the eligibility matrix mapping benefit groups to their default
 // plan per product. Uses the category→plan linkage from
 // eligibility.categories[].defaultPlanRawCode which the AI extraction
 // populates directly from the slip's "Basis of Cover" sections.
-// Tries the primary label first, then alias labels (from cross-product
-// merges in the suggester), so "Grade 80 - 90" (GP/SP) resolves to
-// the same row as "Grade 80 & 90 (incl. postees)" (GMM).
-function buildEligibilityMatrix(
+//
+// Five-pass resolution:
+//   1. Exact label match.
+//   2. Prefix match (≥15 chars) for label variants across products.
+//   3. Grade-range containment — Grade 18+ ⊂ Grade 16+ → assign plan.
+//   4. Best grade overlap — Grade 08-17 has 80% overlap with Grade 08-15.
+//   5. Employment-type keyword fallback (e.g. "bargainable").
+export function buildEligibilityMatrix(
   benefitGroups: BenefitGroupSuggestion[],
   products: ExtractedProduct[],
 ): ExtractionSuggestions['eligibilityMatrix'] {
@@ -224,6 +281,56 @@ function buildEligibilityMatrix(
             const longer = label.length <= catLabel.length ? catLabel : label;
             if (shorter.length >= 15 && longer.startsWith(shorter)) {
               return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
+            }
+          }
+        }
+
+        // Pass 3 + 4: grade-range matching. Different products use
+        // different grade cutoffs for overlapping populations — e.g.
+        // GHS "Grade 18+" vs GTL "Grade 16+". Pass 3 handles full
+        // containment (18+ ⊂ 16+). Pass 4 picks the category with
+        // the largest overlap when containment fails (e.g. "Grade
+        // 08-17" overlaps 80% with GTL "Grade 08-15").
+        const groupGrade = labels.reduce<GradeRange | null>(
+          (acc, l) => acc ?? parseGradeRange(l),
+          null,
+        );
+        if (groupGrade) {
+          let bestPlan: string | null = null;
+          let bestOverlap = 0;
+          for (const [catLabel, planCode] of catMap) {
+            const catGrade = parseGradeRange(catLabel);
+            if (!catGrade) continue;
+            if (gradeRangeContains(catGrade, groupGrade)) {
+              return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
+            }
+            const overlap = gradeRangeOverlap(groupGrade, catGrade);
+            if (overlap > bestOverlap) {
+              bestOverlap = overlap;
+              bestPlan = planCode;
+            }
+          }
+          if (bestPlan) {
+            return { productTypeCode: p.productTypeCode, defaultPlanRawCode: bestPlan };
+          }
+        }
+
+        // Pass 5: employment-type keyword fallback for non-grade
+        // categories. "Bargainable Employees" should match a product
+        // category that also covers bargainable staff (e.g. GTL's
+        // "Grade 08-15 and Bargainable Staff").
+        if (!groupGrade) {
+          const groupIsBargainable =
+            /\bbargainable\b/i.test(labels[0]!) &&
+            !/\bnon[\s-]*bargainable\b/i.test(labels[0]!);
+          if (groupIsBargainable) {
+            for (const [catLabel, planCode] of catMap) {
+              if (
+                /\bbargainable\b/i.test(catLabel) &&
+                !/\bnon[\s-]*bargainable\b/i.test(catLabel)
+              ) {
+                return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
+              }
             }
           }
         }

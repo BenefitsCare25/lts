@@ -401,8 +401,9 @@ async function rebuildSuggestionsForMerged(
     : never,
 ): Promise<Record<string, unknown>> {
   // Late-import to avoid circular module dep with the extractor.
-  const [{ suggestBenefitGroups }, { reconcile }] = await Promise.all([
+  const [{ suggestBenefitGroups }, { buildEligibilityMatrix }, { reconcile }] = await Promise.all([
     import('@/server/extraction/predicate-suggester'),
+    import('@/server/extraction/extractor'),
     import('@/server/extraction/reconciliation'),
   ]);
   const employeeSchema = await db.employeeSchema.findFirst({ select: { fields: true } });
@@ -415,51 +416,7 @@ async function rebuildSuggestionsForMerged(
     }> | null) ?? [];
 
   const benefitGroups = suggestBenefitGroups(mergedProducts, employeeFields);
-
-  // Build eligibility matrix from category→plan mapping in each product's
-  // eligibility.categories[].defaultPlanRawCode.
-  const productCategoryPlans = new Map<string, Map<string, string>>();
-  for (const p of mergedProducts) {
-    const catMap = new Map<string, string>();
-    for (const cat of p.eligibility?.categories ?? []) {
-      if (cat.defaultPlanRawCode) {
-        catMap.set(cat.category.replace(/\s+/g, ' ').trim().toLowerCase(), cat.defaultPlanRawCode);
-      }
-    }
-    productCategoryPlans.set(p.productTypeCode, catMap);
-  }
-  const eligibilityMatrix = benefitGroups.map((g) => {
-    const labels = [g.sourcePlanLabel, ...(g.aliasLabels ?? [])].map((l) =>
-      l.replace(/\s+/g, ' ').trim().toLowerCase(),
-    );
-    return {
-      groupRawLabel: g.sourcePlanLabel,
-      perProduct: mergedProducts.map((p) => {
-        const catMap = productCategoryPlans.get(p.productTypeCode);
-        if (!catMap) return { productTypeCode: p.productTypeCode, defaultPlanRawCode: null };
-
-        // Pass 1: exact match on primary + alias labels
-        for (const label of labels) {
-          const planCode = catMap.get(label);
-          if (planCode) return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
-        }
-
-        // Pass 2: prefix match (min 15 chars) — different products
-        // describe the same population with different label lengths
-        for (const label of labels) {
-          for (const [catLabel, planCode] of catMap) {
-            const shorter = label.length <= catLabel.length ? label : catLabel;
-            const longer = label.length <= catLabel.length ? catLabel : label;
-            if (shorter.length >= 15 && longer.startsWith(shorter)) {
-              return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
-            }
-          }
-        }
-
-        return { productTypeCode: p.productTypeCode, defaultPlanRawCode: null };
-      }),
-    };
-  });
+  const eligibilityMatrix = buildEligibilityMatrix(benefitGroups, mergedProducts);
 
   // Walk benefit groups for missing employee-schema fields. Mirrors
   // the same loop in extractor.ts; kept inline because the helper
