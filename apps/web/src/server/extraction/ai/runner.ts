@@ -397,7 +397,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
   const aiProducts = applyInsurerAliasToProducts(
     fanOut.successes.map((s) => s.product),
     insurerAlias,
-  );
+  ).map(sanitisePlanRawCodes);
   const merged = mergeProducts(canonicalisedHeuristic, aiProducts);
   // Likewise fold the AI's proposed-insurer list onto canonical codes
   // so the wizard's Section 5 doesn't show GE alongside GE_LIFE.
@@ -659,6 +659,39 @@ function buildMetaForZeroProducts(args: {
     productsExtracted: 0,
     productsFailed: 0,
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Plan rawCode sanitisation
+// ─────────────────────────────────────────────────────────────
+//
+// The AI sometimes picks up multi-line cell content as a plan
+// code — e.g. "3\n\n* Bargainable employees is eligible for
+// 4 Bed Govt/Restr. Hospital" instead of just "3". Strip to
+// the first non-empty line and dedup so the corrupted and
+// clean versions collapse into one plan.
+
+function sanitisePlanRawCodes(product: ExtractedProduct): ExtractedProduct {
+  if (!product.plans || product.plans.length === 0) return product;
+
+  const cleanCode = (raw: string): string => (raw.split('\n')[0] ?? raw).trim();
+
+  const dedupMap = new Map<string, ExtractedProduct['plans'][number]>();
+  for (const plan of product.plans) {
+    const cleaned = cleanCode(plan.rawCode);
+    const existing = dedupMap.get(cleaned);
+    if (!existing) {
+      dedupMap.set(cleaned, { ...plan, rawCode: cleaned });
+      continue;
+    }
+    const scheduleKeys = (p: ExtractedProduct['plans'][number]) =>
+      Object.keys(p.schedule ?? {}).length;
+    if (scheduleKeys(plan) > scheduleKeys(existing) || plan.confidence > existing.confidence) {
+      dedupMap.set(cleaned, { ...plan, rawCode: cleaned });
+    }
+  }
+
+  return { ...product, plans: Array.from(dedupMap.values()) };
 }
 
 // ─────────────────────────────────────────────────────────────
