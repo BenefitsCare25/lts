@@ -193,8 +193,9 @@ describe('sanitisePlanRawCodes', () => {
     });
 
     it('deduplicates rates with same canonical key (planRawCode::coverTier::blockLabel)', () => {
+      // Both plans must be present so codeMap maps the long form → 'A'
       const product = makeProduct(
-        [makePlan('A', 0.9)],
+        [makePlan('Plan A: Description', 0.6), makePlan('A', 0.9)],
         [
           makeRate('Plan A: Description', 0.6),
           makeRate('A', 0.9),

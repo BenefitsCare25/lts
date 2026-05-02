@@ -72,7 +72,7 @@ export const PREDICATE_PATTERNS: ReadonlyArray<Pattern> = [
   // "Firefighter" / "fire-fighting team" — referenced as a CUSTOM
   // boolean field via the Schema Additions section.
   {
-    re: /firefighter|fire[\s-]*fighter|firefight|emergency\s*respond/i,
+    re: /firefighter|fire[\s-]*fighter|fire[\s-]*fighting|firefight|emergency\s*respond/i,
     build: () => ({ '==': [{ var: 'employee.firefighter' }, true] }),
   },
 ];

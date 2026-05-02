@@ -90,7 +90,7 @@ describe('inferPredicateFromText', () => {
 
     it('does not match NON_BARGAINABLE as BARGAINABLE', () => {
       const result = inferPredicateFromText('Non-Bargainable Employees');
-      expect(JSON.stringify(result.predicate)).not.toContain('BARGAINABLE"');
+      expect(JSON.stringify(result.predicate)).not.toContain('"BARGAINABLE"');
       expect(JSON.stringify(result.predicate)).toContain('NON_BARGAINABLE');
     });
 
