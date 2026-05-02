@@ -12,7 +12,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <header className="app-header">
         <div className="flex items-center">
           <span className="app-header__brand">
-            <a href="/admin">Insurance SaaS</a>
+            <a href="/admin">Testing</a>
           </span>
           <TopNav />
         </div>
