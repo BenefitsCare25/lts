@@ -180,6 +180,9 @@ export async function extractFromWorkbook(db: TenantDb, buffer: Buffer): Promise
 // plan per product. Uses the category→plan linkage from
 // eligibility.categories[].defaultPlanRawCode which the AI extraction
 // populates directly from the slip's "Basis of Cover" sections.
+// Tries the primary label first, then alias labels (from cross-product
+// merges in the suggester), so "Grade 80 - 90" (GP/SP) resolves to
+// the same row as "Grade 80 & 90 (incl. postees)" (GMM).
 function buildEligibilityMatrix(
   benefitGroups: BenefitGroupSuggestion[],
   products: ExtractedProduct[],
@@ -197,16 +200,17 @@ function buildEligibilityMatrix(
   }
 
   return benefitGroups.map((g) => {
-    const normLabel = g.sourcePlanLabel.toLowerCase();
+    const labels = [g.sourcePlanLabel, ...(g.aliasLabels ?? [])].map((l) => l.toLowerCase());
     return {
       groupRawLabel: g.sourcePlanLabel,
       perProduct: products.map((p) => {
         const catMap = productCategoryPlans.get(p.productTypeCode);
-        const planCode = catMap?.get(normLabel) ?? null;
-        return {
-          productTypeCode: p.productTypeCode,
-          defaultPlanRawCode: planCode,
-        };
+        if (!catMap) return { productTypeCode: p.productTypeCode, defaultPlanRawCode: null };
+        for (const label of labels) {
+          const planCode = catMap.get(label);
+          if (planCode) return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
+        }
+        return { productTypeCode: p.productTypeCode, defaultPlanRawCode: null };
       }),
     };
   });
