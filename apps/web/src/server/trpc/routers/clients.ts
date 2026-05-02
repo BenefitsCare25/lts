@@ -133,23 +133,65 @@ export const clientsRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      try {
-        await ctx.db.client.delete({ where: { id: input.id } });
-        return { id: input.id };
-      } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError) {
-          if (err.code === 'P2025') {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found.' });
-          }
-          if (err.code === 'P2003') {
-            throw new TRPCError({
-              code: 'CONFLICT',
-              message:
-                'Cannot delete: this client has linked policies or employees. Remove those first.',
-            });
-          }
+      await ctx.db.$transaction(async (tx) => {
+        // Collect IDs needed for the cascade.
+        const policies = await tx.policy.findMany({
+          where: { clientId: input.id },
+          select: { id: true },
+        });
+        const policyIds = policies.map((p) => p.id);
+
+        const benefitYears = await tx.benefitYear.findMany({
+          where: { policyId: { in: policyIds } },
+          select: { id: true },
+        });
+        const byIds = benefitYears.map((b) => b.id);
+
+        const products = await tx.product.findMany({
+          where: { benefitYearId: { in: byIds } },
+          select: { id: true },
+        });
+        const productIds = products.map((p) => p.id);
+
+        // Delete leaf records with Restrict/no-cascade constraints first.
+        const planIds = await tx.plan
+          .findMany({ where: { productId: { in: productIds } }, select: { id: true } })
+          .then((r) => r.map((p) => p.id));
+        // PlanStack.parent has onDelete:Restrict — must remove stacking links before
+        // deleting plans. PlanStack is not in the tenant-model set so it's not on the
+        // typed tx; raw SQL is the only path inside this transaction.
+        if (planIds.length > 0) {
+          await tx.$executeRaw`DELETE FROM "PlanStack" WHERE "childId" = ANY(${planIds}::text[])`;
         }
-        throw err;
-      }
+        await tx.premiumRate.deleteMany({ where: { productId: { in: productIds } } });
+        await tx.productEligibility.deleteMany({ where: { productId: { in: productIds } } });
+        await tx.plan.deleteMany({ where: { productId: { in: productIds } } });
+        await tx.product.deleteMany({ where: { benefitYearId: { in: byIds } } });
+        await tx.benefitYear.deleteMany({ where: { policyId: { in: policyIds } } });
+        await tx.policyEntity.deleteMany({ where: { policyId: { in: policyIds } } });
+
+        // Deleting policies cascades: PolicyException, FlexBundle→FlexBundlePlan, Enrollment.
+        await tx.policy.deleteMany({ where: { clientId: input.id } });
+
+        // Employees: delete dependents first (no cascade), then employees.
+        // Enrollments and PolicyExceptions are already gone via the policy cascade above.
+        const employees = await tx.employee.findMany({
+          where: { clientId: input.id },
+          select: { id: true },
+        });
+        const employeeIds = employees.map((e) => e.id);
+        await tx.dependent.deleteMany({ where: { employeeId: { in: employeeIds } } });
+        await tx.employee.deleteMany({ where: { clientId: input.id } });
+
+        // Unlink uploads — clientId is nullable, so just nullify rather than delete.
+        await tx.placementSlipUpload.updateMany({
+          where: { clientId: input.id },
+          data: { clientId: null },
+        });
+
+        await tx.client.delete({ where: { id: input.id } });
+      });
+
+      return { id: input.id };
     }),
 });
