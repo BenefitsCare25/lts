@@ -213,7 +213,9 @@ function PlanCard({
                 </tr>
               </thead>
               <tbody>
-                {planRates.map(({ rate, idx }) => (
+                {planRates.map(({ rate, idx }) => {
+                  const m = showMultiplierCol ? categoryMultiplier(rate.blockLabel) : null;
+                  return (
                   <tr key={idx}>
                     <td>
                       <select
@@ -246,21 +248,18 @@ function PlanCard({
                     ) : null}
                     {showMultiplierCol ? (
                       <td>
-                        {(() => {
-                          const m = categoryMultiplier(rate.blockLabel);
-                          return m != null ? (
-                            <span
-                              className="text-muted"
-                              style={{ fontSize: 'var(--font-sm)', whiteSpace: 'nowrap' }}
-                            >
-                              {m}× salary
-                            </span>
-                          ) : (
-                            <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
-                              —
-                            </span>
-                          );
-                        })()}
+                        {m != null ? (
+                          <span
+                            className="text-muted"
+                            style={{ fontSize: 'var(--font-sm)', whiteSpace: 'nowrap' }}
+                          >
+                            {m}× salary
+                          </span>
+                        ) : (
+                          <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
+                            —
+                          </span>
+                        )}
                       </td>
                     ) : null}
                     <td>
@@ -344,7 +343,8 @@ function PlanCard({
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

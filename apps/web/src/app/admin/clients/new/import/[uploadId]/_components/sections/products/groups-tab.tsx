@@ -242,7 +242,7 @@ export function GroupsTab({
     const groups = persisted.groups && typeof persisted.groups === 'object' ? persisted.groups : {};
     if (Object.keys(groups).length > 0) return { groups: { ...groups } };
     const init: Record<string, GroupOverride> = {};
-    for (const c of deriveEmployeeCategories(suggestionsFromDraft(draft.progress))) {
+    for (const c of baseCategories) {
       init[c.key] = { included: true };
     }
     return { groups: init };
@@ -322,7 +322,7 @@ export function GroupsTab({
               <GroupCard
                 key={c.key}
                 category={c}
-                override={override.groups[c.key] ?? { included: c.tokenMatches > 0 }}
+                override={override.groups[c.key] ?? { included: true }}
                 product={product}
                 productAssignments={productAssignments}
                 expanded={expandedKeys.has(c.key)}

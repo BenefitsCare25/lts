@@ -336,6 +336,13 @@ function normalizeProduct(raw: unknown): WizardExtractedProduct {
   return {
     ...p,
     tpaId: ((p as Record<string, unknown>).tpaId as string | null | undefined) ?? null,
+    eligibility: {
+      ...p.eligibility,
+      categories: (p.eligibility?.categories ?? []).map((c) => ({
+        ...c,
+        multiplier: (c as typeof c & { multiplier?: number | null }).multiplier ?? null,
+      })),
+    },
     header: {
       ...h,
       ageLimitNoUnderwriting:
