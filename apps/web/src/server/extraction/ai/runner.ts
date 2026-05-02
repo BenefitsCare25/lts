@@ -48,7 +48,12 @@ import type {
   DiscoveryProposedClient,
   ProductManifestEntry,
 } from './schema-discovery';
-import { type WorkbookText, flattenWorkbookText, workbookToText } from './workbook-to-text';
+import {
+  type WorkbookText,
+  filterWorkbookText,
+  flattenWorkbookText,
+  workbookToText,
+} from './workbook-to-text';
 
 export const AI_EXTRACTOR_VERSION = 'ai-foundry-2.0';
 
@@ -312,10 +317,24 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
   // ───── Stage 2: per-product fan-out ─────
   const heuristicByKey = indexHeuristic(canonicalisedHeuristic);
   const total = canonicalisedManifest.length;
-  const manifests = canonicalisedManifest.map((m) => ({
-    manifest: m,
-    heuristicProduct: heuristicByKey.get(productKey(m)) ?? null,
-  }));
+  const manifests = canonicalisedManifest.map((m) => {
+    // Filter the workbook to only the sheets this product lives on.
+    // Discovery returns anchorSheets per manifest entry; using them
+    // cuts per-call input from ~150k chars to ~10-25k chars, reducing
+    // generation time enough to avoid timeouts on complex products
+    // like GHS (3 sheets) and WICI (1 formula-dense sheet).
+    const filteredText =
+      m.anchorSheets.length > 0 ? filterWorkbookText(workbookText, m.anchorSheets) : flattened;
+    // biome-ignore lint/suspicious/noConsoleLog: intentional lifecycle log
+    console.log(
+      `[ai-extraction] manifest ${productKey(m)} anchorSheets=[${m.anchorSheets.join(',')}] filteredChars=${filteredText.length}`,
+    );
+    return {
+      manifest: m,
+      heuristicProduct: heuristicByKey.get(productKey(m)) ?? null,
+      workbookText: filteredText,
+    };
+  });
 
   const fanOut = await runProductPasses({
     perCallBase: {

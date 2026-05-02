@@ -21,6 +21,7 @@ import type { ExtractedProduct } from '@/server/extraction/heuristic-to-envelope
 import {
   DEFAULT_OUTPUT_TOKENS,
   ESCALATED_OUTPUT_TOKENS,
+  ESCALATED_REQUEST_TIMEOUT_MS,
   type FoundryProvider,
   type FoundryUsage,
   addUsage,
@@ -117,6 +118,7 @@ export async function runProductPass(input: ProductPassInput): Promise<ProductPa
     sanitizedSchema,
     retryHint,
     maxOutputTokens: escalated ? ESCALATED_OUTPUT_TOKENS : DEFAULT_OUTPUT_TOKENS,
+    ...(escalated ? { timeoutMs: ESCALATED_REQUEST_TIMEOUT_MS } : {}),
   });
 
   const cumulativeLatency = first.latencyMs + second.latencyMs;
@@ -187,6 +189,7 @@ async function singleAttempt(args: {
   sanitizedSchema: Record<string, unknown>;
   retryHint: string | undefined;
   maxOutputTokens: number;
+  timeoutMs?: number;
 }): Promise<SingleAttempt> {
   const userPrompt = buildProductUserPrompt(
     args.workbookText,
@@ -203,6 +206,7 @@ async function singleAttempt(args: {
       inputSchema: args.sanitizedSchema,
     },
     maxOutputTokens: args.maxOutputTokens,
+    ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
   });
 
   if (!result.ok) {

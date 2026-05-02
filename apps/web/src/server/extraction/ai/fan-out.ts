@@ -36,6 +36,10 @@ export type FanOutInput = {
   manifests: Array<{
     manifest: ProductPassInput['manifest'];
     heuristicProduct: ProductPassInput['heuristicProduct'];
+    // Per-product filtered workbook text. When set, overrides
+    // perCallBase.workbookText for this call so the model only sees
+    // the sheets relevant to this product (~10-25k chars vs 150k).
+    workbookText?: string;
   }>;
   // Concurrency cap. Defaults to 3.
   concurrency?: number;
@@ -97,6 +101,7 @@ export async function runProductPasses(input: FanOutInput): Promise<FanOutResult
 
       const result = await runProductPass({
         ...input.perCallBase,
+        workbookText: entry.workbookText ?? input.perCallBase.workbookText,
         manifest: entry.manifest,
         heuristicProduct: entry.heuristicProduct,
       });

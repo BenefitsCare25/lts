@@ -291,3 +291,17 @@ export function flattenWorkbookText(text: WorkbookText): string {
   const body = text.sheets.map((s) => s.text).join('\n\n---\n\n');
   return head.length > 0 ? `${head.join('\n')}\n${body}` : body;
 }
+
+// Return a flattened string containing only the named sheets. The
+// runner calls this once per manifest entry using anchorSheets from
+// the discovery pass, so each per-product call receives a focused
+// slice of the workbook (~10-25k chars) rather than the full 150k.
+// Falls back to the full text when no names match (e.g. anchorSheets
+// is empty or uses a different capitalisation than the serializer).
+export function filterWorkbookText(text: WorkbookText, sheetNames: string[]): string {
+  if (sheetNames.length === 0) return flattenWorkbookText(text);
+  const lower = new Set(sheetNames.map((s) => s.trim().toLowerCase()));
+  const matched = text.sheets.filter((s) => lower.has(s.name.trim().toLowerCase()));
+  if (matched.length === 0) return flattenWorkbookText(text);
+  return flattenWorkbookText({ ...text, sheets: matched });
+}

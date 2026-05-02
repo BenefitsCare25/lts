@@ -49,11 +49,12 @@ import {
 // publishes a newer one.
 const ANTHROPIC_VERSION = '2023-06-01';
 
-// Conservative request timeout. With the map-reduce architecture each
-// call extracts a single product or the discovery manifest (small
-// outputs), so 2 minutes is plenty even on Opus. The BullMQ job
-// timeout sits above this.
+// Conservative request timeout for standard passes (8K output budget).
 const REQUEST_TIMEOUT_MS = 120_000;
+// Extended timeout for escalated passes (24K output budget). Opus
+// generating 24K tokens over a large context can take 3-4 minutes;
+// the standard 120s budget causes GHS and WICI to fail consistently.
+export const ESCALATED_REQUEST_TIMEOUT_MS = 240_000;
 
 // Default per-call output budget. The new map-reduce architecture
 // keeps each call's output small (1 product envelope ≈ 2-4K tokens,
@@ -83,6 +84,9 @@ export type FoundryCallParams = {
   // Generation knobs. Defaults tuned for deterministic JSON output.
   maxOutputTokens?: number;
   temperature?: number;
+  // Override the default REQUEST_TIMEOUT_MS. Pass ESCALATED_REQUEST_TIMEOUT_MS
+  // when maxOutputTokens is set to ESCALATED_OUTPUT_TOKENS.
+  timeoutMs?: number;
 };
 
 export type FoundryUsage = {
@@ -248,7 +252,7 @@ export async function callFoundry(
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(params.timeoutMs ?? REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
     return {
