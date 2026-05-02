@@ -203,9 +203,9 @@ describe('parsePlacementSlip — benefit-group predicate inference', () => {
   it('infers a range for "Hay Job Grade 08 to 15"', async () => {
     const result = await parseGroups(['Hay Job Grade 08 to 15 and Bargainable Staff']);
     const group = result.benefitGroups[0];
-    // Both range predicate and bargainable token match — combined under `and`.
+    // Grade range + employment-type token = two additive populations → combined under `or`.
     expect(group?.confidence).toBeGreaterThanOrEqual(2);
-    expect(group?.predicate).toHaveProperty('and');
+    expect(group?.predicate).toHaveProperty('or');
   });
 
   it('infers FW work_pass_type IN [WP, SP] for "Foreign Workers WP/SP"', async () => {
