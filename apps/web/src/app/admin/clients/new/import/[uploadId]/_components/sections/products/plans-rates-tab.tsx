@@ -127,6 +127,7 @@ function PlanCard({
 }) {
   const [groupsExpanded, setGroupsExpanded] = useState(false);
   const showMultiplierCol = plan.coverBasis === 'salary_multiple';
+  const showCategoryCol = planRates.some((r) => r.rate.blockLabel);
 
   const categoryMultiplier = (blockLabel: string | null | undefined): number | null => {
     if (!blockLabel || !showMultiplierCol) return null;
@@ -195,11 +196,19 @@ function PlanCard({
               <thead>
                 <tr>
                   <th>Tier</th>
-                  <th>Block</th>
+                  {showCategoryCol ? <th>Category</th> : null}
                   <th>Age</th>
                   {showMultiplierCol ? <th>Multiplier</th> : null}
                   <th>Rate / 1,000</th>
-                  <th>Fixed amount</th>
+                  <th>
+                    <span
+                      className="text-muted"
+                      style={{ fontWeight: 'normal', marginRight: '0.25rem' }}
+                    >
+                      or
+                    </span>
+                    Fixed amount
+                  </th>
                   <th aria-label="actions" />
                 </tr>
               </thead>
@@ -221,16 +230,20 @@ function PlanCard({
                         ))}
                       </select>
                     </td>
-                    <td>
-                      <input
-                        className="input"
-                        type="text"
-                        value={rate.blockLabel ?? ''}
-                        onChange={(e) => onUpdateRate(idx, { blockLabel: e.target.value || null })}
-                        style={{ width: '7rem' }}
-                        placeholder="(all)"
-                      />
-                    </td>
+                    {showCategoryCol ? (
+                      <td>
+                        <input
+                          className="input"
+                          type="text"
+                          value={rate.blockLabel ?? ''}
+                          onChange={(e) =>
+                            onUpdateRate(idx, { blockLabel: e.target.value || null })
+                          }
+                          style={{ width: '8rem' }}
+                          placeholder="(all)"
+                        />
+                      </td>
+                    ) : null}
                     {showMultiplierCol ? (
                       <td>
                         {(() => {
