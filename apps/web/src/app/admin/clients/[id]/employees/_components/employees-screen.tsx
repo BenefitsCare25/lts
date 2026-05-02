@@ -232,10 +232,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
                 {list.data.map((e) => (
                   <tr key={e.id}>
                     <td>
-                      <Link
-                        href={`/admin/clients/${clientId}/employees/${e.id}`}
-                        className="link"
-                      >
+                      <Link href={`/admin/clients/${clientId}/employees/${e.id}`} className="link">
                         {employeeDisplayLabel(e.data as Record<string, unknown>)}
                       </Link>
                     </td>

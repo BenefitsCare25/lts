@@ -6,23 +6,23 @@
 // row-mapping step before calling importCsv.
 
 export type ColumnTransform =
-  | 'date_dmy'      // "dd/mm/yyyy" → ISO date string
-  | 'work_pass'     // "WP" → "WORK_PERMIT", "SP" → "S_PASS", etc.
-  | 'integer'       // parse as integer
-  | 'number'        // parse as float
-  | 'boolean_yn';   // "Y"/"Yes" → true, others → false
+  | 'date_dmy' // "dd/mm/yyyy" → ISO date string
+  | 'work_pass' // "WP" → "WORK_PERMIT", "SP" → "S_PASS", etc.
+  | 'integer' // parse as integer
+  | 'number' // parse as float
+  | 'boolean_yn'; // "Y"/"Yes" → true, others → false
 
 export type ColumnMapping = {
-  header: string;           // exact header name as it appears in the upload template
-  fieldPath: string;        // target field path in employee.data (dot-notation)
+  header: string; // exact header name as it appears in the upload template
+  fieldPath: string; // target field path in employee.data (dot-notation)
   transform?: ColumnTransform;
   required?: boolean;
   description?: string;
 };
 
 export type PlanOverrideColumn = {
-  header: string;           // e.g. "GTLEE Default Plan ID"
-  productTypeCode: string;  // e.g. "GTL"
+  header: string; // e.g. "GTLEE Default Plan ID"
+  productTypeCode: string; // e.g. "GTL"
 };
 
 // Maps work pass type abbreviations used in upload templates to enum values.

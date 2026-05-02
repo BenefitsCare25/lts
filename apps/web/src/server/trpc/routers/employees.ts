@@ -305,9 +305,7 @@ export const employeesRouter = router({
       const groupById = new Map(groups.map((g) => [g.id, g]));
       // Index rates by planId+coverTier for O(1) lookup per enrollment.
       // Null coverTier is stored under the sentinel key '<planId>:*'.
-      const rateByKey = new Map(
-        rates.map((r) => [`${r.planId}:${r.coverTier ?? '*'}`, r]),
-      );
+      const rateByKey = new Map(rates.map((r) => [`${r.planId}:${r.coverTier ?? '*'}`, r]));
 
       return enrollments.map((enr) => {
         const product = productById.get(enr.productId);
