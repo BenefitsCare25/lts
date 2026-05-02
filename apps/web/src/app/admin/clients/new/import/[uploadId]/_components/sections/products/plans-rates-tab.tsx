@@ -22,8 +22,6 @@ import {
   type ProductPatcher,
 } from './shared';
 
-// ── NumberInput ───────────────────────────────────────────────
-
 function NumberInput({
   label,
   value,
@@ -57,8 +55,6 @@ function NumberInput({
     </label>
   );
 }
-
-// ── ScheduleEditor ────────────────────────────────────────────
 
 function ScheduleEditor({
   schedule,
@@ -106,8 +102,6 @@ function ScheduleEditor({
   );
 }
 
-// ── PlanCard ──────────────────────────────────────────────────
-
 function PlanCard({
   plan,
   planIdx,
@@ -133,7 +127,6 @@ function PlanCard({
 
   return (
     <Card className="card-padded">
-      {/* ── Plan header ───────────────────────── */}
       <div
         className="row"
         style={{ gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1rem' }}
@@ -179,20 +172,8 @@ function PlanCard({
         </button>
       </div>
 
-      {/* ── Premium rates ─────────────────────── */}
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-        <p
-          style={{
-            fontSize: 'var(--font-xs)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            color: 'var(--text-muted)',
-            marginBottom: '0.5rem',
-          }}
-        >
-          Premium rates
-        </p>
+        <p className="eyebrow mb-2">Premium rates</p>
         {planRates.length === 0 ? (
           <p className="field-help mb-2">No rates for this plan yet.</p>
         ) : (
@@ -331,43 +312,20 @@ function PlanCard({
         </button>
       </div>
 
-      {/* ── Benefit groups (collapsible read-only) ── */}
       <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
         <button
           type="button"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-          }}
+          className="row"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, gap: '0.4rem' }}
           onClick={() => setGroupsExpanded((v) => !v)}
         >
           <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
             {groupsExpanded ? '▼' : '▶'}
           </span>
-          <span
-            style={{
-              fontSize: 'var(--font-xs)',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              color: 'var(--text-muted)',
-            }}
-          >
-            Benefit groups
-          </span>
-          <span className="pill pill-muted" style={{ fontSize: 'var(--font-xs)' }}>
-            {assignedGroups.length}
-          </span>
+          <span className="eyebrow">Benefit groups</span>
+          <span className="pill pill-muted">{assignedGroups.length}</span>
           {!groupsExpanded ? (
-            <span
-              className="text-muted"
-              style={{ fontSize: 'var(--font-xs)', marginLeft: '0.25rem' }}
-            >
+            <span className="text-muted" style={{ fontSize: 'var(--font-sm)', marginLeft: '0.25rem' }}>
               {assignedGroups.length === 0
                 ? '— none assigned'
                 : assignedGroups
@@ -417,8 +375,6 @@ function PlanCard({
   );
 }
 
-// ── PlansRatesTab ─────────────────────────────────────────────
-
 export function PlansRatesTab({
   product,
   onChange,
@@ -443,13 +399,19 @@ export function PlansRatesTab({
     return map;
   }, [product.premiumRates]);
 
-  // Compute plan → benefit groups from the saved draft snapshot
-  const groupsByPlan = useMemo(() => {
+  // Compute suggestion + eligibility data — only changes when draft is saved
+  const draftEligibility = useMemo(() => {
     const suggestions = suggestionsFromDraft(draft.progress);
     const categories = deriveEmployeeCategories(suggestions);
     const eligOverride = readBrokerOverride<EligibilityOverride>(draft.progress, 'eligibility', {
       groups: {},
     });
+    return { suggestions, categories, eligOverride };
+  }, [draft.progress]);
+
+  // Compute plan → benefit groups; only re-runs when plans or product identity changes
+  const groupsByPlan = useMemo(() => {
+    const { suggestions, categories, eligOverride } = draftEligibility;
     const pa = buildProductAssignments([product], categories, suggestions, eligOverride.groups)[0];
     const map = new Map<string, Array<{ key: string; name: string; brokerOverride: boolean }>>();
     for (const plan of product.plans) map.set(plan.rawCode, []);
@@ -464,7 +426,7 @@ export function PlansRatesTab({
       map.set(a.effectivePlan, list);
     }
     return map;
-  }, [draft.progress, product]);
+  }, [draftEligibility, product.plans, product.productTypeCode, product.insurerCode]);
 
   const updatePlan = (idx: number, patch: Partial<WizardPlanField>) => {
     onChange((p) => ({
