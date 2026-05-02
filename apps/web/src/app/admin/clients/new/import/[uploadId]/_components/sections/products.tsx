@@ -246,20 +246,12 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
             <DetailsTab product={active} onChange={(patch) => updateProduct(activeIndex, patch)} />
           ) : null}
           {activeTab === 'plans' ? (
-            <PlansTab
-              product={active}
-              onChange={(patch) => updateProduct(activeIndex, patch)}
-            />
+            <PlansTab product={active} onChange={(patch) => updateProduct(activeIndex, patch)} />
           ) : null}
           {activeTab === 'rates' ? (
             <RatesTab product={active} onChange={(patch) => updateProduct(activeIndex, patch)} />
           ) : null}
-          {activeTab === 'groups' ? (
-            <GroupsTab
-              product={active}
-              draft={draft}
-            />
-          ) : null}
+          {activeTab === 'groups' ? <GroupsTab product={active} draft={draft} /> : null}
           {activeTab === 'endorsements' ? (
             <EndorsementsTab
               product={active}
@@ -687,8 +679,7 @@ function GroupsTab({
     const persisted = readBrokerOverride<EligibilityOverride>(draft.progress, 'eligibility', {
       groups: {},
     });
-    const groups =
-      persisted.groups && typeof persisted.groups === 'object' ? persisted.groups : {};
+    const groups = persisted.groups && typeof persisted.groups === 'object' ? persisted.groups : {};
     if (Object.keys(groups).length > 0) return { groups: { ...groups } };
     const init: Record<string, GroupOverride> = {};
     for (const c of deriveEmployeeCategories(suggestionsFromDraft(draft.progress))) {
@@ -702,8 +693,7 @@ function GroupsTab({
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
   const markAutosaveDirty = useDebouncedAutosave(
     override,
-    (value) =>
-      saveOverride.mutate({ draftId: draft.id, namespace: 'eligibility', value }),
+    (value) => saveOverride.mutate({ draftId: draft.id, namespace: 'eligibility', value }),
     { delayMs: 600 },
   );
 
@@ -1177,7 +1167,9 @@ function RatesTab({
                             style={{ width: '3.5rem' }}
                             placeholder="from"
                           />
-                          <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>–</span>
+                          <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
+                            –
+                          </span>
                           <input
                             className="input"
                             type="number"
@@ -1187,7 +1179,10 @@ function RatesTab({
                               updateRate(idx, {
                                 ageBand:
                                   rate.ageBand != null
-                                    ? { ...rate.ageBand, to: Number.isFinite(n) ? n : rate.ageBand.from }
+                                    ? {
+                                        ...rate.ageBand,
+                                        to: Number.isFinite(n) ? n : rate.ageBand.from,
+                                      }
                                     : null,
                               });
                             }}
