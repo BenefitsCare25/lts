@@ -398,7 +398,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     fanOut.successes.map((s) => s.product),
     insurerAlias,
   ).map(sanitisePlanRawCodes);
-  const merged = mergeProducts(canonicalisedHeuristic, aiProducts);
+  const merged = mergeProducts(canonicalisedHeuristic, aiProducts).map(sanitisePlanRawCodes);
   // Likewise fold the AI's proposed-insurer list onto canonical codes
   // so the wizard's Section 5 doesn't show GE alongside GE_LIFE.
   const canonicalisedProposedInsurers = dedupeProposedInsurers(
@@ -719,14 +719,15 @@ function sanitisePlanRawCodes(product: ExtractedProduct): ExtractedProduct {
     }
   }
 
-  // Phase 2: long descriptive codes that didn't match a pattern.
-  // If short-code plans exist, map descriptive plans to the short code
-  // via the category → defaultPlanRawCode linkage, or drop them.
+  // Phase 2: long descriptive codes that didn't resolve to short codes.
+  // Includes plans Phase 1 mapped to a still-long canonical (e.g.
+  // multi-line → first line that's still a category description).
   if (shortCodes.size > 0) {
     const categories = product.eligibility?.categories ?? [];
     for (const plan of product.plans) {
-      if (codeMap.has(plan.rawCode) || isShortCode(plan.rawCode)) continue;
-      const planLabel = plan.rawCode.replace(/\s+/g, ' ').trim().toLowerCase();
+      const resolved = codeMap.get(plan.rawCode) ?? plan.rawCode;
+      if (isShortCode(resolved)) continue;
+      const planLabel = resolved.replace(/\s+/g, ' ').trim().toLowerCase();
       let mapped = false;
       for (const cat of categories) {
         const catLabel = cat.category.replace(/\s+/g, ' ').trim().toLowerCase();
