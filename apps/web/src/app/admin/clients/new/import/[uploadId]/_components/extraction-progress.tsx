@@ -39,39 +39,17 @@ export function ExtractionProgress({ live }: Props) {
   const stageLabel = stageHeading(live.stage, completed, total);
 
   return (
-    <Card
-      className="card-padded"
-      style={{
-        borderColor: 'var(--accent-soft)',
-        background: 'var(--accent-tint)',
-      }}
-    >
-      <div
-        className="row mb-3"
-        style={{ alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)' }}
-      >
+    <Card className="card-padded border-[var(--accent-soft)] bg-[var(--accent-tint)]">
+      <div className="row mb-3 items-baseline justify-between gap-3">
         <div>
-          <div
-            style={{
-              fontSize: 'var(--text-xs)',
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              color: 'var(--accent)',
-              marginBottom: 'var(--space-1)',
-            }}
-          >
+          <div className="text-xs font-semibold tracking-[0.04em] uppercase text-[var(--accent)] mb-1">
             AI extraction in progress
           </div>
           <h3 className="mb-0">{stageLabel}</h3>
         </div>
         <div
           aria-label="elapsed time"
-          style={{
-            fontVariantNumeric: 'tabular-nums',
-            color: 'var(--text-tertiary)',
-            fontSize: 'var(--text-sm)',
-          }}
+          className="[font-variant-numeric:tabular-nums] text-[var(--text-tertiary)] text-sm"
         >
           {formatElapsed(elapsedSec)}
         </div>
@@ -79,10 +57,7 @@ export function ExtractionProgress({ live }: Props) {
 
       <ProgressBar percent={percent} />
 
-      <div
-        className="mt-3"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)' }}
-      >
+      <div className="mt-3 grid grid-cols-3 gap-2">
         <StageStep
           label="Discovery"
           status={
@@ -112,10 +87,7 @@ export function ExtractionProgress({ live }: Props) {
       </div>
 
       {total > 0 ? (
-        <div
-          className="mt-4"
-          style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}
-        >
+        <div className="mt-4 flex flex-col gap-1">
           {live.productKeys.map((key) => {
             const status = live.statuses[key] ?? 'queued';
             return <ProductRow key={key} productKey={key} status={status} />;
@@ -123,7 +95,7 @@ export function ExtractionProgress({ live }: Props) {
         </div>
       ) : null}
 
-      <p className="field-help mb-0 mt-3" style={{ color: 'var(--text-tertiary)' }}>
+      <p className="field-help mb-0 mt-3 text-[var(--text-tertiary)]">
         Keep editing other sections — the wizard auto-fills sections as products complete.
         {failed > 0
           ? ` ${failed} product${failed === 1 ? '' : 's'} failed (see warnings after the run).`
@@ -142,23 +114,11 @@ function ProgressBar({ percent }: { percent: number }) {
       aria-valuemax={100}
       aria-label="AI extraction progress"
       tabIndex={-1}
-      style={{
-        height: 8,
-        width: '100%',
-        background: 'var(--bg-active)',
-        borderRadius: 'var(--radius-pill)',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
+      className="h-2 w-full bg-[var(--bg-active)] rounded-full overflow-hidden relative"
     >
       <div
-        style={{
-          height: '100%',
-          width: `${percent}%`,
-          background: 'linear-gradient(90deg, var(--accent) 0%, var(--color-info) 100%)',
-          borderRadius: 'var(--radius-pill)',
-          transition: 'width 0.5s cubic-bezier(0.22, 0.61, 0.36, 1)',
-        }}
+        className="h-full bg-[linear-gradient(90deg,var(--accent)_0%,var(--color-info)_100%)] rounded-full transition-[width] duration-500 ease-[cubic-bezier(0.22,0.61,0.36,1)]"
+        style={{ width: `${percent}%` }}
       />
     </div>
   );
@@ -181,17 +141,8 @@ function StageStep({ label, status }: { label: string; status: 'pending' | 'runn
 
   return (
     <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-2)',
-        padding: 'var(--space-2) var(--space-3)',
-        background: bg,
-        borderRadius: 'var(--radius-md)',
-        fontSize: 'var(--text-sm)',
-        color: fg,
-        fontWeight: 500,
-      }}
+      className="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-md)] text-sm font-medium"
+      style={{ background: bg, color: fg }}
     >
       <StatusDot status={status} />
       <span>{label}</span>
@@ -215,20 +166,14 @@ function StatusDot({
   return (
     <span
       aria-hidden
-      style={{
-        display: 'inline-block',
-        width: 10,
-        height: 10,
-        borderRadius: '50%',
-        border: '1.5px solid var(--text-quaternary)',
-      }}
+      className="inline-block w-[10px] h-[10px] rounded-full border-[1.5px] border-[var(--text-quaternary)]"
     />
   );
 }
 
 function CheckIcon({ color }: { color: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" className="shrink-0">
       <title>Done</title>
       <circle cx="7" cy="7" r="7" fill={color} />
       <path
@@ -245,7 +190,7 @@ function CheckIcon({ color }: { color: string }) {
 
 function CrossIcon({ color }: { color: string }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0 }}>
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" className="shrink-0">
       <title>Failed</title>
       <circle cx="7" cy="7" r="7" fill={color} />
       <path
@@ -266,7 +211,8 @@ function Spinner({ color }: { color: string }) {
       height="14"
       viewBox="0 0 24 24"
       aria-hidden="true"
-      style={{ flexShrink: 0, animation: 'extraction-spin 0.9s linear infinite' }}
+      className="shrink-0"
+      style={{ animation: 'extraction-spin 0.9s linear infinite' }}
     >
       <title>In progress</title>
       <circle
@@ -310,29 +256,17 @@ function ProductRow({
           : 'queued';
   return (
     <div
+      className="flex items-center gap-2 px-2 py-1 rounded-[var(--radius-sm)] text-sm [font-variant-numeric:tabular-nums]"
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-2)',
-        padding: 'var(--space-1) var(--space-2)',
         background: status === 'running' ? 'var(--bg-hover)' : 'transparent',
-        borderRadius: 'var(--radius-sm)',
-        fontSize: 'var(--text-sm)',
         color: fg,
-        fontVariantNumeric: 'tabular-nums',
       }}
     >
       <StatusDot status={status} />
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
+      <span className="font-[var(--font-mono)] text-xs">
         {productKey}
       </span>
-      <span
-        style={{
-          marginLeft: 'auto',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--text-quaternary)',
-        }}
-      >
+      <span className="ml-auto text-xs text-[var(--text-quaternary)]">
         {label}
       </span>
     </div>

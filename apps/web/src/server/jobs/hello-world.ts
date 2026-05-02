@@ -12,10 +12,6 @@ export async function enqueueHelloWorld(data: HelloWorldData): Promise<string> {
   return job.id ?? '';
 }
 
-export async function processHelloWorld(job: Job<HelloWorldData>): Promise<void> {
-  // biome-ignore lint/suspicious/noConsoleLog: intentional job lifecycle log
-  console.log(`[hello-world] job ${job.id} started — ${job.data.message}`);
+export async function processHelloWorld(_job: Job<HelloWorldData>): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 100));
-  // biome-ignore lint/suspicious/noConsoleLog: intentional job lifecycle log
-  console.log(`[hello-world] job ${job.id} complete`);
 }

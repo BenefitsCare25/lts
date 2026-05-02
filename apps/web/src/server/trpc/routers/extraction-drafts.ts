@@ -16,13 +16,14 @@
 // =============================================================
 
 import { prisma } from '@/server/db/client';
+import { applyWizardDraft } from '@/server/ingestion/apply/wizard-apply';
 import { enqueueAiExtraction } from '@/server/jobs/extraction';
 import { isRedisConfigured } from '@/server/jobs/redis';
 import {
   deleteFile as deleteFromSharePoint,
   isSharePointConfigured,
 } from '@/server/storage/sharepoint';
-import { ClientStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
@@ -119,8 +120,8 @@ export const extractionDraftsRouter = router({
   // landing page uses this to surface "you have N uploads in progress"
   // so brokers can resume mid-wizard sessions.
   listOrphans: tenantProcedure.query(async ({ ctx }) => {
-    return prisma.extractionDraft.findMany({
-      where: { tenantId: ctx.tenantId, upload: { clientId: null } },
+    return ctx.db.extractionDraft.findMany({
+      where: { upload: { clientId: null } },
       include: {
         upload: {
           select: {
@@ -500,134 +501,16 @@ export const extractionDraftsRouter = router({
       }
     }
 
-    const result = await prisma.$transaction(
-      async (tx) => {
-        // 1. Resolve / create the Client.
-        let clientId: string;
-        if (input.existingClientId) {
-          const existing = await tx.client.findFirst({
-            where: { id: input.existingClientId, tenantId: ctx.tenantId },
-            select: { id: true },
-          });
-          if (!existing) {
-            throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found.' });
-          }
-          clientId = existing.id;
-        } else {
-          if (!input.proposed.client) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: 'Client details required when creating a new client.',
-            });
-          }
-          const c = input.proposed.client;
-          const created = await tx.client.create({
-            data: {
-              tenantId: ctx.tenantId,
-              legalName: c.legalName,
-              tradingName: c.tradingName ?? null,
-              uen: c.uen,
-              countryOfIncorporation: c.countryOfIncorporation,
-              address: c.address,
-              industry: c.industry ?? null,
-              primaryContactName: c.primaryContactName ?? null,
-              primaryContactEmail: c.primaryContactEmail ?? null,
-              status: ClientStatus.ACTIVE,
-            },
-          });
-          clientId = created.id;
-        }
-
-        // 2. Create the Policy.
-        const policy = await tx.policy.create({
-          data: {
-            clientId,
-            name: input.proposed.policy.name,
-            ageBasis: input.proposed.policy.ageBasis,
-          },
-        });
-
-        // 3. Create PolicyEntities (one per legal entity on the
-        // master policy). The wizard guarantees exactly one master.
-        await tx.policyEntity.createMany({
-          data: input.proposed.policyEntities.map((entity) => ({
-            policyId: policy.id,
-            legalName: entity.legalName,
-            policyNumber: entity.policyNumber,
-            address: entity.address ?? null,
-            headcountEstimate: entity.headcountEstimate ?? null,
-            isMaster: entity.isMaster,
-          })),
-        });
-
-        // 4. Create the BenefitYear in DRAFT.
-        const benefitYear = await tx.benefitYear.create({
-          data: {
-            policyId: policy.id,
-            startDate: input.proposed.benefitYear.startDate,
-            endDate: input.proposed.benefitYear.endDate,
-            state: 'DRAFT',
-            carryForwardFromYearId: input.proposed.benefitYear.carryForwardFromYearId ?? null,
-          },
-        });
-
-        // 5. Bind the orphan upload to the new client. This makes
-        // re-listing under /admin/clients/[id]/imports surface this
-        // upload normally; the orphan listOrphans query filters it out.
-        await tx.placementSlipUpload.update({
-          where: { id: draft.uploadId },
-          data: {
-            clientId,
-            parseStatus: 'APPLIED',
-          },
-        });
-
-        // 6. Mark the draft applied.
-        await tx.extractionDraft.update({
-          where: { id: draft.id },
-          data: {
-            status: 'APPLIED',
-            appliedAt: new Date(),
-            appliedById: ctx.userId,
-          },
-        });
-
-        // 7. Audit. The tRPC middleware logs the mutation itself,
-        // but we want a richer entity hint for the audit dashboard.
-        await tx.auditLog.create({
-          data: {
-            tenantId: ctx.tenantId,
-            userId: ctx.userId,
-            action: 'extractionDrafts.applyToCatalogue',
-            entityType: 'Client',
-            entityId: clientId,
-            after: {
-              clientId,
-              policyId: policy.id,
-              benefitYearId: benefitYear.id,
-              draftId: draft.id,
-              uploadId: draft.uploadId,
-            } as unknown as Prisma.InputJsonValue,
-          },
-        });
-
-        return {
-          clientId,
-          policyId: policy.id,
-          benefitYearId: benefitYear.id,
-          policyEntitiesCreated: input.proposed.policyEntities.length,
-          // Products / Plans / PremiumRates / BenefitGroups /
-          // ProductEligibility are written by the per-section apply
-          // pipeline once the AI extractor module lands. Today the
-          // wizard creates the foundational rows; per-product rows
-          // are still created via the existing placementSlips.applyToCatalogue
-          // call from the Products section.
-          productsCreated: 0,
-        };
+    return applyWizardDraft(
+      {
+        tenantId: ctx.tenantId,
+        userId: ctx.userId,
+        draftId: draft.id,
+        uploadId: draft.uploadId,
+        existingClientId: input.existingClientId,
+        proposed: input.proposed,
       },
-      { maxWait: 5_000, timeout: 60_000 },
+      ctx.db,
     );
-
-    return result;
   }),
 });

@@ -20,6 +20,7 @@
 // catalogue JSON for a typical tenant.
 // =============================================================
 
+import { prisma } from '@/server/db/client';
 import type { TenantDb } from '@/server/db/tenant';
 
 export type CatalogueContext = {
@@ -137,28 +138,17 @@ export async function loadCatalogueContext(
   };
 }
 
-// Countries / industries are global reference data — every tenant
-// reads the same rows. They live on the bare Prisma client, not the
-// tenant-extended one, because they have no tenantId column and the
-// extension would attempt to inject one.
-async function readGlobalCountries(db: TenantDb): Promise<Array<{ code: string; name: string }>> {
-  // The tenant extension is a no-op on non-tenant models, so this
-  // call is identical to one against the bare client. We keep the
-  // signature db: TenantDb so callers don't have to thread a second
-  // client through.
-  // biome-ignore lint/suspicious/noExplicitAny: cross-tenant model on extended client
-  const rows = await (db as any).country.findMany({
+// Country/Industry are global reference models — use bare prisma, not tenant-scoped db
+async function readGlobalCountries(_db: TenantDb): Promise<Array<{ code: string; name: string }>> {
+  return prisma.country.findMany({
     select: { code: true, name: true },
     orderBy: { name: 'asc' },
   });
-  return rows as Array<{ code: string; name: string }>;
 }
 
-async function readGlobalIndustries(db: TenantDb): Promise<Array<{ code: string; name: string }>> {
-  // biome-ignore lint/suspicious/noExplicitAny: cross-tenant model on extended client
-  const rows = await (db as any).industry.findMany({
+async function readGlobalIndustries(_db: TenantDb): Promise<Array<{ code: string; name: string }>> {
+  return prisma.industry.findMany({
     select: { code: true, name: true },
     orderBy: { code: 'asc' },
   });
-  return rows as Array<{ code: string; name: string }>;
 }

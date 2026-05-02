@@ -356,15 +356,10 @@ function normalizeProduct(raw: unknown): WizardExtractedProduct {
 export function extractedProductsFromDraft(raw: unknown): WizardExtractedProduct[] {
   if (!Array.isArray(raw)) return [];
   const result: WizardExtractedProduct[] = [];
-  for (const [i, item] of raw.entries()) {
+  for (const item of raw) {
     const parsed = wizardExtractedProductSchema.safeParse(item);
     if (parsed.success) {
       result.push(normalizeProduct(parsed.data));
-    } else {
-      console.warn(
-        `[wizard] extractedProductsFromDraft: dropped item[${i}] — invalid shape:`,
-        parsed.error.issues,
-      );
     }
   }
   return result;

@@ -110,10 +110,11 @@ const employeeInputSchema = z.object({
 // employee data. Returns matching groups in deterministic order.
 async function matchGroupsForEmployee(
   clientId: string,
+  tenantId: string,
   data: Record<string, unknown>,
 ): Promise<{ id: string; name: string }[]> {
   const policies = await prisma.policy.findMany({
-    where: { clientId },
+    where: { clientId, client: { tenantId } },
     select: { benefitGroups: { select: { id: true, name: true, predicate: true } } },
   });
   const matches: { id: string; name: string }[] = [];
@@ -151,13 +152,15 @@ export const employeesRouter = router({
     }),
 
   byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
-    const employee = await prisma.employee.findUnique({ where: { id: input.id } });
+    const employee = await prisma.employee.findFirst({
+      where: { id: input.id, client: { tenantId: ctx.tenantId } },
+    });
     if (!employee) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
     }
-    await assertClient(ctx.db, employee.clientId);
     const matches = await matchGroupsForEmployee(
       employee.clientId,
+      ctx.tenantId,
       employee.data as Record<string, unknown>,
     );
     return { ...employee, matchedGroups: matches };
@@ -202,18 +205,19 @@ export const employeesRouter = router({
           terminationDate: input.terminationDate,
         },
       });
-      const matches = await matchGroupsForEmployee(input.clientId, input.data);
+      const matches = await matchGroupsForEmployee(input.clientId, ctx.tenantId, input.data);
       return { ...created, matchedGroups: matches };
     }),
 
   update: adminProcedure
     .input(z.object({ id: z.string().min(1) }).and(employeeInputSchema))
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.employee.findUnique({ where: { id: input.id } });
+      const existing = await prisma.employee.findFirst({
+        where: { id: input.id, client: { tenantId: ctx.tenantId } },
+      });
       if (!existing) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
       }
-      await assertClient(ctx.db, existing.clientId);
       const { fields, version, tenantId } = await loadTenantEmployeeFields(ctx.db);
       const compiled = safeCompile(
         fieldsToJsonSchema(fields),
@@ -248,11 +252,12 @@ export const employeesRouter = router({
   delete: adminProcedure
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await prisma.employee.findUnique({ where: { id: input.id } });
+      const existing = await prisma.employee.findFirst({
+        where: { id: input.id, client: { tenantId: ctx.tenantId } },
+      });
       if (!existing) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
       }
-      await assertClient(ctx.db, existing.clientId);
       await prisma.employee.delete({ where: { id: input.id } });
       return { id: input.id };
     }),
@@ -262,12 +267,11 @@ export const employeesRouter = router({
   entitlements: tenantProcedure
     .input(z.object({ employeeId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
-      const employee = await prisma.employee.findUnique({
-        where: { id: input.employeeId },
+      const employee = await prisma.employee.findFirst({
+        where: { id: input.employeeId, client: { tenantId: ctx.tenantId } },
         select: { id: true, clientId: true },
       });
       if (!employee) throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
-      await assertClient(ctx.db, employee.clientId);
 
       const enrollments = await prisma.enrollment.findMany({
         where: { employeeId: input.employeeId, effectiveTo: null },

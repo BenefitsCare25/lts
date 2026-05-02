@@ -92,6 +92,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     session: ({ session, token }) => {
+      if (!token.tenantId || !token.role) throw new Error('Incomplete session token');
       session.user.id = token.userId as string;
       session.user.tenantId = token.tenantId as string;
       session.user.role = token.role as string;

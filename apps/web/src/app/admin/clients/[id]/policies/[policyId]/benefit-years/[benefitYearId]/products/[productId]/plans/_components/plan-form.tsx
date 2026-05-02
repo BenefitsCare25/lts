@@ -18,6 +18,7 @@ import { trpc } from '@/lib/trpc/client';
 import Form from '@rjsf/core';
 import type { RJSFSchema } from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
+import { formatDate } from '@/lib/format-date';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -144,12 +145,8 @@ export function PlanForm({
         coverBasis: plan.data.coverBasis,
         stacksOn: plan.data.stacksOn ?? '',
         selectionMode: plan.data.selectionMode as SelectionMode,
-        effectiveFrom: plan.data.effectiveFrom
-          ? new Date(plan.data.effectiveFrom).toISOString().slice(0, 10)
-          : '',
-        effectiveTo: plan.data.effectiveTo
-          ? new Date(plan.data.effectiveTo).toISOString().slice(0, 10)
-          : '',
+        effectiveFrom: plan.data.effectiveFrom ? formatDate(plan.data.effectiveFrom) : '',
+        effectiveTo: plan.data.effectiveTo ? formatDate(plan.data.effectiveTo) : '',
         schedule: (plan.data.schedule as Record<string, unknown>) ?? {},
       });
     }

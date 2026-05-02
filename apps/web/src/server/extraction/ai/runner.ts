@@ -694,7 +694,7 @@ function isShortCode(code: string): boolean {
   return code.length <= SHORT_CODE_MAX_LEN && !code.includes('\n');
 }
 
-function sanitisePlanRawCodes(product: ExtractedProduct): ExtractedProduct {
+export function sanitisePlanRawCodes(product: ExtractedProduct): ExtractedProduct {
   if (!product.plans || product.plans.length === 0) return product;
 
   type PlanT = ExtractedProduct['plans'][number];
