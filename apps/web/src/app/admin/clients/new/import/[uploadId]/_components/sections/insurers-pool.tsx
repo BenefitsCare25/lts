@@ -3,8 +3,10 @@
 import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
+import { PRODUCT_TYPE_CODES } from '@insurance-saas/shared-types';
+import type { ProductTypeCode } from '@insurance-saas/shared-types';
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import type { SectionId } from './_registry';
 import { aiBundleFromDraft, extractedProductsFromDraft, readBrokerOverride } from './_types';
 
@@ -30,6 +32,22 @@ type PoolOverride = {
   name: string | null;
 };
 
+const CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+// "GE_LIFE" → "GE Life", "ALLIANZ" → "Allianz"
+function inferName(code: string): string {
+  return code
+    .split('_')
+    .map((w) => (w.length <= 3 ? w : w[0] + w.slice(1).toLowerCase()))
+    .join(' ');
+}
+
+// Ensure the detected code is a valid registry code (uppercase, no spaces).
+function normalizeCode(raw: string): string {
+  const upper = raw.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+  return /^[A-Z]/.test(upper) ? upper : `I${upper}`;
+}
+
 export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
   const insurersQuery = trpc.insurers.list.useQuery();
   const poolsQuery = trpc.pools.list.useQuery();
@@ -50,6 +68,13 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
     });
     return { poolId: persisted.poolId ?? null, name: persisted.name ?? null };
   });
+
+  // Inline create form state — only one row can be expanded at a time.
+  const [expandedCreate, setExpandedCreate] = useState<string | null>(null);
+  const [createName, setCreateName] = useState('');
+  const [createCode, setCreateCode] = useState('');
+  const [createProducts, setCreateProducts] = useState<string[]>([]);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
   const markInsurerDirty = useDebouncedAutosave(insurerOverride, (value) =>
@@ -117,6 +142,45 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
     [markDirty],
   );
 
+  const createInsurerMutation = trpc.insurers.create.useMutation({
+    onSuccess: (newInsurer) => {
+      if (expandedCreate) setInsurerMapping(expandedCreate, newInsurer.id);
+      void insurersQuery.refetch();
+      setExpandedCreate(null);
+      setCreateError(null);
+    },
+    onError: (err) => {
+      setCreateError(err.message);
+    },
+  });
+
+  function openCreateForm(detectedCode: string) {
+    const validProductCodes = new Set<string>(PRODUCT_TYPE_CODES);
+    const inferred = [
+      ...new Set(
+        extracted
+          .filter((p) => p.insurerCode === detectedCode)
+          .map((p) => p.productTypeCode)
+          .filter((ptc) => validProductCodes.has(ptc)),
+      ),
+    ];
+    setCreateName(inferName(detectedCode));
+    setCreateCode(normalizeCode(detectedCode));
+    setCreateProducts(inferred);
+    setCreateError(null);
+    setExpandedCreate(detectedCode);
+  }
+
+  function handleCreate() {
+    createInsurerMutation.mutate({
+      name: createName.trim(),
+      code: createCode,
+      productsSupported: createProducts as ProductTypeCode[],
+      claimFeedProtocol: null,
+      active: true,
+    });
+  }
+
   // Pool name detection — heuristic fields are the floor; AI fills when
   // the heuristic doesn't see a Pool row. Workbook-level info repeated
   // across every product sheet, so the first non-empty hit is fine.
@@ -156,6 +220,13 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
     setPoolOverride({ poolId, name: match?.name ?? null });
   };
 
+  const codeInvalid = createCode.length > 0 && !CODE_PATTERN.test(createCode);
+  const canCreate =
+    createName.trim().length > 0 &&
+    CODE_PATTERN.test(createCode) &&
+    createProducts.length > 0 &&
+    !createInsurerMutation.isPending;
+
   return (
     <>
       <h2>Insurers &amp; pool</h2>
@@ -188,67 +259,202 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
                   </thead>
                   <tbody>
                     {insurerSummary.map((row) => (
-                      <tr key={row.code}>
-                        <td>
-                          <code>{row.code}</code>
-                        </td>
-                        <td>
-                          <select
-                            className="input"
-                            value={row.registryId ?? ''}
-                            onChange={(e) => setInsurerMapping(row.code, e.target.value || null)}
-                            disabled={insurersQuery.isLoading}
-                          >
-                            <option value="">— pick an insurer —</option>
-                            {(insurersQuery.data ?? []).map((i) => (
-                              <option key={i.id} value={i.id}>
-                                {i.name} ({i.code}){i.active ? '' : ' · inactive'}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>{row.productCount}</td>
-                        <td>
-                          {row.registryId ? (
-                            <span className={row.active ? 'pill pill-success' : 'pill pill-muted'}>
-                              {row.active ? 'in registry' : 'inactive'}
-                            </span>
-                          ) : (
-                            <span className="pill pill-muted">unmapped</span>
-                          )}
-                          {row.brokerConfirmed ? (
-                            <ConfidenceBadge confidence={1} variant="dot" />
-                          ) : null}
-                        </td>
-                        <td>
-                          <div className="row" style={{ gap: '0.25rem' }}>
+                      <Fragment key={row.code}>
+                        <tr>
+                          <td>
+                            <code>{row.code}</code>
+                          </td>
+                          <td>
+                            <select
+                              className="input"
+                              value={row.registryId ?? ''}
+                              onChange={(e) =>
+                                setInsurerMapping(row.code, e.target.value || null)
+                              }
+                              disabled={insurersQuery.isLoading}
+                            >
+                              <option value="">— pick an insurer —</option>
+                              {(insurersQuery.data ?? []).map((i) => (
+                                <option key={i.id} value={i.id}>
+                                  {i.name} ({i.code}){i.active ? '' : ' · inactive'}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>{row.productCount}</td>
+                          <td>
                             {row.registryId ? (
-                              <Link
-                                className="btn btn-ghost btn-sm"
-                                href={`/admin/catalogue/insurers/${row.registryId}/edit`}
+                              <span
+                                className={row.active ? 'pill pill-success' : 'pill pill-muted'}
                               >
-                                View
-                              </Link>
+                                {row.active ? 'in registry' : 'inactive'}
+                              </span>
                             ) : (
-                              <Link
-                                className="btn btn-primary btn-sm"
-                                href="/admin/catalogue/insurers"
-                              >
-                                Add new →
-                              </Link>
+                              <span className="pill pill-muted">unmapped</span>
                             )}
                             {row.brokerConfirmed ? (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                onClick={() => clearInsurerMapping(row.code)}
-                              >
-                                Reset
-                              </button>
+                              <ConfidenceBadge confidence={1} variant="dot" />
                             ) : null}
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                          <td>
+                            <div className="row" style={{ gap: '0.25rem' }}>
+                              {row.registryId ? (
+                                <Link
+                                  className="btn btn-ghost btn-sm"
+                                  href={`/admin/catalogue/insurers/${row.registryId}/edit`}
+                                >
+                                  View
+                                </Link>
+                              ) : expandedCreate === row.code ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => setExpandedCreate(null)}
+                                >
+                                  Cancel
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => openCreateForm(row.code)}
+                                >
+                                  Add new →
+                                </button>
+                              )}
+                              {row.brokerConfirmed ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  onClick={() => clearInsurerMapping(row.code)}
+                                >
+                                  Reset
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {expandedCreate === row.code && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: '0 0 0.75rem' }}>
+                              <div
+                                className="bg-muted"
+                                style={{ padding: '1rem', borderRadius: '0.5rem' }}
+                              >
+                                <p className="field-help mb-3">
+                                  Create a new insurer in your registry and bind{' '}
+                                  <code>{row.code}</code> to it.
+                                </p>
+                                <div
+                                  className="form-grid mb-3"
+                                  style={{ gridTemplateColumns: '1fr 1fr' }}
+                                >
+                                  <div className="field mb-0">
+                                    <label className="field-label" htmlFor={`ci-name-${row.code}`}>
+                                      Name
+                                    </label>
+                                    <input
+                                      id={`ci-name-${row.code}`}
+                                      className="input"
+                                      value={createName}
+                                      onChange={(e) => setCreateName(e.target.value)}
+                                      placeholder="e.g. Allianz Insurance"
+                                    />
+                                  </div>
+                                  <div className="field mb-0">
+                                    <label className="field-label" htmlFor={`ci-code-${row.code}`}>
+                                      Code
+                                    </label>
+                                    <input
+                                      id={`ci-code-${row.code}`}
+                                      className="input"
+                                      value={createCode}
+                                      onChange={(e) =>
+                                        setCreateCode(
+                                          e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
+                                        )
+                                      }
+                                      placeholder="e.g. ALLIANZ"
+                                    />
+                                    {codeInvalid && (
+                                      <p
+                                        className="field-help"
+                                        style={{ color: 'var(--color-error, #b91c1c)' }}
+                                      >
+                                        Must start with a letter; uppercase only.
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="field mb-3">
+                                  <span className="field-label">Products supported</span>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      gap: '0.5rem',
+                                      marginTop: '0.5rem',
+                                    }}
+                                  >
+                                    {PRODUCT_TYPE_CODES.map((ptc) => (
+                                      <label
+                                        key={ptc}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem',
+                                          cursor: 'pointer',
+                                        }}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={createProducts.includes(ptc)}
+                                          onChange={(e) =>
+                                            setCreateProducts((prev) =>
+                                              e.target.checked
+                                                ? [...prev, ptc]
+                                                : prev.filter((c) => c !== ptc),
+                                            )
+                                          }
+                                        />
+                                        <span className="field-help mb-0">{ptc}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                                {createError && (
+                                  <p
+                                    className="field-help mb-3"
+                                    style={{ color: 'var(--color-error, #b91c1c)' }}
+                                  >
+                                    {createError}
+                                  </p>
+                                )}
+                                <div className="row" style={{ gap: '0.5rem' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-primary btn-sm"
+                                    disabled={!canCreate}
+                                    onClick={handleCreate}
+                                  >
+                                    {createInsurerMutation.isPending
+                                      ? 'Creating…'
+                                      : 'Create & bind'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    onClick={() => setExpandedCreate(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -295,7 +501,12 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
               className="field"
               style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '0.25rem' }}
             >
-              <Link className="btn btn-ghost btn-sm" href="/admin/catalogue/pools">
+              <Link
+                className="btn btn-ghost btn-sm"
+                href="/admin/catalogue/pools"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Manage pools →
               </Link>
             </div>
