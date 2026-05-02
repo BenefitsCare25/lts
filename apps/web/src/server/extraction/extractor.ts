@@ -291,20 +291,30 @@ export function buildEligibilityMatrix(
         // containment (18+ ⊂ 16+). Pass 4 picks the category with
         // the largest overlap when containment fails (e.g. "Grade
         // 08-17" overlaps 80% with GTL "Grade 08-15").
+        // When a product has no FW-specific categories (e.g. GTL which
+        // uses plain grade tiers for all employees), ignore the FW flag
+        // so FW benefit groups can still match on grade.
+        const hasFwCategories = [...catMap.keys()].some(
+          (catLabel) => parseGradeRange(catLabel)?.isForeignWorker === true,
+        );
         const groupGrade = labels.reduce<GradeRange | null>(
           (acc, l) => acc ?? parseGradeRange(l),
           null,
         );
         if (groupGrade) {
+          const effectiveGroupGrade =
+            groupGrade.isForeignWorker && !hasFwCategories
+              ? { ...groupGrade, isForeignWorker: false }
+              : groupGrade;
           let bestPlan: string | null = null;
           let bestOverlap = 0;
           for (const [catLabel, planCode] of catMap) {
             const catGrade = parseGradeRange(catLabel);
             if (!catGrade) continue;
-            if (gradeRangeContains(catGrade, groupGrade)) {
+            if (gradeRangeContains(catGrade, effectiveGroupGrade)) {
               return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
             }
-            const overlap = gradeRangeOverlap(groupGrade, catGrade);
+            const overlap = gradeRangeOverlap(effectiveGroupGrade, catGrade);
             if (overlap > bestOverlap) {
               bestOverlap = overlap;
               bestPlan = planCode;
