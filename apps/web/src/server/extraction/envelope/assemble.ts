@@ -2,10 +2,22 @@
 // Orchestrates field constructors, plan builder, and rate mapper.
 
 import type { ParseResult, ParsedPolicyEntity, ParsedProduct } from '@/server/ingestion/parser';
-import { looksLikePlaceholder, numberField, parsePeriod, policyNumberField, stringField } from './fields';
+import {
+  looksLikePlaceholder,
+  numberField,
+  parsePeriod,
+  policyNumberField,
+  stringField,
+} from './fields';
 import { buildPlans } from './plans';
 import { buildRates } from './rates';
-import type { CatalogueLookup, ExtractedProduct, PolicyEntityField, PremiumRateField, SourceRef } from './types';
+import type {
+  CatalogueLookup,
+  ExtractedProduct,
+  PolicyEntityField,
+  PremiumRateField,
+  SourceRef,
+} from './types';
 
 const EXTRACTOR_VERSION = 'heuristic-1.0';
 

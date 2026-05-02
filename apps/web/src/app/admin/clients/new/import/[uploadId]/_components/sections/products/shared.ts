@@ -4,9 +4,7 @@
 import type { WizardExtractedProduct, WizardPlanField } from '../_types';
 
 // Re-export ProductPatcher so each tab file imports from one place
-export type ProductPatcher = (
-  patch: (p: WizardExtractedProduct) => WizardExtractedProduct,
-) => void;
+export type ProductPatcher = (patch: (p: WizardExtractedProduct) => WizardExtractedProduct) => void;
 
 export const COVER_BASIS_OPTIONS: WizardPlanField['coverBasis'][] = [
   'per_cover_tier',

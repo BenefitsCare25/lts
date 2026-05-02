@@ -172,9 +172,7 @@ describe('inferPredicateFromText', () => {
 
   describe('combining logic', () => {
     it('ORs two employment-type patterns (Bargainable + Interns/Contract)', () => {
-      const result = inferPredicateFromText(
-        'Bargainable Employees, Interns & Contract Employees',
-      );
+      const result = inferPredicateFromText('Bargainable Employees, Interns & Contract Employees');
       expect(result.matchCount).toBe(2);
       const pred = result.predicate;
       expect(pred).toHaveProperty('or');
@@ -185,9 +183,7 @@ describe('inferPredicateFromText', () => {
     });
 
     it('ORs grade range + employment type when label has no "who are"', () => {
-      const result = inferPredicateFromText(
-        'Hay Job Grade 08-15 and Bargainable Staff',
-      );
+      const result = inferPredicateFromText('Hay Job Grade 08-15 and Bargainable Staff');
       expect(result.matchCount).toBe(2);
       const pred = result.predicate;
       expect(pred).toHaveProperty('or');
@@ -198,9 +194,7 @@ describe('inferPredicateFromText', () => {
     });
 
     it('ANDs grade + employment type when label contains "who are"', () => {
-      const result = inferPredicateFromText(
-        'Hay Job Grade 08-15 employees who are Bargainable',
-      );
+      const result = inferPredicateFromText('Hay Job Grade 08-15 employees who are Bargainable');
       expect(result.matchCount).toBe(2);
       const pred = result.predicate;
       expect(pred).toHaveProperty('and');
@@ -210,9 +204,7 @@ describe('inferPredicateFromText', () => {
     });
 
     it('ANDs grade + employment type when label contains "that are"', () => {
-      const result = inferPredicateFromText(
-        'Hay Job Grade 16+ employees that are Non-Bargainable',
-      );
+      const result = inferPredicateFromText('Hay Job Grade 16+ employees that are Non-Bargainable');
       expect(result.matchCount).toBe(2);
       expect(result.predicate).toHaveProperty('and');
     });

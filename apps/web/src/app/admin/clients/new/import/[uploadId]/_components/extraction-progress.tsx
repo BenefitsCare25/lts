@@ -263,12 +263,8 @@ function ProductRow({
       }}
     >
       <StatusDot status={status} />
-      <span className="font-[var(--font-mono)] text-xs">
-        {productKey}
-      </span>
-      <span className="ml-auto text-xs text-[var(--text-quaternary)]">
-        {label}
-      </span>
+      <span className="font-[var(--font-mono)] text-xs">{productKey}</span>
+      <span className="ml-auto text-xs text-[var(--text-quaternary)]">{label}</span>
     </div>
   );
 }

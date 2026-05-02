@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  ExtractedProduct,
-  PlanField,
-  PremiumRateField,
-} from '../heuristic-to-envelope';
+import type { ExtractedProduct, PlanField, PremiumRateField } from '../heuristic-to-envelope';
 import { sanitisePlanRawCodes } from './runner';
 
 // ─── Factories ─────────────────────────────────────────────────
 
-function makePlan(rawCode: string, confidence = 0.8, schedule: Record<string, unknown> = {}): PlanField {
+function makePlan(
+  rawCode: string,
+  confidence = 0.8,
+  schedule: Record<string, unknown> = {},
+): PlanField {
   return {
     rawCode,
     rawName: rawCode,
@@ -119,10 +119,7 @@ describe('sanitisePlanRawCodes', () => {
   describe('Phase 1 — multi-line rawCode stripping', () => {
     it('reduces multi-line rawCode to first line', () => {
       const multiLine = 'A\nSome long footnote description';
-      const product = makeProduct(
-        [makePlan(multiLine, 0.7)],
-        [makeRate(multiLine, 0.7)],
-      );
+      const product = makeProduct([makePlan(multiLine, 0.7)], [makeRate(multiLine, 0.7)]);
       const result = sanitisePlanRawCodes(product);
       expect(result.plans[0]?.rawCode).toBe('A');
       expect(result.premiumRates[0]?.planRawCode).toBe('A');
@@ -130,10 +127,7 @@ describe('sanitisePlanRawCodes', () => {
 
     it('trims whitespace from first line', () => {
       const multiLine = '  B  \nignored description';
-      const product = makeProduct(
-        [makePlan(multiLine, 0.7)],
-        [makeRate(multiLine, 0.7)],
-      );
+      const product = makeProduct([makePlan(multiLine, 0.7)], [makeRate(multiLine, 0.7)]);
       const result = sanitisePlanRawCodes(product);
       expect(result.plans[0]?.rawCode).toBe('B');
     });
@@ -196,10 +190,7 @@ describe('sanitisePlanRawCodes', () => {
       // Both plans must be present so codeMap maps the long form → 'A'
       const product = makeProduct(
         [makePlan('Plan A: Description', 0.6), makePlan('A', 0.9)],
-        [
-          makeRate('Plan A: Description', 0.6),
-          makeRate('A', 0.9),
-        ],
+        [makeRate('Plan A: Description', 0.6), makeRate('A', 0.9)],
       );
       const result = sanitisePlanRawCodes(product);
       // Both resolve to key "A::_::_" — only the higher confidence survives
@@ -211,16 +202,11 @@ describe('sanitisePlanRawCodes', () => {
       // A product with only long-form plans and no categories → no mapping possible
       const product = makeProduct(
         [makePlan('A', 0.9)],
-        [
-          makeRate('A', 0.9),
-          makeRate('Board of Directors who are in the executive category', 0.5),
-        ],
+        [makeRate('A', 0.9), makeRate('Board of Directors who are in the executive category', 0.5)],
         // No categories provided — unmapped long code gets dropped
       );
       // Add an extra plan with a very long rawCode that won't map
-      product.plans.push(
-        makePlan('Board of Directors who are in the executive category', 0.5),
-      );
+      product.plans.push(makePlan('Board of Directors who are in the executive category', 0.5));
       const result = sanitisePlanRawCodes(product);
       // The unmapped plan and its rate should be dropped
       const planCodes = result.plans.map((p) => p.rawCode);
@@ -228,10 +214,7 @@ describe('sanitisePlanRawCodes', () => {
     });
 
     it('preserves rates for plans that were already short codes', () => {
-      const product = makeProduct(
-        [makePlan('A'), makePlan('B')],
-        [makeRate('A'), makeRate('B')],
-      );
+      const product = makeProduct([makePlan('A'), makePlan('B')], [makeRate('A'), makeRate('B')]);
       const result = sanitisePlanRawCodes(product);
       const rateCodes = result.premiumRates.map((r) => r.planRawCode).sort();
       expect(rateCodes).toEqual(['A', 'B']);
