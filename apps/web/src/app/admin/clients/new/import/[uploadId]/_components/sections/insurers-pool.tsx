@@ -268,9 +268,7 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
                             <select
                               className="input"
                               value={row.registryId ?? ''}
-                              onChange={(e) =>
-                                setInsurerMapping(row.code, e.target.value || null)
-                              }
+                              onChange={(e) => setInsurerMapping(row.code, e.target.value || null)}
                               disabled={insurersQuery.isLoading}
                             >
                               <option value="">— pick an insurer —</option>
