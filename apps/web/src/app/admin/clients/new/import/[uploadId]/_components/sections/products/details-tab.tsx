@@ -2,7 +2,7 @@
 
 import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
-import type { FieldEnvelope, WizardExtractedProduct } from '../_types';
+import type { WizardExtractedProduct } from '../_types';
 import type { ProductPatcher } from './shared';
 
 // ── EditableFieldRow (used only in DetailsTab) ──────────────
@@ -122,9 +122,6 @@ export function DetailsTab({
     onChange((p) => ({ ...p, tpaId }));
   };
 
-  const hasValue = (field: FieldEnvelope<unknown>) =>
-    field.value != null || field.confidence > 0;
-
   return (
     <section className="section">
       <Card className="card-padded">
@@ -224,98 +221,77 @@ export function DetailsTab({
           </div>
         </div>
 
-        {(hasValue(product.header.ageLimitNoUnderwriting) ||
-          hasValue(product.header.aboveLastEntryAge) ||
-          hasValue(product.header.employeeAgeLimit) ||
-          hasValue(product.header.spouseAgeLimit) ||
-          hasValue(product.header.childAgeLimit) ||
-          hasValue(product.header.childMinimumAge)) && (
-          <>
-            <h3 className="mt-4 mb-3">Age limits</h3>
-            <div className="form-grid">
-              {hasValue(product.header.ageLimitNoUnderwriting) && (
-                <EditableFieldRow
-                  label="No underwriting limit (age)"
-                  value={product.header.ageLimitNoUnderwriting.value?.toString() ?? ''}
-                  onChange={(v) => {
-                    const n = Number.parseInt(v, 10);
-                    setHeader('ageLimitNoUnderwriting', Number.isFinite(n) ? n : null);
-                  }}
-                  confidence={product.header.ageLimitNoUnderwriting.confidence}
-                  sourceRef={product.header.ageLimitNoUnderwriting.sourceRef}
-                  inputType="number"
-                  placeholder="e.g. 55"
-                />
-              )}
-              {hasValue(product.header.aboveLastEntryAge) && (
-                <EditableFieldRow
-                  label="Above last entry age"
-                  value={product.header.aboveLastEntryAge.value ?? ''}
-                  onChange={(v) => setHeader('aboveLastEntryAge', v.trim() || null)}
-                  confidence={product.header.aboveLastEntryAge.confidence}
-                  sourceRef={product.header.aboveLastEntryAge.sourceRef}
-                  placeholder="e.g. Provisional basis"
-                />
-              )}
-              {hasValue(product.header.employeeAgeLimit) && (
-                <EditableFieldRow
-                  label="Employee age limit"
-                  value={product.header.employeeAgeLimit.value?.toString() ?? ''}
-                  onChange={(v) => {
-                    const n = Number.parseInt(v, 10);
-                    setHeader('employeeAgeLimit', Number.isFinite(n) ? n : null);
-                  }}
-                  confidence={product.header.employeeAgeLimit.confidence}
-                  sourceRef={product.header.employeeAgeLimit.sourceRef}
-                  inputType="number"
-                  placeholder="e.g. 65"
-                />
-              )}
-              {hasValue(product.header.spouseAgeLimit) && (
-                <EditableFieldRow
-                  label="Spouse age limit"
-                  value={product.header.spouseAgeLimit.value?.toString() ?? ''}
-                  onChange={(v) => {
-                    const n = Number.parseInt(v, 10);
-                    setHeader('spouseAgeLimit', Number.isFinite(n) ? n : null);
-                  }}
-                  confidence={product.header.spouseAgeLimit.confidence}
-                  sourceRef={product.header.spouseAgeLimit.sourceRef}
-                  inputType="number"
-                  placeholder="e.g. 65"
-                />
-              )}
-              {hasValue(product.header.childAgeLimit) && (
-                <EditableFieldRow
-                  label="Child age limit"
-                  value={product.header.childAgeLimit.value?.toString() ?? ''}
-                  onChange={(v) => {
-                    const n = Number.parseInt(v, 10);
-                    setHeader('childAgeLimit', Number.isFinite(n) ? n : null);
-                  }}
-                  confidence={product.header.childAgeLimit.confidence}
-                  sourceRef={product.header.childAgeLimit.sourceRef}
-                  inputType="number"
-                  placeholder="e.g. 19"
-                />
-              )}
-              {hasValue(product.header.childMinimumAge) && (
-                <EditableFieldRow
-                  label="Child minimum age"
-                  value={product.header.childMinimumAge.value?.toString() ?? ''}
-                  onChange={(v) => {
-                    const n = Number.parseInt(v, 10);
-                    setHeader('childMinimumAge', Number.isFinite(n) ? n : null);
-                  }}
-                  confidence={product.header.childMinimumAge.confidence}
-                  sourceRef={product.header.childMinimumAge.sourceRef}
-                  inputType="number"
-                  placeholder="e.g. 0"
-                />
-              )}
-            </div>
-          </>
-        )}
+        <h3 className="mt-4 mb-3">Age limits</h3>
+        <div className="form-grid">
+          <EditableFieldRow
+            label="No underwriting limit (age)"
+            value={product.header.ageLimitNoUnderwriting.value?.toString() ?? ''}
+            onChange={(v) => {
+              const n = Number.parseInt(v, 10);
+              setHeader('ageLimitNoUnderwriting', Number.isFinite(n) ? n : null);
+            }}
+            confidence={product.header.ageLimitNoUnderwriting.confidence}
+            sourceRef={product.header.ageLimitNoUnderwriting.sourceRef}
+            inputType="number"
+            placeholder="e.g. 55"
+          />
+          <EditableFieldRow
+            label="Above last entry age"
+            value={product.header.aboveLastEntryAge.value ?? ''}
+            onChange={(v) => setHeader('aboveLastEntryAge', v.trim() || null)}
+            confidence={product.header.aboveLastEntryAge.confidence}
+            sourceRef={product.header.aboveLastEntryAge.sourceRef}
+            placeholder="e.g. Provisional basis"
+          />
+          <EditableFieldRow
+            label="Employee age limit"
+            value={product.header.employeeAgeLimit.value?.toString() ?? ''}
+            onChange={(v) => {
+              const n = Number.parseInt(v, 10);
+              setHeader('employeeAgeLimit', Number.isFinite(n) ? n : null);
+            }}
+            confidence={product.header.employeeAgeLimit.confidence}
+            sourceRef={product.header.employeeAgeLimit.sourceRef}
+            inputType="number"
+            placeholder="e.g. 65"
+          />
+          <EditableFieldRow
+            label="Spouse age limit"
+            value={product.header.spouseAgeLimit.value?.toString() ?? ''}
+            onChange={(v) => {
+              const n = Number.parseInt(v, 10);
+              setHeader('spouseAgeLimit', Number.isFinite(n) ? n : null);
+            }}
+            confidence={product.header.spouseAgeLimit.confidence}
+            sourceRef={product.header.spouseAgeLimit.sourceRef}
+            inputType="number"
+            placeholder="e.g. 65"
+          />
+          <EditableFieldRow
+            label="Child age limit"
+            value={product.header.childAgeLimit.value?.toString() ?? ''}
+            onChange={(v) => {
+              const n = Number.parseInt(v, 10);
+              setHeader('childAgeLimit', Number.isFinite(n) ? n : null);
+            }}
+            confidence={product.header.childAgeLimit.confidence}
+            sourceRef={product.header.childAgeLimit.sourceRef}
+            inputType="number"
+            placeholder="e.g. 19"
+          />
+          <EditableFieldRow
+            label="Child minimum age"
+            value={product.header.childMinimumAge.value?.toString() ?? ''}
+            onChange={(v) => {
+              const n = Number.parseInt(v, 10);
+              setHeader('childMinimumAge', Number.isFinite(n) ? n : null);
+            }}
+            confidence={product.header.childMinimumAge.confidence}
+            sourceRef={product.header.childMinimumAge.sourceRef}
+            inputType="number"
+            placeholder="e.g. 0"
+          />
+        </div>
 
         <h3 className="mt-4 mb-3">Eligibility</h3>
         <EditableFieldRow
