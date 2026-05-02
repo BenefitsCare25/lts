@@ -10,10 +10,11 @@ import {
   type WizardPlanField,
   type WizardPremiumRateField,
   extractedProductsFromDraft,
+  suggestionsFromDraft,
 } from './_types';
 
 type Props = {
-  draft: { id: string; extractedProducts: unknown };
+  draft: { id: string; extractedProducts: unknown; progress: unknown };
   markSectionDirty?: (id: SectionId) => void;
 };
 
@@ -61,6 +62,15 @@ const COVER_BASIS_OPTIONS: WizardPlanField['coverBasis'][] = [
   'earnings_based',
   'per_employee_flat',
 ];
+
+const COVER_BASIS_LABELS: Record<WizardPlanField['coverBasis'], string> = {
+  per_cover_tier: 'Per cover tier',
+  salary_multiple: 'Salary multiple',
+  fixed_amount: 'Fixed amount',
+  per_region: 'Per region',
+  earnings_based: 'Earnings based',
+  per_employee_flat: 'Per employee (flat)',
+};
 
 const COMMON_COVER_TIERS = ['EO', 'EF', 'E1C', 'E2C', 'E3C', 'E4C'];
 
@@ -220,7 +230,11 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
             <DetailsTab product={active} onChange={(patch) => updateProduct(activeIndex, patch)} />
           ) : null}
           {activeTab === 'plans' ? (
-            <PlansTab product={active} onChange={(patch) => updateProduct(activeIndex, patch)} />
+            <PlansTab
+              product={active}
+              onChange={(patch) => updateProduct(activeIndex, patch)}
+              progress={draft.progress}
+            />
           ) : null}
           {activeTab === 'rates' ? (
             <RatesTab product={active} onChange={(patch) => updateProduct(activeIndex, patch)} />
@@ -427,10 +441,26 @@ function DetailsTab({
 function PlansTab({
   product,
   onChange,
+  progress,
 }: {
   product: WizardExtractedProduct;
   onChange: ProductPatcher;
+  progress: unknown;
 }) {
+  // Build plan → [group labels] mapping for the assignment panel.
+  const planGroupMap = useMemo(() => {
+    const suggestions = suggestionsFromDraft(progress);
+    const map = new Map<string, string[]>();
+    for (const row of suggestions.eligibilityMatrix) {
+      const col = row.perProduct.find((p) => p.productTypeCode === product.productTypeCode);
+      if (!col?.defaultPlanRawCode) continue;
+      const list = map.get(col.defaultPlanRawCode) ?? [];
+      list.push(row.groupRawLabel);
+      map.set(col.defaultPlanRawCode, list);
+    }
+    return map;
+  }, [progress, product.productTypeCode]);
+
   const updatePlan = (idx: number, patch: Partial<WizardPlanField>) => {
     onChange((p) => ({
       ...p,
@@ -474,7 +504,6 @@ function PlansTab({
                   <th>Code</th>
                   <th>Name</th>
                   <th>Cover basis</th>
-                  <th>Stacks on</th>
                   <th>Schedule</th>
                   <th aria-label="actions" />
                 </tr>
@@ -511,27 +540,9 @@ function PlansTab({
                       >
                         {COVER_BASIS_OPTIONS.map((cb) => (
                           <option key={cb} value={cb}>
-                            {cb}
+                            {COVER_BASIS_LABELS[cb]}
                           </option>
                         ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="input"
-                        value={plan.stacksOnRawCode ?? ''}
-                        onChange={(e) =>
-                          updatePlan(idx, { stacksOnRawCode: e.target.value || null })
-                        }
-                      >
-                        <option value="">— none —</option>
-                        {product.plans
-                          .filter((other) => other.rawCode && other.rawCode !== plan.rawCode)
-                          .map((other) => (
-                            <option key={other.rawCode} value={other.rawCode}>
-                              {other.code} · {other.name.slice(0, 40)}
-                            </option>
-                          ))}
                       </select>
                     </td>
                     <td>
@@ -566,12 +577,7 @@ function PlansTab({
           </button>
         </div>
 
-        {hasStacking(product.plans) ? (
-          <div className="mt-4">
-            <h4 className="mb-2">Stacking visualisation</h4>
-            <StackingTree plans={product.plans} />
-          </div>
-        ) : null}
+        <BenefitGroupsPanel plans={product.plans} planGroupMap={planGroupMap} />
       </Card>
     </section>
   );
@@ -616,12 +622,14 @@ function ScheduleEditor({
           width="8rem"
         />
       ) : null}
-      <NumberInput
-        label="R&B"
-        value={typeof schedule.dailyRoomBoard === 'number' ? schedule.dailyRoomBoard : null}
-        onChange={(v) => setKey('dailyRoomBoard', v)}
-        width="6rem"
-      />
+      {coverBasis === 'per_cover_tier' || typeof schedule.dailyRoomBoard === 'number' ? (
+        <NumberInput
+          label="R&B"
+          value={typeof schedule.dailyRoomBoard === 'number' ? schedule.dailyRoomBoard : null}
+          onChange={(v) => setKey('dailyRoomBoard', v)}
+          width="6rem"
+        />
+      ) : null}
     </div>
   );
 }
@@ -660,39 +668,62 @@ function NumberInput({
   );
 }
 
-function hasStacking(plans: WizardPlanField[]): boolean {
-  return plans.some((p) => p.stacksOnRawCode);
-}
-
-function StackingTree({ plans }: { plans: WizardPlanField[] }) {
-  const { bases, childrenOf } = useMemo(() => {
-    const byRawCode = new Map(plans.map((p) => [p.rawCode, p]));
-    const childMap = new Map<string, WizardPlanField[]>();
-    const baseList: WizardPlanField[] = [];
-    for (const plan of plans) {
-      if (plan.stacksOnRawCode && byRawCode.has(plan.stacksOnRawCode)) {
-        const list = childMap.get(plan.stacksOnRawCode) ?? [];
-        list.push(plan);
-        childMap.set(plan.stacksOnRawCode, list);
-      } else {
-        baseList.push(plan);
-      }
-    }
-    return { bases: baseList, childrenOf: childMap };
-  }, [plans]);
+function BenefitGroupsPanel({
+  plans,
+  planGroupMap,
+}: {
+  plans: WizardPlanField[];
+  planGroupMap: Map<string, string[]>;
+}) {
+  if (plans.length === 0) return null;
   return (
-    <ul className="kv-list">
-      {bases.map((base) => (
-        <li key={base.code}>
-          <code>{base.code}</code> — {base.name}
-          {childrenOf.get(base.rawCode)?.map((child) => (
-            <div key={child.code} style={{ marginLeft: '1.5rem' }}>
-              ↳ <code>{child.code}</code> stacks on <code>{base.code}</code> ({child.name})
-            </div>
-          )) ?? null}
-        </li>
-      ))}
-    </ul>
+    <div className="mt-4">
+      <h4 className="mb-2">Benefit group assignments</h4>
+      <p className="field-help mb-2">
+        Which employee groups are assigned to each plan (edit in the Benefit groups section).
+      </p>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{ width: '5rem' }}>Plan</th>
+              <th>Assigned groups</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plans.map((plan, idx) => {
+              const groups = planGroupMap.get(plan.rawCode) ?? [];
+              return (
+                <tr key={`bg-${idx}-${plan.code}`}>
+                  <td>
+                    <code>{plan.code}</code>
+                  </td>
+                  <td>
+                    {groups.length === 0 ? (
+                      <span
+                        className="text-muted-foreground"
+                        style={{ fontSize: 'var(--font-sm)' }}
+                      >
+                        — not assigned —
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 'var(--font-sm)' }}>
+                        {groups.map((g, i) => (
+                          <span key={g}>
+                            {i > 0 && <span className="text-muted-foreground">, </span>}
+                            {g.length > 65 ? `${g.slice(0, 65)}…` : g}
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

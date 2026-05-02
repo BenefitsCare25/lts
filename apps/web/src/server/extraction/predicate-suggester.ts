@@ -104,6 +104,33 @@ export function suggestBenefitGroups(
     if (gKey) gradeKeyIndex.set(gKey, idx);
   }
 
+  // Phase 2b: prefix-dedup for non-grade labels. Labels that are pure
+  // prefixes of other labels (min 40 chars) represent the same population
+  // with extra annotations. Keep the shortest as canonical.
+  for (let i = 0; i < groups.length; i++) {
+    const gi = groups[i];
+    if (!gi || extractGradeKey(gi.canonical.label)) continue; // handled by grade-key
+    for (let j = groups.length - 1; j > i; j--) {
+      const gj = groups[j];
+      if (!gj || extractGradeKey(gj.canonical.label)) continue;
+      const shorter = gi.canonical.label.length <= gj.canonical.label.length ? gi : gj;
+      const longer = gi.canonical.label.length <= gj.canonical.label.length ? gj : gi;
+      if (
+        shorter.canonical.label.length >= 40 &&
+        longer.canonical.label.toLowerCase().startsWith(shorter.canonical.label.toLowerCase())
+      ) {
+        shorter.aliases.push(longer.canonical, ...longer.aliases);
+        longer.canonical = { ...longer.canonical, label: '' };
+      }
+    }
+  }
+  // Remove merged groups (marked with empty label).
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if ((groups[i] as { canonical: CollectedCategory }).canonical.label === '') {
+      groups.splice(i, 1);
+    }
+  }
+
   // Phase 3: merge orphan WP/SP-only labels with their grade+WP/SP
   // counterpart. Example: "Work Permit & S-Pass workers" (no grade)
   // and "Grade 30 & below (Work Permit & S Pass)" (has grade) are

@@ -41,10 +41,16 @@ export const PREDICATE_PATTERNS: ReadonlyArray<Pattern> = [
     re: /Foreign\s*Workers?|FW\s*(?:WP|SP)|Work\s*Permit\s*or\s*S-?\s*Pass/i,
     build: () => ({ in: [{ var: 'employee.work_pass_type' }, ['WORK_PERMIT', 'S_PASS']] }),
   },
+  // "Non-bargainable" — must come before Bargainable to take precedence.
+  {
+    re: /\bNon[\s-]*bargainable\b/i,
+    build: () => ({ '==': [{ var: 'employee.employment_type' }, 'NON_BARGAINABLE'] }),
+  },
   // "Bargainable" — maps to employment_type enum (not a stand-alone
   // boolean) per the seeded EmployeeSchema STANDARD field.
+  // Negative lookbehind prevents matching "Non-bargainable".
   {
-    re: /\bBargainable\b/i,
+    re: /(?<!non[\s-]*)\bBargainable\b/i,
     build: () => ({ '==': [{ var: 'employee.employment_type' }, 'BARGAINABLE'] }),
   },
   // "Intern" / "Contract"
@@ -86,6 +92,26 @@ export function flattenAnd(node: unknown): unknown {
   return { and: out };
 }
 
+// Returns true if pred constrains employee.employment_type (== or in).
+function isEmploymentTypePredicate(pred: Record<string, unknown>): boolean {
+  const eqArr = pred['=='] as unknown[] | undefined;
+  if (Array.isArray(eqArr) && eqArr.length === 2) {
+    const v = eqArr[0] as Record<string, unknown> | undefined;
+    if (v?.var === 'employee.employment_type') return true;
+  }
+  const inArr = pred.in as unknown[] | undefined;
+  if (Array.isArray(inArr) && inArr.length === 2) {
+    const v = inArr[0] as Record<string, unknown> | undefined;
+    if (v?.var === 'employee.employment_type') return true;
+  }
+  return false;
+}
+
+// Returns true if pred constrains hay_job_grade.
+function isGradePredicate(pred: Record<string, unknown>): boolean {
+  return JSON.stringify(pred).includes('hay_job_grade');
+}
+
 export function inferPredicateFromText(text: string): PredicateInference {
   const matches: Record<string, unknown>[] = [];
   for (const p of PREDICATE_PATTERNS) {
@@ -93,9 +119,41 @@ export function inferPredicateFromText(text: string): PredicateInference {
     if (m) matches.push(p.build(m));
   }
   if (matches.length === 0) return { predicate: {}, matchCount: 0 };
-  const raw = matches.length === 1 ? (matches[0] ?? {}) : { and: matches };
+  if (matches.length === 1)
+    return {
+      predicate: flattenAnd(matches[0] ?? {}) as Record<string, unknown>,
+      matchCount: 1,
+    };
+
+  const empTypePreds = matches.filter(isEmploymentTypePredicate);
+  const otherPreds = matches.filter((m) => !isEmploymentTypePredicate(m));
+
+  let combined: unknown;
+
+  if (empTypePreds.length >= 2) {
+    // Multiple employment types (e.g. Bargainable + Intern/Contract) → OR them.
+    // An employee can only have one employment_type at a time.
+    const empOr: Record<string, unknown> = { or: empTypePreds };
+    combined = otherPreds.length === 0 ? empOr : { and: [empOr, ...otherPreds] };
+  } else if (
+    empTypePreds.length === 1 &&
+    otherPreds.some(isGradePredicate) &&
+    !/\bwho\s+are\b|\bthat\s+are\b/i.test(text)
+  ) {
+    // Grade range + employment type joined as additive populations
+    // (e.g. "Grade 08-15 and Bargainable Staff") → OR, not AND.
+    // "Who are" / "that are" signals a subset refinement → falls through to AND.
+    const gradePreds = otherPreds.filter(isGradePredicate);
+    const nonGrade = otherPreds.filter((p) => !isGradePredicate(p));
+    const gradeClause = gradePreds.length === 1 ? (gradePreds[0] ?? {}) : { and: gradePreds };
+    const orClause: Record<string, unknown> = { or: [gradeClause, empTypePreds[0] ?? {}] };
+    combined = nonGrade.length === 0 ? orClause : { and: [orClause, ...nonGrade] };
+  } else {
+    combined = { and: matches };
+  }
+
   return {
-    predicate: flattenAnd(raw) as Record<string, unknown>,
+    predicate: flattenAnd(combined) as Record<string, unknown>,
     matchCount: matches.length,
   };
 }
