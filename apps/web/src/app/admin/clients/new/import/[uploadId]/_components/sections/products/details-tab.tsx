@@ -117,7 +117,7 @@ export function DetailsTab({
     onChange((p) => ({ ...p, insurerCode: value.trim().toUpperCase() }));
   };
 
-  const tpasQuery = trpc.tpas.list.useQuery();
+  const tpasQuery = trpc.tpas.list.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
   const setTpaId = (tpaId: string | null) => {
     onChange((p) => ({ ...p, tpaId }));
   };

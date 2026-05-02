@@ -334,7 +334,7 @@ function normalizeProduct(raw: unknown): WizardExtractedProduct {
   const h = (p.header ?? {}) as WizardExtractedProduct['header'] & Record<string, unknown>;
   return {
     ...p,
-    tpaId: (p as Record<string, unknown>).tpaId as string | null ?? null,
+    tpaId: (p as Record<string, unknown>).tpaId as string | null | undefined ?? null,
     header: {
       ...h,
       ageLimitNoUnderwriting:
