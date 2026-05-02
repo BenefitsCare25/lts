@@ -21,16 +21,20 @@ type Pattern = {
 // or be acknowledged as CUSTOM additions in the wizard's Schema
 // Additions section.
 export const PREDICATE_PATTERNS: ReadonlyArray<Pattern> = [
-  // "Hay Job Grade 18 and above"
+  // "Hay Job Grade 18 and above" / "Grade 18 and above" / "Grade 18 & above" / "Grade 18+"
   {
-    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:and\s*above|\+)/i,
+    re: /(?:Hay\s*Job\s*)?Grade\s*0*(\d{1,2})\s*(?:and\s*above|&\s*above|\+)/i,
     build: (m) => ({ '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] }),
   },
-  // "Hay Job Grade 08 to 15" or "Grade 08 to 10 / 11 to 17" (split label — both sides same plan)
-  // Capture all range numbers: first range lo/hi, then optional second range lo/hi.
+  // "Grade 30 and below" / "Grade 30 & below"
+  {
+    re: /(?:Hay\s*Job\s*)?Grade\s*0*(\d{1,2})\s*(?:and\s*below|&\s*below)/i,
+    build: (m) => ({ '<=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] }),
+  },
+  // "Hay Job Grade 08 to 15" / "Grade 40 - 70" / split "Grade 08 to 10 / 11 to 17"
   // Span the full extent: >= min(all lows) AND <= max(all highs).
   {
-    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})(?:\s*\/\s*(?:Hay\s*Job\s*Grade\s*)?0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2}))?/i,
+    re: /(?:Hay\s*Job\s*)?Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})(?:\s*\/\s*(?:(?:Hay\s*Job\s*)?Grade\s*)?0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2}))?/i,
     build: (m) => {
       const lo = m[3] ? Math.min(Number(m[1]), Number(m[3])) : Number(m[1]);
       const hi = m[4] ? Math.max(Number(m[2]), Number(m[4])) : Number(m[2]);
@@ -42,9 +46,20 @@ export const PREDICATE_PATTERNS: ReadonlyArray<Pattern> = [
       };
     },
   },
-  // "Foreign Workers" / "Work Permit or S-Pass"
+  // "Grade 80 & 90" — two specific grade values joined by &
+  // Must come after above/below patterns; the digit check after & prevents matching "& above".
   {
-    re: /Foreign\s*Workers?|FW\s*(?:WP|SP)|Work\s*Permit\s*or\s*S-?\s*Pass/i,
+    re: /(?:Hay\s*Job\s*)?Grade\s*0*(\d{1,2})\s*&\s*0*(\d{1,2})\b/i,
+    build: (m) => ({
+      or: [
+        { '==': [{ var: 'employee.hay_job_grade' }, Number(m[1])] },
+        { '==': [{ var: 'employee.hay_job_grade' }, Number(m[2])] },
+      ],
+    }),
+  },
+  // "Foreign Workers" / "Work Permit or/& S-Pass" / "FW WP/SP"
+  {
+    re: /Foreign\s*Workers?|FW\s*(?:WP|SP)|Work\s*Permit\s*(?:or|&)\s*S-?\s*Pass/i,
     build: () => ({ in: [{ var: 'employee.work_pass_type' }, ['WORK_PERMIT', 'S_PASS']] }),
   },
   // "Non-bargainable" — must come before Bargainable to take precedence.

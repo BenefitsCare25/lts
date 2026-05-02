@@ -243,7 +243,7 @@ export function GroupsTab({
     if (Object.keys(groups).length > 0) return { groups: { ...groups } };
     const init: Record<string, GroupOverride> = {};
     for (const c of deriveEmployeeCategories(suggestionsFromDraft(draft.progress))) {
-      init[c.key] = { included: c.tokenMatches > 0 };
+      init[c.key] = { included: true };
     }
     return { groups: init };
   });
