@@ -383,7 +383,8 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
                 <option value="">— no TPA —</option>
                 {(tpasQuery.data ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}{t.active ? '' : ' · inactive'}
+                    {t.name}
+                    {t.active ? '' : ' · inactive'}
                   </option>
                 ))}
               </select>

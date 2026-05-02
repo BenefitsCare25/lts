@@ -341,8 +341,7 @@ function normalizeProduct(raw: unknown): WizardExtractedProduct {
         (h.aboveLastEntryAge as FieldEnvelope<string> | undefined) ?? EMPTY_STRING_FIELD,
       employeeAgeLimit:
         (h.employeeAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
-      spouseAgeLimit:
-        (h.spouseAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
+      spouseAgeLimit: (h.spouseAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
       childAgeLimit: (h.childAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
       childMinimumAge:
         (h.childMinimumAge as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
