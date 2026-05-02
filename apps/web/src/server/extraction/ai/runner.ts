@@ -665,33 +665,117 @@ function buildMetaForZeroProducts(args: {
 // Plan rawCode sanitisation
 // ─────────────────────────────────────────────────────────────
 //
-// The AI sometimes picks up multi-line cell content as a plan
-// code — e.g. "3\n\n* Bargainable employees is eligible for
-// 4 Bed Govt/Restr. Hospital" instead of just "3". Strip to
-// the first non-empty line and dedup so the corrupted and
-// clean versions collapse into one plan.
+// The AI frequently emits duplicate plans: once with a short
+// code ("A", "1") and again with a long descriptive rawCode
+// ("Plan A: Hay Job Grade 16 and above" or the full category
+// label). Both survive `mergePlans` because it keys on exact
+// rawCode. This function:
+//   1. Resolves each rawCode to a canonical short code
+//   2. Deduplicates plans by the canonical code
+//   3. Remaps premiumRates.planRawCode to match
+//
+// Resolution order:
+//   a. Multi-line → first line (GHS footnote pattern)
+//   b. "Plan X: description" → X (GTL/GPA pattern)
+//   c. Long descriptive code when short-code plans exist →
+//      map via category label matching, or drop
+
+const PLAN_CODE_PREFIX_RE = /^Plan\s+([A-Za-z0-9]+)\s*[:\-–—]/i;
+const SHORT_CODE_MAX_LEN = 10;
+
+function isShortCode(code: string): boolean {
+  return code.length <= SHORT_CODE_MAX_LEN && !code.includes('\n');
+}
 
 function sanitisePlanRawCodes(product: ExtractedProduct): ExtractedProduct {
   if (!product.plans || product.plans.length === 0) return product;
 
-  const cleanCode = (raw: string): string => (raw.split('\n')[0] ?? raw).trim();
+  type PlanT = ExtractedProduct['plans'][number];
+  type RateT = ExtractedProduct['premiumRates'][number];
+  const scheduleDepth = (p: PlanT) => Object.keys(p.schedule ?? {}).length;
 
-  const dedupMap = new Map<string, ExtractedProduct['plans'][number]>();
+  // Phase 1: classify plans and build rawCode → canonical mapping
+  const codeMap = new Map<string, string>();
+  const shortCodes = new Set<string>();
+
   for (const plan of product.plans) {
-    const cleaned = cleanCode(plan.rawCode);
-    const existing = dedupMap.get(cleaned);
-    if (!existing) {
-      dedupMap.set(cleaned, { ...plan, rawCode: cleaned });
+    const rc = plan.rawCode;
+    // Multi-line → first line
+    if (rc.includes('\n')) {
+      const first = (rc.split('\n')[0] ?? rc).trim();
+      codeMap.set(rc, first);
+      if (isShortCode(first)) shortCodes.add(first);
       continue;
     }
-    const scheduleKeys = (p: ExtractedProduct['plans'][number]) =>
-      Object.keys(p.schedule ?? {}).length;
-    if (scheduleKeys(plan) > scheduleKeys(existing) || plan.confidence > existing.confidence) {
-      dedupMap.set(cleaned, { ...plan, rawCode: cleaned });
+    // "Plan A: description" → A
+    const prefixMatch = rc.match(PLAN_CODE_PREFIX_RE);
+    if (prefixMatch?.[1]) {
+      codeMap.set(rc, prefixMatch[1]);
+      shortCodes.add(prefixMatch[1]);
+      continue;
+    }
+    if (isShortCode(rc)) {
+      shortCodes.add(rc);
     }
   }
 
-  return { ...product, plans: Array.from(dedupMap.values()) };
+  // Phase 2: long descriptive codes that didn't match a pattern.
+  // If short-code plans exist, map descriptive plans to the short code
+  // via the category → defaultPlanRawCode linkage, or drop them.
+  if (shortCodes.size > 0) {
+    const categories = product.eligibility?.categories ?? [];
+    for (const plan of product.plans) {
+      if (codeMap.has(plan.rawCode) || isShortCode(plan.rawCode)) continue;
+      const planLabel = plan.rawCode.replace(/\s+/g, ' ').trim().toLowerCase();
+      let mapped = false;
+      for (const cat of categories) {
+        const catLabel = cat.category.replace(/\s+/g, ' ').trim().toLowerCase();
+        if (!cat.defaultPlanRawCode) continue;
+        const shorter = planLabel.length <= catLabel.length ? planLabel : catLabel;
+        const longer = planLabel.length <= catLabel.length ? catLabel : planLabel;
+        if (shorter.length >= 10 && longer.startsWith(shorter)) {
+          codeMap.set(plan.rawCode, cat.defaultPlanRawCode);
+          mapped = true;
+          break;
+        }
+      }
+      if (!mapped) codeMap.set(plan.rawCode, '');
+    }
+  }
+
+  // Phase 3: dedup plans by canonical rawCode
+  const planDedup = new Map<string, PlanT>();
+  for (const plan of product.plans) {
+    const canonical = codeMap.get(plan.rawCode) ?? plan.rawCode;
+    if (canonical === '') continue;
+    const existing = planDedup.get(canonical);
+    if (!existing) {
+      planDedup.set(canonical, { ...plan, rawCode: canonical });
+      continue;
+    }
+    if (scheduleDepth(plan) > scheduleDepth(existing) || plan.confidence > existing.confidence) {
+      planDedup.set(canonical, { ...plan, rawCode: canonical });
+    }
+  }
+
+  // Phase 4: remap premiumRates, dedup by (planRawCode, coverTier, blockLabel)
+  const rateDedup = new Map<string, RateT>();
+  for (const r of product.premiumRates ?? []) {
+    const canonical = codeMap.get(r.planRawCode) ?? r.planRawCode;
+    if (canonical === '') continue;
+    const remapped = canonical !== r.planRawCode ? { ...r, planRawCode: canonical } : r;
+    const key = `${remapped.planRawCode}::${remapped.coverTier ?? '_'}::${remapped.blockLabel ?? '_'}`;
+    const existing = rateDedup.get(key);
+    if (!existing || remapped.confidence > existing.confidence) {
+      rateDedup.set(key, remapped);
+    }
+  }
+
+  return {
+    ...product,
+    plans: Array.from(planDedup.values()),
+    premiumRates: Array.from(rateDedup.values()),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
