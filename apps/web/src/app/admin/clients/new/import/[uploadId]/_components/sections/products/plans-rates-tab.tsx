@@ -107,6 +107,7 @@ function PlanCard({
   planIdx,
   planRates,
   assignedGroups,
+  eligibilityCategories,
   onUpdatePlan,
   onRemovePlan,
   onAddRate,
@@ -117,6 +118,7 @@ function PlanCard({
   planIdx: number;
   planRates: Array<{ rate: WizardPremiumRateField; idx: number }>;
   assignedGroups: Array<{ key: string; name: string; brokerOverride: boolean }>;
+  eligibilityCategories: WizardExtractedProduct['eligibility']['categories'];
   onUpdatePlan: (patch: Partial<WizardPlanField>) => void;
   onRemovePlan: () => void;
   onAddRate: () => void;
@@ -124,6 +126,17 @@ function PlanCard({
   onRemoveRate: (rateIdx: number) => void;
 }) {
   const [groupsExpanded, setGroupsExpanded] = useState(false);
+  const showMultiplierCol = plan.coverBasis === 'salary_multiple';
+
+  const categoryMultiplier = (blockLabel: string | null | undefined): number | null => {
+    if (!blockLabel || !showMultiplierCol) return null;
+    const exact = eligibilityCategories.find((c) => c.category === blockLabel);
+    if (exact) return exact.multiplier ?? null;
+    const partial = eligibilityCategories.find(
+      (c) => c.category.startsWith(blockLabel) || blockLabel.startsWith(c.category),
+    );
+    return partial?.multiplier ?? null;
+  };
 
   return (
     <Card className="card-padded">
@@ -184,6 +197,7 @@ function PlanCard({
                   <th>Tier</th>
                   <th>Block</th>
                   <th>Age</th>
+                  {showMultiplierCol ? <th>Multiplier</th> : null}
                   <th>Rate / 1,000</th>
                   <th>Fixed amount</th>
                   <th aria-label="actions" />
@@ -217,6 +231,25 @@ function PlanCard({
                         placeholder="(all)"
                       />
                     </td>
+                    {showMultiplierCol ? (
+                      <td>
+                        {(() => {
+                          const m = categoryMultiplier(rate.blockLabel);
+                          return m != null ? (
+                            <span
+                              className="text-muted"
+                              style={{ fontSize: 'var(--font-sm)', whiteSpace: 'nowrap' }}
+                            >
+                              {m}× salary
+                            </span>
+                          ) : (
+                            <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
+                              —
+                            </span>
+                          );
+                        })()}
+                      </td>
+                    ) : null}
                     <td>
                       <div className="row" style={{ gap: '0.15rem', alignItems: 'center' }}>
                         <input
@@ -540,6 +573,7 @@ export function PlansRatesTab({
             planIdx={idx}
             planRates={ratesByPlan.get(plan.rawCode) ?? []}
             assignedGroups={groupsByPlan.get(plan.rawCode) ?? []}
+            eligibilityCategories={product.eligibility.categories}
             onUpdatePlan={(patch) => updatePlan(idx, patch)}
             onRemovePlan={() => removePlan(idx)}
             onAddRate={() => addRate(plan.rawCode)}

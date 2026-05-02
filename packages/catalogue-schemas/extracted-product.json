@@ -198,6 +198,10 @@
           "type": ["string", "null"],
           "description": "raw formula text, e.g. '24 x LDBMS'"
         },
+        "multiplier": {
+          "type": ["number", "null"],
+          "description": "Numeric salary multiple parsed from sumInsuredFormula, e.g. 24 from '24 x LDBMS'. Populated when coverBasis is salary_multiple."
+        },
         "participation": { "type": ["string", "null"] },
         "defaultPlanRawCode": {
           "type": ["string", "null"],
