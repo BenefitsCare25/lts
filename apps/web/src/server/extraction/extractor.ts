@@ -206,10 +206,28 @@ function buildEligibilityMatrix(
       perProduct: products.map((p) => {
         const catMap = productCategoryPlans.get(p.productTypeCode);
         if (!catMap) return { productTypeCode: p.productTypeCode, defaultPlanRawCode: null };
+
+        // Pass 1: exact match.
         for (const label of labels) {
           const planCode = catMap.get(label);
           if (planCode) return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
         }
+
+        // Pass 2: prefix match. Different products sometimes label the same population
+        // with different amounts of detail — e.g. SP says "Grade 18 and above and their
+        // Eligible Dependents (Local Plans & FW Plans)" while GHS says just "Grade 18 and
+        // above". Accept a match when one string is a prefix of the other and the shorter
+        // one is at least 15 chars (guards against trivially short common prefixes).
+        for (const label of labels) {
+          for (const [catLabel, planCode] of catMap) {
+            const shorter = label.length <= catLabel.length ? label : catLabel;
+            const longer = label.length <= catLabel.length ? catLabel : label;
+            if (shorter.length >= 15 && longer.startsWith(shorter)) {
+              return { productTypeCode: p.productTypeCode, defaultPlanRawCode: planCode };
+            }
+          }
+        }
+
         return { productTypeCode: p.productTypeCode, defaultPlanRawCode: null };
       }),
     };
