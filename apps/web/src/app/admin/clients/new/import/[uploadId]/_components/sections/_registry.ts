@@ -28,7 +28,7 @@ export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: 'benefit_year', label: 'Benefit year' },
   { id: 'insurers', label: 'Insurers & pool' },
   { id: 'products', label: 'Products' },
-  { id: 'eligibility', label: 'Eligibility' },
+  { id: 'eligibility', label: 'Benefit groups' },
   { id: 'schema_additions', label: 'Schema additions' },
   { id: 'reconciliation', label: 'Reconciliation' },
   { id: 'review', label: 'Review & apply' },

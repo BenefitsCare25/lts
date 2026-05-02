@@ -32,7 +32,7 @@ export type ProductAssignmentRow = {
   effectivePlan: string | null;
 };
 
-export type ProductPlanMap = {
+type ProductPlanMap = {
   productTypeCode: string;
   insurerCode: string;
   plans: WizardExtractedProduct['plans'];
@@ -146,28 +146,6 @@ export function buildProductAssignments(
       };
     }),
   }));
-}
-
-export function categoryUsedByProducts(
-  category: DerivedCategory,
-  suggestions: WizardSuggestions,
-): string[] {
-  const nameToLabel = new Map<string, string>();
-  for (const g of suggestions.benefitGroups) {
-    nameToLabel.set(g.suggestedName, g.sourcePlanLabel);
-  }
-
-  const products = new Set<string>();
-  for (const srcName of category.sourceSuggestions) {
-    const label = nameToLabel.get(srcName);
-    if (!label) continue;
-    const row = suggestions.eligibilityMatrix.find((r) => r.groupRawLabel === label);
-    if (!row) continue;
-    for (const cell of row.perProduct) {
-      if (cell.defaultPlanRawCode) products.add(cell.productTypeCode);
-    }
-  }
-  return Array.from(products);
 }
 
 export function renderPredicate(node: unknown): string {
