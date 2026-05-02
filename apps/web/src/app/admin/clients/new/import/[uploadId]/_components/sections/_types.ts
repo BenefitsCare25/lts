@@ -96,6 +96,7 @@ export type WizardExtractedProduct = {
       confidence: number;
     }>;
   };
+  tpaId: string | null;
   plans: WizardPlanField[];
   premiumRates: WizardPremiumRateField[];
   benefits: unknown[];
@@ -333,6 +334,7 @@ function normalizeProduct(raw: unknown): WizardExtractedProduct {
   const h = (p.header ?? {}) as WizardExtractedProduct['header'] & Record<string, unknown>;
   return {
     ...p,
+    tpaId: (p as Record<string, unknown>).tpaId as string | null ?? null,
     header: {
       ...h,
       ageLimitNoUnderwriting:
@@ -368,7 +370,6 @@ export function extractedProductsFromDraft(raw: unknown): WizardExtractedProduct
 export const BROKER_OVERRIDE_NAMESPACES = [
   'insurers',
   'pool',
-  'tpa',
   'eligibility',
   'schemaDecisions',
   'reconciliation',

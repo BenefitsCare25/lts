@@ -195,7 +195,8 @@ model TPA {
   feedFormat          String // "CSV_V1", "JSON_API", ...
   active              Boolean  @default(true)
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  products Product[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -375,6 +376,7 @@ model Product {
   benefitYear     BenefitYear          @relation(fields: [benefitYearId], references: [id])
   productType     ProductType          @relation(fields: [productTypeId], references: [id])
   pool            Pool?                @relation(fields: [poolId], references: [id])
+  tpa             TPA?                 @relation(fields: [tpaId], references: [id])
   plans           Plan[]
   eligibility     ProductEligibility[]
   premiumRates    PremiumRate[]

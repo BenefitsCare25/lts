@@ -8,7 +8,6 @@ import type { SectionId } from './_registry';
 import {
   type WizardExtractedProduct,
   extractedProductsFromDraft,
-  suggestionsFromDraft,
 } from './_types';
 import { DetailsTab } from './products/details-tab';
 import { EndorsementsTab } from './products/endorsements-tab';
@@ -30,6 +29,7 @@ type Tab = 'details' | 'plans' | 'rates' | 'groups' | 'endorsements';
 const emptyProduct = (productTypeCode = 'GTL', insurerCode = ''): WizardExtractedProduct => ({
   productTypeCode,
   insurerCode,
+  tpaId: null,
   header: {
     policyNumber: { value: null, confidence: 0 },
     period: { value: null, confidence: 0 },
@@ -238,7 +238,7 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
               />
               <TabButton
                 id="groups"
-                label={`Groups (${suggestionsFromDraft(draft.progress).benefitGroups.length})`}
+                label="Groups"
                 active={activeTab}
                 onChange={setActiveTab}
               />

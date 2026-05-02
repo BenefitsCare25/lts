@@ -30,15 +30,9 @@ type PoolOverride = {
   name: string | null;
 };
 
-type TpaOverride = {
-  tpaId: string | null;
-  name: string | null;
-};
-
 export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
   const insurersQuery = trpc.insurers.list.useQuery();
   const poolsQuery = trpc.pools.list.useQuery();
-  const tpasQuery = trpc.tpas.list.useQuery();
 
   const extracted = extractedProductsFromDraft(draft.extractedProducts);
   const aiBundle = useMemo(() => aiBundleFromDraft(draft.progress), [draft.progress]);
@@ -56,13 +50,6 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
     });
     return { poolId: persisted.poolId ?? null, name: persisted.name ?? null };
   });
-  const [tpaOverride, setTpaOverride] = useState<TpaOverride>(() => {
-    const persisted = readBrokerOverride<TpaOverride>(draft.progress, 'tpa', {
-      tpaId: null,
-      name: null,
-    });
-    return { tpaId: persisted.tpaId ?? null, name: persisted.name ?? null };
-  });
 
   const saveOverride = trpc.extractionDrafts.updateBrokerOverrides.useMutation();
   const markInsurerDirty = useDebouncedAutosave(insurerOverride, (value) =>
@@ -71,16 +58,12 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
   const markPoolDirty = useDebouncedAutosave(poolOverride, (value) =>
     saveOverride.mutate({ draftId: draft.id, namespace: 'pool', value }),
   );
-  const markTpaDirty = useDebouncedAutosave(tpaOverride, (value) =>
-    saveOverride.mutate({ draftId: draft.id, namespace: 'tpa', value }),
-  );
 
   const markDirty = useCallback(() => {
     markInsurerDirty();
     markPoolDirty();
-    markTpaDirty();
     markSectionDirty?.('insurers');
-  }, [markInsurerDirty, markPoolDirty, markTpaDirty, markSectionDirty]);
+  }, [markInsurerDirty, markPoolDirty, markSectionDirty]);
 
   // Unique insurer codes from extracted products + AI's discovery pass.
   const insurerSummary = useMemo(() => {
@@ -171,35 +154,6 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
     markDirty();
     const match = poolId ? poolsQuery.data?.find((p) => p.id === poolId) : null;
     setPoolOverride({ poolId, name: match?.name ?? null });
-  };
-
-  // TPA name detection from AI discovery pass.
-  const detectedTpaName = useMemo(
-    () => aiBundle.proposedTpa?.rawLabel ?? aiBundle.proposedTpa?.name ?? null,
-    [aiBundle.proposedTpa],
-  );
-  const tpaConfidence = aiBundle.proposedTpa?.confidence ?? 0;
-
-  // Auto-resolve detected TPA against the registry. Broker override wins.
-  const resolvedTpa = useMemo(() => {
-    if (tpaOverride.tpaId) {
-      return tpasQuery.data?.find((t) => t.id === tpaOverride.tpaId) ?? null;
-    }
-    if (aiBundle.proposedTpa?.tpaId) {
-      return tpasQuery.data?.find((t) => t.id === aiBundle.proposedTpa?.tpaId) ?? null;
-    }
-    if (detectedTpaName) {
-      return (
-        tpasQuery.data?.find((t) => t.name.toLowerCase() === detectedTpaName.toLowerCase()) ?? null
-      );
-    }
-    return null;
-  }, [tpaOverride, aiBundle.proposedTpa, detectedTpaName, tpasQuery.data]);
-
-  const setTpaPick = (tpaId: string | null) => {
-    markDirty();
-    const match = tpaId ? tpasQuery.data?.find((t) => t.id === tpaId) : null;
-    setTpaOverride({ tpaId, name: match?.name ?? null });
   };
 
   return (
@@ -355,57 +309,6 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
         </Card>
       </section>
 
-      <section className="section">
-        <Card className="card-padded">
-          <h3 className="mb-3">TPA</h3>
-          <p className="field-help mb-3">
-            {detectedTpaName ? (
-              <>
-                Slip mentions <strong>{detectedTpaName}</strong>{' '}
-                <ConfidenceBadge confidence={tpaConfidence} variant="dot" />.
-              </>
-            ) : (
-              <>No third-party administrator detected on the slip.</>
-            )}
-          </p>
-          <div className="form-grid" style={{ gridTemplateColumns: '1fr auto' }}>
-            <div className="field">
-              <label className="field-label" htmlFor="tpa-pick">
-                Bind to registry TPA
-              </label>
-              <select
-                id="tpa-pick"
-                className="input"
-                value={tpaOverride.tpaId ?? resolvedTpa?.id ?? ''}
-                onChange={(e) => setTpaPick(e.target.value || null)}
-                disabled={tpasQuery.isLoading}
-              >
-                <option value="">— no TPA —</option>
-                {(tpasQuery.data ?? []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                    {t.active ? '' : ' · inactive'}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div
-              className="field"
-              style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '0.25rem' }}
-            >
-              <Link className="btn btn-ghost btn-sm" href="/admin/catalogue/tpas">
-                Manage TPAs →
-              </Link>
-            </div>
-          </div>
-          {resolvedTpa ? (
-            <p className="field-help mt-3 mb-0">
-              Resolved to <strong>{resolvedTpa.name}</strong> in your registry.{' '}
-              <Link href={`/admin/catalogue/tpas/${resolvedTpa.id}/edit`}>Edit →</Link>
-            </p>
-          ) : null}
-        </Card>
-      </section>
     </>
   );
 }

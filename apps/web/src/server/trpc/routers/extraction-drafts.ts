@@ -109,7 +109,6 @@ async function loadDraftWithUpload(tenantId: string, draftId: string) {
 const BROKER_OVERRIDE_NAMESPACE = z.enum([
   'insurers',
   'pool',
-  'tpa',
   'eligibility',
   'schemaDecisions',
   'reconciliation',

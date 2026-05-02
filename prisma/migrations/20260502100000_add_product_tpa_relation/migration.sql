@@ -1,0 +1,2 @@
+-- AddForeignKey
+ALTER TABLE "Product" ADD CONSTRAINT "Product_tpaId_fkey" FOREIGN KEY ("tpaId") REFERENCES "TPA"("id") ON DELETE SET NULL ON UPDATE CASCADE;
