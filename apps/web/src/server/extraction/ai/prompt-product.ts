@@ -182,7 +182,7 @@ export function buildProductUserPrompt(
     '  for every category.',
     '  This captures the category → plan mapping directly. Leave null only if the slip does not',
     '  show a plan assignment for this category.',
-    '- **multiplier**: when the category row\'s SI formula contains a salary multiple, also emit',
+    "- **multiplier**: when the category row's SI formula contains a salary multiple, also emit",
     '  `multiplier` as a number. Example: "36 x LDBMS" → `multiplier: 36`, "24 x LDBMS" → `multiplier: 24`.',
     '  Leave null when the SI basis is fixed amount, per-region, or not stated.',
     '',
