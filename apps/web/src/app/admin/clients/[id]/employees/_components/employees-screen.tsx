@@ -8,7 +8,7 @@ import { ScreenShell } from '@/components/ui';
 import { employeeDisplayLabel } from '@/lib/employee-display';
 import { formatDate } from '@/lib/format-date';
 import { trpc } from '@/lib/trpc/client';
-import Form from '@rjsf/core';
+import { RjsfForm as Form } from '@/components/ui/rjsf-form';
 import type { RJSFSchema } from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
 import Link from 'next/link';
