@@ -113,12 +113,18 @@ export async function runProductPass(input: ProductPassInput): Promise<ProductPa
   const retryHint =
     first.kind === 'ok' && first.validationError ? first.validationError : undefined;
 
+  // If the first attempt was slow (>60s), the retry risks hitting the 120s default
+  // timeout even when the first attempt succeeded (e.g. GHS on a dense slip: ~85s
+  // first attempt + retryHint overhead = retry timeout). Use the extended budget
+  // whenever we're already retrying a slow call.
+  const needsLongTimeout = escalated || first.latencyMs > 60_000;
+
   const second = await singleAttempt({
     ...input,
     sanitizedSchema,
     retryHint,
     maxOutputTokens: escalated ? ESCALATED_OUTPUT_TOKENS : DEFAULT_OUTPUT_TOKENS,
-    ...(escalated ? { timeoutMs: ESCALATED_REQUEST_TIMEOUT_MS } : {}),
+    ...(needsLongTimeout ? { timeoutMs: ESCALATED_REQUEST_TIMEOUT_MS } : {}),
   });
 
   const cumulativeLatency = first.latencyMs + second.latencyMs;

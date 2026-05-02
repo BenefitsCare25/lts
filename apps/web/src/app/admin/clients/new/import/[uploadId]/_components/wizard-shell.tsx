@@ -217,34 +217,6 @@ export function WizardShell({ uploadId }: Props) {
       <header className="wizard-shell__head">
         <div>
           <h1>{upload.filename}</h1>
-          <p className="wizard-shell__meta">
-            <span>
-              Status <strong>{draft.data.status}</strong>
-            </span>
-            {upload.insurerTemplate ? (
-              <>
-                <span className="wizard-shell__meta-sep">·</span>
-                <span>{upload.insurerTemplate}</span>
-              </>
-            ) : null}
-          </p>
-          <div className="wizard-shell__readiness" aria-label="Apply readiness">
-            <span>Apply readiness</span>
-            <div
-              className="wizard-shell__readiness-bar"
-              role="progressbar"
-              tabIndex={0}
-              aria-valuenow={applyReadiness}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div
-                className="wizard-shell__readiness-fill"
-                style={{ width: `${applyReadiness}%` }}
-              />
-            </div>
-            <strong>{applyReadiness}%</strong>
-          </div>
         </div>
         <div className="row">
           <Link href="/admin/clients/new" className="btn btn-ghost btn-sm">
@@ -397,15 +369,10 @@ function renderAiBanner(
         <p>
           <strong>AI extraction completed with warnings:</strong>
         </p>
-        <ul className="wizard-banner__list">
-          {bundle.warnings.slice(0, 6).map((w, i) => (
+        <ul className="wizard-banner__list" style={{ maxHeight: '12rem', overflowY: 'auto' }}>
+          {bundle.warnings.map((w, i) => (
             <li key={`warn-${i}-${w.slice(0, 30)}`}>{w}</li>
           ))}
-          {bundle.warnings.length > 6 ? (
-            <li>
-              <em>… and {bundle.warnings.length - 6} more.</em>
-            </li>
-          ) : null}
         </ul>
       </div>
     );
