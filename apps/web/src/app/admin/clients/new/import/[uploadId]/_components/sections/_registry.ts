@@ -16,7 +16,6 @@ export type SectionId =
   | 'benefit_year'
   | 'insurers'
   | 'products'
-  | 'eligibility'
   | 'schema_additions'
   | 'reconciliation'
   | 'review';
@@ -28,7 +27,6 @@ export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: 'benefit_year', label: 'Benefit year' },
   { id: 'insurers', label: 'Insurers & pool' },
   { id: 'products', label: 'Products' },
-  { id: 'eligibility', label: 'Benefit groups' },
   { id: 'schema_additions', label: 'Schema additions' },
   { id: 'reconciliation', label: 'Reconciliation' },
   { id: 'review', label: 'Review & apply' },

@@ -41,7 +41,6 @@ const EMPTY_DIRTY_FLAGS: Record<SectionId, boolean> = {
   benefit_year: false,
   insurers: false,
   products: false,
-  eligibility: false,
   schema_additions: false,
   reconciliation: false,
   review: false,
@@ -448,7 +447,7 @@ function computeProvenance(
     proposedBenefitYear?: unknown | null;
     proposedPolicyEntities?: unknown[];
     proposedInsurers?: unknown[];
-    suggestions?: { missingPredicateFields?: unknown[]; benefitGroups?: unknown[] };
+    suggestions?: { missingPredicateFields?: unknown[] };
   } | null;
   const aiRan = progress?.ai != null;
   const proposedInsurersCount = Array.isArray(progress?.proposedInsurers)
@@ -456,9 +455,6 @@ function computeProvenance(
     : 0;
   const proposedEntitiesCount = Array.isArray(progress?.proposedPolicyEntities)
     ? progress.proposedPolicyEntities.length
-    : 0;
-  const benefitGroupsCount = Array.isArray(progress?.suggestions?.benefitGroups)
-    ? progress.suggestions.benefitGroups.length
     : 0;
   const missingFieldsCount = Array.isArray(progress?.suggestions?.missingPredicateFields)
     ? progress.suggestions.missingPredicateFields.length
@@ -487,11 +483,10 @@ function computeProvenance(
     // insurer codes inside extractedProducts) or the AI's discovery
     // pass (proposedInsurers). The AI tag wins when AI proposed any.
     insurers: tag(extracted.length > 0 || proposedInsurersCount > 0, proposedInsurersCount > 0),
-    // Products / eligibility / schema additions / reconciliation all
+    // Products / schema additions / reconciliation all
     // read off `extractedProducts` and `suggestions`. Both paths write
     // there — the heuristic at upload, the AI when it runs.
     products: tag(extracted.length > 0, aiRan),
-    eligibility: tag(extracted.length > 0 || benefitGroupsCount > 0, aiRan),
     schema_additions: tag(missingFieldsCount > 0 || extracted.length > 0, aiRan),
     reconciliation: tag(extracted.length > 0, aiRan),
   };
@@ -584,31 +579,7 @@ function computeSectionStatus(
     productsStatus = allComplete ? 'complete' : 'has_issues';
   }
 
-  // Section 7 — Eligibility. Complete when at least one benefit group
-  // is included AND every included group has full per-product coverage
-  // (a default plan picked for every extracted product).
-  const benefitGroups = progressObj?.suggestions?.benefitGroups ?? [];
-  const eligibilityOverrides = progressObj?.brokerOverrides?.eligibility?.groups ?? {};
-  const includedGroups = benefitGroups.filter(
-    (g) => eligibilityOverrides[g.suggestedName]?.included === true,
-  );
-  let eligibilityStatus: 'complete' | 'in_progress' | 'has_issues' | 'pending' = 'pending';
-  if (benefitGroups.length === 0) {
-    eligibilityStatus = 'complete'; // nothing suggested ⇒ nothing required
-  } else if (includedGroups.length === 0) {
-    eligibilityStatus = 'has_issues';
-  } else {
-    const productKeys = extracted.map(
-      (p) => (p as ExtractedShape & { productTypeCode: string }).productTypeCode,
-    );
-    const allCovered = includedGroups.every((g) => {
-      const map = eligibilityOverrides[g.suggestedName]?.defaultPlanByProduct ?? {};
-      return productKeys.every((k) => map[k] != null);
-    });
-    eligibilityStatus = allCovered ? 'complete' : 'in_progress';
-  }
-
-  // Section 8 — Schema additions. Complete when every missing field has
+  // Section 7 — Schema additions. Complete when every missing field has
   // a non-null decision (and MAP decisions have a target).
   const schemaDecisions = progressObj?.brokerOverrides?.schemaDecisions ?? {};
   const missingFields = (progressObj?.suggestions?.missingPredicateFields ?? []) as Array<{
@@ -637,7 +608,6 @@ function computeSectionStatus(
     benefit_year: 'pending',
     insurers: insurersStatus,
     products: productsStatus,
-    eligibility: eligibilityStatus,
     schema_additions: schemaStatus,
     reconciliation: reconStatus,
     review: 'pending',

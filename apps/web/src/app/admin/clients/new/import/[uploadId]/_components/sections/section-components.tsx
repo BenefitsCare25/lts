@@ -11,7 +11,6 @@ import type { ComponentType } from 'react';
 import type { DraftFormState, SectionId } from './_registry';
 import { BenefitYearSection } from './benefit-year';
 import { ClientSection } from './client';
-import { EligibilitySection } from './eligibility';
 import { InsurersPoolSection } from './insurers-pool';
 import { PolicyEntitiesSection } from './policy-entities';
 import { ProductsSection } from './products';
@@ -50,7 +49,6 @@ export const SECTION_COMPONENTS: Record<SectionId, ComponentType<SectionRenderPr
   benefit_year: BenefitYearSection as ComponentType<SectionRenderProps>,
   insurers: InsurersPoolSection as ComponentType<SectionRenderProps>,
   products: ProductsSection as ComponentType<SectionRenderProps>,
-  eligibility: EligibilitySection as ComponentType<SectionRenderProps>,
   schema_additions: SchemaAdditionsSection as ComponentType<SectionRenderProps>,
   reconciliation: ReconciliationSection as ComponentType<SectionRenderProps>,
   review: ReviewSection as ComponentType<SectionRenderProps>,

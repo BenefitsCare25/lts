@@ -4,7 +4,6 @@ import { Card, ConfidenceBadge } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { SectionId } from './_registry';
 import {
   type WizardExtractedProduct,
   extractedProductsFromDraft,
@@ -23,7 +22,7 @@ import {
 
 type Props = {
   draft: { id: string; extractedProducts: unknown; progress: unknown };
-  markSectionDirty?: (id: SectionId) => void;
+  markSectionDirty?: (id: string) => void;
 };
 
 export function EligibilitySection({ draft, markSectionDirty }: Props) {
