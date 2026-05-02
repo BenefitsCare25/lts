@@ -216,133 +216,133 @@ function PlanCard({
                 {planRates.map(({ rate, idx }) => {
                   const m = showMultiplierCol ? categoryMultiplier(rate.blockLabel) : null;
                   return (
-                  <tr key={idx}>
-                    <td>
-                      <select
-                        className="input"
-                        value={rate.coverTier ?? ''}
-                        onChange={(e) => onUpdateRate(idx, { coverTier: e.target.value || null })}
-                        style={{ width: '5rem' }}
-                      >
-                        <option value="">—</option>
-                        {COMMON_COVER_TIERS.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    {showCategoryCol ? (
+                    <tr key={idx}>
                       <td>
-                        <input
+                        <select
                           className="input"
-                          type="text"
-                          value={rate.blockLabel ?? ''}
-                          onChange={(e) =>
-                            onUpdateRate(idx, { blockLabel: e.target.value || null })
-                          }
-                          style={{ width: '8rem' }}
-                          placeholder="(all)"
-                        />
+                          value={rate.coverTier ?? ''}
+                          onChange={(e) => onUpdateRate(idx, { coverTier: e.target.value || null })}
+                          style={{ width: '5rem' }}
+                        >
+                          <option value="">—</option>
+                          {COMMON_COVER_TIERS.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
                       </td>
-                    ) : null}
-                    {showMultiplierCol ? (
+                      {showCategoryCol ? (
+                        <td>
+                          <input
+                            className="input"
+                            type="text"
+                            value={rate.blockLabel ?? ''}
+                            onChange={(e) =>
+                              onUpdateRate(idx, { blockLabel: e.target.value || null })
+                            }
+                            style={{ width: '8rem' }}
+                            placeholder="(all)"
+                          />
+                        </td>
+                      ) : null}
+                      {showMultiplierCol ? (
+                        <td>
+                          {m != null ? (
+                            <span
+                              className="text-muted"
+                              style={{ fontSize: 'var(--font-sm)', whiteSpace: 'nowrap' }}
+                            >
+                              {m}× salary
+                            </span>
+                          ) : (
+                            <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
+                              —
+                            </span>
+                          )}
+                        </td>
+                      ) : null}
                       <td>
-                        {m != null ? (
-                          <span
-                            className="text-muted"
-                            style={{ fontSize: 'var(--font-sm)', whiteSpace: 'nowrap' }}
-                          >
-                            {m}× salary
-                          </span>
-                        ) : (
-                          <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
-                            —
-                          </span>
-                        )}
-                      </td>
-                    ) : null}
-                    <td>
-                      <div className="row" style={{ gap: '0.15rem', alignItems: 'center' }}>
-                        <input
-                          className="input"
-                          type="number"
-                          value={rate.ageBand?.from ?? ''}
-                          onChange={(e) => {
-                            const n = Number.parseInt(e.target.value, 10);
-                            onUpdateRate(idx, {
-                              ageBand: Number.isFinite(n)
-                                ? { from: n, to: rate.ageBand?.to ?? n }
-                                : null,
-                            });
-                          }}
-                          style={{ width: '3.5rem' }}
-                          placeholder="from"
-                        />
-                        <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
-                          –
-                        </span>
-                        <input
-                          className="input"
-                          type="number"
-                          value={rate.ageBand?.to ?? ''}
-                          onChange={(e) => {
-                            const n = Number.parseInt(e.target.value, 10);
-                            onUpdateRate(idx, {
-                              ageBand:
-                                rate.ageBand != null
-                                  ? {
-                                      ...rate.ageBand,
-                                      to: Number.isFinite(n) ? n : rate.ageBand.from,
-                                    }
+                        <div className="row" style={{ gap: '0.15rem', alignItems: 'center' }}>
+                          <input
+                            className="input"
+                            type="number"
+                            value={rate.ageBand?.from ?? ''}
+                            onChange={(e) => {
+                              const n = Number.parseInt(e.target.value, 10);
+                              onUpdateRate(idx, {
+                                ageBand: Number.isFinite(n)
+                                  ? { from: n, to: rate.ageBand?.to ?? n }
                                   : null,
+                              });
+                            }}
+                            style={{ width: '3.5rem' }}
+                            placeholder="from"
+                          />
+                          <span className="text-muted" style={{ fontSize: 'var(--font-sm)' }}>
+                            –
+                          </span>
+                          <input
+                            className="input"
+                            type="number"
+                            value={rate.ageBand?.to ?? ''}
+                            onChange={(e) => {
+                              const n = Number.parseInt(e.target.value, 10);
+                              onUpdateRate(idx, {
+                                ageBand:
+                                  rate.ageBand != null
+                                    ? {
+                                        ...rate.ageBand,
+                                        to: Number.isFinite(n) ? n : rate.ageBand.from,
+                                      }
+                                    : null,
+                              });
+                            }}
+                            style={{ width: '3.5rem' }}
+                            placeholder="to"
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          type="number"
+                          step={0.01}
+                          value={rate.ratePerThousand ?? ''}
+                          onChange={(e) => {
+                            const n = Number.parseFloat(e.target.value);
+                            onUpdateRate(idx, {
+                              ratePerThousand: Number.isFinite(n) ? n : null,
                             });
                           }}
-                          style={{ width: '3.5rem' }}
-                          placeholder="to"
+                          style={{ width: '6rem' }}
                         />
-                      </div>
-                    </td>
-                    <td>
-                      <input
-                        className="input"
-                        type="number"
-                        step={0.01}
-                        value={rate.ratePerThousand ?? ''}
-                        onChange={(e) => {
-                          const n = Number.parseFloat(e.target.value);
-                          onUpdateRate(idx, {
-                            ratePerThousand: Number.isFinite(n) ? n : null,
-                          });
-                        }}
-                        style={{ width: '6rem' }}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="input"
-                        type="number"
-                        step={0.01}
-                        value={rate.fixedAmount ?? ''}
-                        onChange={(e) => {
-                          const n = Number.parseFloat(e.target.value);
-                          onUpdateRate(idx, {
-                            fixedAmount: Number.isFinite(n) ? n : null,
-                          });
-                        }}
-                        style={{ width: '7rem' }}
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-danger btn-sm"
-                        onClick={() => onRemoveRate(idx)}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
+                      </td>
+                      <td>
+                        <input
+                          className="input"
+                          type="number"
+                          step={0.01}
+                          value={rate.fixedAmount ?? ''}
+                          onChange={(e) => {
+                            const n = Number.parseFloat(e.target.value);
+                            onUpdateRate(idx, {
+                              fixedAmount: Number.isFinite(n) ? n : null,
+                            });
+                          }}
+                          style={{ width: '7rem' }}
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-sm"
+                          onClick={() => onRemoveRate(idx)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
