@@ -7,10 +7,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readBrokerOverride, suggestionsFromDraft } from '../_types';
 import type { WizardExtractedProduct } from '../_types';
 import {
-  INELIGIBLE,
   type DerivedCategory,
   type EligibilityOverride,
   type GroupOverride,
+  INELIGIBLE,
   buildProductAssignments,
   deriveEmployeeCategories,
   renderPredicate,

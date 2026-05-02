@@ -9,8 +9,8 @@
 
 'use client';
 
-import { trpc } from '@/lib/trpc/client';
 import { RjsfForm as Form } from '@/components/ui/rjsf-form';
+import { trpc } from '@/lib/trpc/client';
 import type { RJSFSchema } from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
 import { useState } from 'react';
