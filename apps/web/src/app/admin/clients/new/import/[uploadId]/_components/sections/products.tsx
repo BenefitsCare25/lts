@@ -12,8 +12,7 @@ import {
 import { DetailsTab } from './products/details-tab';
 import { EndorsementsTab } from './products/endorsements-tab';
 import { GroupsTab } from './products/groups-tab';
-import { PlansTab } from './products/plans-tab';
-import { RatesTab } from './products/rates-tab';
+import { PlansRatesTab } from './products/plans-rates-tab';
 import type { ProductPatcher } from './products/shared';
 
 type Props = {
@@ -21,7 +20,7 @@ type Props = {
   markSectionDirty?: (id: SectionId) => void;
 };
 
-type Tab = 'details' | 'plans' | 'rates' | 'groups' | 'endorsements';
+type Tab = 'details' | 'plans-rates' | 'groups' | 'endorsements';
 
 // Empty product factory used by "+ Add product" — every field is the
 // minimal valid envelope so downstream Apply doesn't trip on null
@@ -225,14 +224,8 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
             <div className="row" style={{ borderBottom: '1px solid var(--border)' }}>
               <TabButton id="details" label="Details" active={activeTab} onChange={setActiveTab} />
               <TabButton
-                id="plans"
-                label={`Plans (${active.plans.length})`}
-                active={activeTab}
-                onChange={setActiveTab}
-              />
-              <TabButton
-                id="rates"
-                label={`Rates (${active.premiumRates.length})`}
+                id="plans-rates"
+                label={`Plans & rates (${active.plans.length})`}
                 active={activeTab}
                 onChange={setActiveTab}
               />
@@ -263,11 +256,12 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
           {activeTab === 'details' ? (
             <DetailsTab product={active} onChange={makeOnChange(activeIndex)} />
           ) : null}
-          {activeTab === 'plans' ? (
-            <PlansTab product={active} onChange={makeOnChange(activeIndex)} />
-          ) : null}
-          {activeTab === 'rates' ? (
-            <RatesTab product={active} onChange={makeOnChange(activeIndex)} />
+          {activeTab === 'plans-rates' ? (
+            <PlansRatesTab
+              product={active}
+              onChange={makeOnChange(activeIndex)}
+              draft={draft}
+            />
           ) : null}
           {activeTab === 'groups' ? <GroupsTab product={active} draft={draft} /> : null}
           {activeTab === 'endorsements' ? (
