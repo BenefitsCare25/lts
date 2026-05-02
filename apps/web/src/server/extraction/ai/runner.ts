@@ -402,7 +402,9 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     fanOut.successes.map((s) => s.product),
     insurerAlias,
   ).map(sanitisePlanRawCodes);
-  const merged = mergeProducts(canonicalisedHeuristic, aiProducts).map(sanitisePlanRawCodes);
+  const merged = mergeProducts(canonicalisedHeuristic, aiProducts)
+    .map(sanitisePlanRawCodes)
+    .map(fixPerEmployeeFlatRates);
   // Likewise fold the AI's proposed-insurer list onto canonical codes
   // so the wizard's Section 5 doesn't show GE alongside GE_LIFE.
   const canonicalisedProposedInsurers = dedupeProposedInsurers(
@@ -781,6 +783,24 @@ function sanitisePlanRawCodes(product: ExtractedProduct): ExtractedProduct {
     ...product,
     plans: Array.from(planDedup.values()),
     premiumRates: Array.from(rateDedup.values()),
+  };
+}
+
+// For plans with coverBasis = "per_employee_flat", any rate row where
+// ratePerThousand is set (heuristic couldn't distinguish) should have
+// its value moved to fixedAmount. The plan schema treats these as
+// annual per-person amounts, not SI-relative rates.
+function fixPerEmployeeFlatRates(product: ExtractedProduct): ExtractedProduct {
+  const flatPlanCodes = new Set(
+    product.plans.filter((p) => p.coverBasis === 'per_employee_flat').map((p) => p.rawCode),
+  );
+  if (flatPlanCodes.size === 0) return product;
+  return {
+    ...product,
+    premiumRates: product.premiumRates.map((r) => {
+      if (!flatPlanCodes.has(r.planRawCode) || r.ratePerThousand == null) return r;
+      return { ...r, fixedAmount: r.ratePerThousand, ratePerThousand: null };
+    }),
   };
 }
 

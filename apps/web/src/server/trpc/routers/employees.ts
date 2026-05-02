@@ -257,6 +257,85 @@ export const employeesRouter = router({
       return { id: input.id };
     }),
 
+  // Returns active enrollments for one employee, enriched with product,
+  // plan, benefit group, and the matching premium rate.
+  entitlements: tenantProcedure
+    .input(z.object({ employeeId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const employee = await prisma.employee.findUnique({
+        where: { id: input.employeeId },
+        select: { id: true, clientId: true },
+      });
+      if (!employee) throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
+      await assertClient(ctx.db, employee.clientId);
+
+      const enrollments = await prisma.enrollment.findMany({
+        where: { employeeId: input.employeeId, effectiveTo: null },
+      });
+      if (enrollments.length === 0) return [];
+
+      const productIds = [...new Set(enrollments.map((e) => e.productId))];
+      const planIds = [...new Set(enrollments.map((e) => e.planId))];
+      const groupIds = [...new Set(enrollments.map((e) => e.benefitGroupId))];
+
+      const [products, plans, groups, rates] = await Promise.all([
+        prisma.product.findMany({
+          where: { id: { in: productIds } },
+          select: {
+            id: true,
+            productType: { select: { code: true, name: true } },
+          },
+        }),
+        prisma.plan.findMany({
+          where: { id: { in: planIds } },
+          select: { id: true, code: true, name: true, coverBasis: true },
+        }),
+        prisma.benefitGroup.findMany({
+          where: { id: { in: groupIds } },
+          select: { id: true, name: true },
+        }),
+        prisma.premiumRate.findMany({
+          where: { planId: { in: planIds } },
+          select: { planId: true, coverTier: true, ratePerThousand: true, fixedAmount: true },
+        }),
+      ]);
+
+      const productById = new Map(products.map((p) => [p.id, p]));
+      const planById = new Map(plans.map((p) => [p.id, p]));
+      const groupById = new Map(groups.map((g) => [g.id, g]));
+
+      return enrollments.map((enr) => {
+        const product = productById.get(enr.productId);
+        const plan = planById.get(enr.planId);
+        const group = groupById.get(enr.benefitGroupId);
+
+        const matchingRate =
+          rates.find(
+            (r) =>
+              r.planId === enr.planId &&
+              (r.coverTier === enr.coverTier || r.coverTier === null),
+          ) ?? null;
+
+        return {
+          enrollmentId: enr.id,
+          productTypeCode: product?.productType?.code ?? null,
+          productTypeName: product?.productType?.name ?? null,
+          planCode: plan?.code ?? null,
+          planName: plan?.name ?? null,
+          coverBasis: plan?.coverBasis ?? null,
+          benefitGroupName: group?.name ?? null,
+          coverTier: enr.coverTier,
+          effectiveFrom: enr.effectiveFrom,
+          rate: matchingRate
+            ? {
+                ratePerThousand: matchingRate.ratePerThousand?.toNumber() ?? null,
+                fixedAmount: matchingRate.fixedAmount?.toNumber() ?? null,
+              }
+            : null,
+        };
+      });
+    }),
+
   // S34 — CSV bulk import. Caller passes parsed rows + header→field
   // map; server validates each row, creates Employee records,
   // returns successes + per-row failures so the UI can surface them.

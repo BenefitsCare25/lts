@@ -41,6 +41,9 @@ export type ParsedProduct = {
   // a multi-block rates_blocks layout (Allianz-style per-entity blocks).
   // Single-block products emit rates without `_blockIndex`.
   rates: Record<string, unknown>[];
+  // Actual workbook sheet name for the rates block, used in sourceRef.
+  // Distinct from templateInsurerCode (a catalogue key, not a sheet name).
+  ratesSheet?: string;
 };
 
 export type ParsedPolicyEntity = {
@@ -257,7 +260,8 @@ function parseProduct(
     }
   }
 
-  return { productTypeCode, templateInsurerCode: insurerCode, fields, plans, rates };
+  const ratesSheet = rules.rates_blocks?.sheet ?? rules.rates_block?.sheet;
+  return { productTypeCode, templateInsurerCode: insurerCode, fields, plans, rates, ...(ratesSheet ? { ratesSheet } : {}) };
 }
 
 // Extracts the workbook-level PolicyEntity list from the first product

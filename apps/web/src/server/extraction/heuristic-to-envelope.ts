@@ -592,13 +592,13 @@ export function envelopeFromParseResult(
             blockLabel,
             ageBand: null,
             confidence: 0.95,
-            sourceRef: { sheet: p.templateInsurerCode, cell: t.rateColumn },
+            sourceRef: { sheet: p.ratesSheet ?? p.templateInsurerCode, cell: t.rateColumn },
           });
         }
       } else if (map.ratePerThousand) {
         const cell = row[`col${excelColumnIndex(map.ratePerThousand)}`];
         const num = typeof cell === 'number' ? cell : Number.parseFloat(String(cell ?? ''));
-        if (Number.isFinite(num) && num > 0) {
+        if (Number.isFinite(num) && num > 0 && num <= 10_000) {
           rates.push({
             planRawCode: labelStr,
             coverTier: null,
@@ -607,7 +607,7 @@ export function envelopeFromParseResult(
             blockLabel,
             ageBand: null,
             confidence: 0.95,
-            sourceRef: { sheet: p.templateInsurerCode, cell: map.ratePerThousand },
+            sourceRef: { sheet: p.ratesSheet ?? p.templateInsurerCode, cell: map.ratePerThousand },
           });
         }
       } else if (map.fixedAmount) {
@@ -622,7 +622,7 @@ export function envelopeFromParseResult(
             blockLabel,
             ageBand: null,
             confidence: 0.95,
-            sourceRef: { sheet: p.templateInsurerCode, cell: map.fixedAmount },
+            sourceRef: { sheet: p.ratesSheet ?? p.templateInsurerCode, cell: map.fixedAmount },
           });
         }
       }

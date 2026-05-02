@@ -7,6 +7,7 @@
 import { ScreenShell } from '@/components/ui';
 import { trpc } from '@/lib/trpc/client';
 import Form from '@rjsf/core';
+import Link from 'next/link';
 import type { RJSFSchema } from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
 import { useState } from 'react';
@@ -244,7 +245,14 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
               <tbody>
                 {list.data.map((e) => (
                   <tr key={e.id}>
-                    <td>{displayLabel(e.data as Record<string, unknown>)}</td>
+                    <td>
+                      <Link
+                        href={`/admin/clients/${clientId}/employees/${e.id}`}
+                        className="link"
+                      >
+                        {displayLabel(e.data as Record<string, unknown>)}
+                      </Link>
+                    </td>
                     <td>
                       <span
                         className={e.status === 'ACTIVE' ? 'pill pill-success' : 'pill pill-muted'}

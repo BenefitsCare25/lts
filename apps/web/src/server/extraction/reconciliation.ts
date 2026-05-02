@@ -43,19 +43,29 @@ export function reconcile(extractedProducts: ExtractedProduct[]): Reconciliation
       // we surface the rate count as a proxy.
       if (r.fixedAmount != null) computed += r.fixedAmount;
     }
+    const declared = p.header.declaredPremium?.value ?? null;
+    const variancePct =
+      declared != null && computed > 0 ? ((computed - declared) / declared) * 100 : null;
     return {
       productTypeCode: p.productTypeCode,
       insurerCode: p.insurerCode,
       computed: p.premiumRates.length > 0 ? computed : null,
-      declared: null, // wired up when billing-numbers parser lands
-      variancePct: null,
+      declared,
+      variancePct,
     };
   });
   const grandComputed = perProduct.reduce((acc, l) => acc + (l.computed ?? 0), 0);
+  const grandDeclared = perProduct.some((l) => l.declared != null)
+    ? perProduct.reduce((acc, l) => acc + (l.declared ?? 0), 0)
+    : null;
+  const grandVariancePct =
+    grandDeclared != null && grandComputed > 0
+      ? ((grandComputed - grandDeclared) / grandDeclared) * 100
+      : null;
   return {
     perProduct,
     grandComputed,
-    grandDeclared: null,
-    grandVariancePct: null,
+    grandDeclared,
+    grandVariancePct,
   };
 }

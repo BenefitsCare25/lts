@@ -26,15 +26,21 @@ export const PREDICATE_PATTERNS: ReadonlyArray<Pattern> = [
     re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:and\s*above|\+)/i,
     build: (m) => ({ '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] }),
   },
-  // "Hay Job Grade 08 to 15"
+  // "Hay Job Grade 08 to 15" or "Grade 08 to 10 / 11 to 17" (split label — both sides same plan)
+  // Capture all range numbers: first range lo/hi, then optional second range lo/hi.
+  // Span the full extent: >= min(all lows) AND <= max(all highs).
   {
-    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})/i,
-    build: (m) => ({
-      and: [
-        { '>=': [{ var: 'employee.hay_job_grade' }, Number(m[1])] },
-        { '<=': [{ var: 'employee.hay_job_grade' }, Number(m[2])] },
-      ],
-    }),
+    re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})(?:\s*\/\s*(?:Hay\s*Job\s*Grade\s*)?0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2}))?/i,
+    build: (m) => {
+      const lo = Math.min(Number(m[1]), m[3] ? Number(m[3]) : Number(m[1]));
+      const hi = Math.max(Number(m[2]), m[4] ? Number(m[4]) : Number(m[2]));
+      return {
+        and: [
+          { '>=': [{ var: 'employee.hay_job_grade' }, lo] },
+          { '<=': [{ var: 'employee.hay_job_grade' }, hi] },
+        ],
+      };
+    },
   },
   // "Foreign Workers" / "Work Permit or S-Pass"
   {
