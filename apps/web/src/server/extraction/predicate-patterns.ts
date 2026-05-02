@@ -32,8 +32,8 @@ export const PREDICATE_PATTERNS: ReadonlyArray<Pattern> = [
   {
     re: /Hay\s*Job\s*Grade\s*0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2})(?:\s*\/\s*(?:Hay\s*Job\s*Grade\s*)?0*(\d{1,2})\s*(?:to|-|–)\s*0*(\d{1,2}))?/i,
     build: (m) => {
-      const lo = Math.min(Number(m[1]), m[3] ? Number(m[3]) : Number(m[1]));
-      const hi = Math.max(Number(m[2]), m[4] ? Number(m[4]) : Number(m[2]));
+      const lo = m[3] ? Math.min(Number(m[1]), Number(m[3])) : Number(m[1]);
+      const hi = m[4] ? Math.max(Number(m[2]), Number(m[4])) : Number(m[2]);
       return {
         and: [
           { '>=': [{ var: 'employee.hay_job_grade' }, lo] },

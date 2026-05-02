@@ -5,28 +5,14 @@
 'use client';
 
 import { ScreenShell } from '@/components/ui';
+import { employeeDisplayLabel } from '@/lib/employee-display';
+import { formatDate } from '@/lib/format-date';
 import { trpc } from '@/lib/trpc/client';
 import Form from '@rjsf/core';
 import Link from 'next/link';
 import type { RJSFSchema } from '@rjsf/utils';
 import validator from '@rjsf/validator-ajv8';
 import { useState } from 'react';
-
-const formatDate = (d: Date | string): string => {
-  const date = typeof d === 'string' ? new Date(d) : d;
-  return date.toISOString().slice(0, 10);
-};
-
-// Pulls a string identifier from Employee.data — uses full_name by
-// default but falls back to any string field so the row stays readable.
-function displayLabel(data: Record<string, unknown>): string {
-  const fullName = data['employee.full_name'];
-  if (typeof fullName === 'string' && fullName) return fullName;
-  for (const v of Object.values(data)) {
-    if (typeof v === 'string' && v.length > 0) return v;
-  }
-  return '(no name)';
-}
 
 export function EmployeesScreen({ clientId }: { clientId: string }) {
   const utils = trpc.useUtils();
@@ -250,7 +236,7 @@ export function EmployeesScreen({ clientId }: { clientId: string }) {
                         href={`/admin/clients/${clientId}/employees/${e.id}`}
                         className="link"
                       >
-                        {displayLabel(e.data as Record<string, unknown>)}
+                        {employeeDisplayLabel(e.data as Record<string, unknown>)}
                       </Link>
                     </td>
                     <td>

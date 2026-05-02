@@ -105,13 +105,11 @@ export const UPLOAD_TEMPLATE_COLUMNS: ColumnMapping[] = [
     header: 'Date of Hire',
     fieldPath: 'employee.hire_date',
     transform: 'date_dmy',
-    description: 'Mapped to Employee.hireDate builtin field',
   },
   {
     header: 'Foreigner Employment Pass',
     fieldPath: 'employee.work_pass_type',
     transform: 'work_pass',
-    description: 'WP → WORK_PERMIT, SP → S_PASS, EP → EP',
   },
   {
     header: 'Nationality',

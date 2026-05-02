@@ -6,16 +6,12 @@
 
 'use client';
 
+import { formatDate } from '@/lib/format-date';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
 
 type BenefitYearState = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-
-const formatDate = (d: Date | string): string => {
-  const date = typeof d === 'string' ? new Date(d) : d;
-  return date.toISOString().slice(0, 10);
-};
 
 const stateLabel = (state: BenefitYearState): { className: string; text: string } => {
   switch (state) {

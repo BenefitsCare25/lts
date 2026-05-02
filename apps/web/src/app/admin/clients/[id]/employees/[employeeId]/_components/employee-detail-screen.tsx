@@ -1,23 +1,13 @@
 'use client';
 
 import { ScreenShell } from '@/components/ui';
+import { employeeDisplayLabel } from '@/lib/employee-display';
+import { formatDate } from '@/lib/format-date';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useState } from 'react';
 
 type Tab = 'profile' | 'entitlements';
-
-function formatDate(d: Date | string | null | undefined): string {
-  if (!d) return '—';
-  const date = typeof d === 'string' ? new Date(d) : d;
-  return date.toISOString().slice(0, 10);
-}
-
-function displayName(data: Record<string, unknown>): string {
-  const n = data['employee.full_name'];
-  if (typeof n === 'string' && n) return n;
-  return '(no name)';
-}
 
 export function EmployeeDetailScreen({
   clientId,
@@ -36,7 +26,7 @@ export function EmployeeDetailScreen({
 
   return (
     <ScreenShell
-      title={employee ? displayName(data) : 'Employee'}
+      title={employee ? employeeDisplayLabel(data) : 'Employee'}
       context={
         employee
           ? `Hire date: ${formatDate(employee.hireDate)} · Status: ${employee.status}`
@@ -136,7 +126,7 @@ function EntitlementsTab({
 }) {
   if (loading) return <p className="muted">Loading…</p>;
   if (error) return <p className="field-error">{error}</p>;
-  if (!rows || rows.length === 0) {
+  if (!rows?.length) {
     return (
       <div className="card card-padded">
         <p className="muted">No active enrollments for this employee.</p>

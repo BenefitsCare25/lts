@@ -3,12 +3,10 @@
 // against slip-declared totals. The Reconciliation section of the
 // wizard renders this report directly.
 //
-// Today: per-product and grand-total computed from extractedProducts.
-// Slip-declared totals come from the heuristic parser's billing-
-// numbers sheet inspection — for the Phase-1 calibration that's
-// not wired in, so declared = null and the section displays a
-// "computed only" mode. Once the parser learns the billing block,
-// the diff lights up automatically.
+// Per-product and grand-total computed from extractedProducts.
+// Slip-declared totals come from header.declaredPremium on each
+// extracted product. When declared is present, variancePct is
+// computed; otherwise the section shows "computed only" mode.
 // =============================================================
 
 import type { ExtractedProduct } from './heuristic-to-envelope';

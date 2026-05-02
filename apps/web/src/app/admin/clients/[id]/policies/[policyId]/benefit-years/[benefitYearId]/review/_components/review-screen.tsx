@@ -5,15 +5,11 @@
 'use client';
 
 import { ScreenShell } from '@/components/ui';
+import { formatDate } from '@/lib/format-date';
 import { trpc } from '@/lib/trpc/client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-
-const formatDate = (d: Date | string): string => {
-  const date = typeof d === 'string' ? new Date(d) : d;
-  return date.toISOString().slice(0, 10);
-};
 
 export function ReviewScreen({
   clientId,

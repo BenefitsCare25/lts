@@ -9,7 +9,7 @@
 export type CoverTier = 'EO' | 'ES' | 'EC' | 'EF';
 
 export type Dependent = {
-  relationship: string;       // "SPOUSE" | "CHILD" | other
+  relationship: 'SPOUSE' | 'CHILD' | (string & {});
   terminationDate?: Date | string | null;
 };
 
@@ -28,10 +28,6 @@ export function deriveCoverTier(dependents: Dependent[]): CoverTier {
 // looking up a rate that doesn't exist.
 export function collapseTier(tier: CoverTier, supported: CoverTier[]): CoverTier {
   if (supported.includes(tier)) return tier;
-  // ES → EF fallback when only EO/EF supported
-  if (tier === 'ES' && supported.includes('EF')) return 'EF';
-  // EC → EF fallback
-  if (tier === 'EC' && supported.includes('EF')) return 'EF';
-  // Last resort: EO
+  if ((tier === 'ES' || tier === 'EC') && supported.includes('EF')) return 'EF';
   return 'EO';
 }
