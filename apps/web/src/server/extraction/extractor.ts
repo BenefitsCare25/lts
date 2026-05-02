@@ -187,10 +187,10 @@ function parseGradeRange(label: string): GradeRange | null {
   const lower = label.toLowerCase();
   if (!/\bgrade\b/.test(lower)) return null;
 
-  const nums = [...lower.matchAll(/\b(\d{2,})\b/g)]
-    .map((m) => Number(m[1]))
-    .sort((a, b) => a - b);
-  if (nums.length === 0) return null;
+  const nums = [...lower.matchAll(/\b(\d{2,})\b/g)].map((m) => Number(m[1])).sort((a, b) => a - b);
+  const first = nums[0];
+  const last = nums[nums.length - 1];
+  if (first === undefined || last === undefined) return null;
 
   const hasAbove = /\b(?:above|over)\b/.test(lower);
   const hasBelow = /\b(?:below|under)\b/.test(lower);
@@ -199,17 +199,17 @@ function parseGradeRange(label: string): GradeRange | null {
   let min: number;
   let max: number;
   if (hasAbove && !hasBelow) {
-    min = nums[0]!;
-    max = Infinity;
+    min = first;
+    max = Number.POSITIVE_INFINITY;
   } else if (hasBelow && !hasAbove) {
     min = 0;
-    max = nums[nums.length - 1]!;
+    max = last;
   } else if (nums.length >= 2) {
-    min = nums[0]!;
-    max = nums[nums.length - 1]!;
+    min = first;
+    max = last;
   } else {
-    min = nums[0]!;
-    max = nums[0]!;
+    min = first;
+    max = first;
   }
 
   return { min, max, isForeignWorker: isFw };
@@ -222,8 +222,8 @@ function gradeRangeContains(outer: GradeRange, inner: GradeRange): boolean {
 
 function gradeRangeOverlap(a: GradeRange, b: GradeRange): number {
   if (a.isForeignWorker !== b.isForeignWorker) return 0;
-  const capA = a.max === Infinity ? 999 : a.max;
-  const capB = b.max === Infinity ? 999 : b.max;
+  const capA = a.max === Number.POSITIVE_INFINITY ? 999 : a.max;
+  const capB = b.max === Number.POSITIVE_INFINITY ? 999 : b.max;
   const lo = Math.max(a.min, b.min);
   const hi = Math.min(capA, capB);
   return hi >= lo ? hi - lo + 1 : 0;
@@ -320,9 +320,9 @@ export function buildEligibilityMatrix(
         // category that also covers bargainable staff (e.g. GTL's
         // "Grade 08-15 and Bargainable Staff").
         if (!groupGrade) {
+          const firstLabel = labels[0] ?? '';
           const groupIsBargainable =
-            /\bbargainable\b/i.test(labels[0]!) &&
-            !/\bnon[\s-]*bargainable\b/i.test(labels[0]!);
+            /\bbargainable\b/i.test(firstLabel) && !/\bnon[\s-]*bargainable\b/i.test(firstLabel);
           if (groupIsBargainable) {
             for (const [catLabel, planCode] of catMap) {
               if (
