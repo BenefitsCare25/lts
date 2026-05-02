@@ -3,18 +3,18 @@
 import { Card, ConfidenceBadge } from '@/components/ui';
 import { useMemo, useState } from 'react';
 import {
-  INELIGIBLE,
-  buildProductAssignments,
-  deriveEmployeeCategories,
-  type EligibilityOverride,
-} from '../eligibility-helpers';
-import {
   type WizardExtractedProduct,
   type WizardPlanField,
   type WizardPremiumRateField,
   readBrokerOverride,
   suggestionsFromDraft,
 } from '../_types';
+import {
+  type EligibilityOverride,
+  INELIGIBLE,
+  buildProductAssignments,
+  deriveEmployeeCategories,
+} from '../eligibility-helpers';
 import {
   COMMON_COVER_TIERS,
   COVER_BASIS_LABELS,
@@ -196,9 +196,7 @@ function PlanCard({
                       <select
                         className="input"
                         value={rate.coverTier ?? ''}
-                        onChange={(e) =>
-                          onUpdateRate(idx, { coverTier: e.target.value || null })
-                        }
+                        onChange={(e) => onUpdateRate(idx, { coverTier: e.target.value || null })}
                         style={{ width: '5rem' }}
                       >
                         <option value="">—</option>
@@ -214,9 +212,7 @@ function PlanCard({
                         className="input"
                         type="text"
                         value={rate.blockLabel ?? ''}
-                        onChange={(e) =>
-                          onUpdateRate(idx, { blockLabel: e.target.value || null })
-                        }
+                        onChange={(e) => onUpdateRate(idx, { blockLabel: e.target.value || null })}
                         style={{ width: '7rem' }}
                         placeholder="(all)"
                       />
@@ -312,11 +308,23 @@ function PlanCard({
         </button>
       </div>
 
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+      <div
+        style={{
+          borderTop: '1px solid var(--border)',
+          paddingTop: '0.75rem',
+          marginTop: '0.75rem',
+        }}
+      >
         <button
           type="button"
           className="row"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, gap: '0.4rem' }}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            gap: '0.4rem',
+          }}
           onClick={() => setGroupsExpanded((v) => !v)}
         >
           <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
@@ -325,7 +333,10 @@ function PlanCard({
           <span className="eyebrow">Benefit groups</span>
           <span className="pill pill-muted">{assignedGroups.length}</span>
           {!groupsExpanded ? (
-            <span className="text-muted" style={{ fontSize: 'var(--font-sm)', marginLeft: '0.25rem' }}>
+            <span
+              className="text-muted"
+              style={{ fontSize: 'var(--font-sm)', marginLeft: '0.25rem' }}
+            >
               {assignedGroups.length === 0
                 ? '— none assigned'
                 : assignedGroups
@@ -410,6 +421,7 @@ export function PlansRatesTab({
   }, [draft.progress]);
 
   // Compute plan → benefit groups; only re-runs when plans or product identity changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: member-expression deps intentionally narrow recomputation
   const groupsByPlan = useMemo(() => {
     const { suggestions, categories, eligOverride } = draftEligibility;
     const pa = buildProductAssignments([product], categories, suggestions, eligOverride.groups)[0];
@@ -496,8 +508,8 @@ export function PlansRatesTab({
         <Card className="card-padded">
           <h3 className="mb-3">Plans &amp; rates</h3>
           <p className="field-help mb-0">
-            <strong>Bundled with {bundledWith}.</strong> This product&rsquo;s premium is rolled
-            into the {bundledWith} product&rsquo;s rates. No separate rate rows are expected here.
+            <strong>Bundled with {bundledWith}.</strong> This product&rsquo;s premium is rolled into
+            the {bundledWith} product&rsquo;s rates. No separate rate rows are expected here.
           </p>
         </Card>
       </section>

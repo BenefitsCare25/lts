@@ -5,10 +5,7 @@ import { trpc } from '@/lib/trpc/client';
 import { useDebouncedAutosave } from '@/lib/use-debounced-autosave';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SectionId } from './_registry';
-import {
-  type WizardExtractedProduct,
-  extractedProductsFromDraft,
-} from './_types';
+import { type WizardExtractedProduct, extractedProductsFromDraft } from './_types';
 import { DetailsTab } from './products/details-tab';
 import { EndorsementsTab } from './products/endorsements-tab';
 import { GroupsTab } from './products/groups-tab';
@@ -229,12 +226,7 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
                 active={activeTab}
                 onChange={setActiveTab}
               />
-              <TabButton
-                id="groups"
-                label="Groups"
-                active={activeTab}
-                onChange={setActiveTab}
-              />
+              <TabButton id="groups" label="Groups" active={activeTab} onChange={setActiveTab} />
               <TabButton
                 id="endorsements"
                 label="Endorsements"
@@ -257,11 +249,7 @@ export function ProductsSection({ draft, markSectionDirty }: Props) {
             <DetailsTab product={active} onChange={makeOnChange(activeIndex)} />
           ) : null}
           {activeTab === 'plans-rates' ? (
-            <PlansRatesTab
-              product={active}
-              onChange={makeOnChange(activeIndex)}
-              draft={draft}
-            />
+            <PlansRatesTab product={active} onChange={makeOnChange(activeIndex)} draft={draft} />
           ) : null}
           {activeTab === 'groups' ? <GroupsTab product={active} draft={draft} /> : null}
           {activeTab === 'endorsements' ? (

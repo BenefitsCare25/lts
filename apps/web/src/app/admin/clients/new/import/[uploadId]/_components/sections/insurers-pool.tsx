@@ -308,7 +308,6 @@ export function InsurersPoolSection({ draft, markSectionDirty }: Props) {
           ) : null}
         </Card>
       </section>
-
     </>
   );
 }
