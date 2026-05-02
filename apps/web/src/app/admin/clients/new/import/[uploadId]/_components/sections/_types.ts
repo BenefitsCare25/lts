@@ -65,6 +65,12 @@ export type WizardExtractedProduct = {
     lastEntryAge: FieldEnvelope<number>;
     administrationType: FieldEnvelope<string>;
     currency: FieldEnvelope<string>;
+    ageLimitNoUnderwriting: FieldEnvelope<number>;
+    aboveLastEntryAge: FieldEnvelope<string>;
+    employeeAgeLimit: FieldEnvelope<number>;
+    spouseAgeLimit: FieldEnvelope<number>;
+    childAgeLimit: FieldEnvelope<number>;
+    childMinimumAge: FieldEnvelope<number>;
   };
   policyholder: {
     legalName: FieldEnvelope<string>;
@@ -189,6 +195,14 @@ export type ProposedPool = {
   sourceRef?: SourceRef;
 } | null;
 
+export type ProposedTpa = {
+  name: string | null;
+  tpaId: string | null;
+  rawLabel: string | null;
+  confidence: number;
+  sourceRef?: SourceRef;
+} | null;
+
 export type LiveStage = 'AI_DISCOVERY' | 'AI_PRODUCTS';
 export type LiveProductStatus = 'queued' | 'running' | 'ok' | 'failed';
 
@@ -198,6 +212,7 @@ export type WizardAiBundle = {
   proposedBenefitYear: ProposedBenefitYear | null;
   proposedInsurers: ProposedInsurer[];
   proposedPool: ProposedPool;
+  proposedTpa: ProposedTpa;
   warnings: string[];
   // Wizard's status pill copy. Mirrors ExtractionDraft.status but
   // also surfaces the per-stage hint (AI_DISCOVERY / AI_PRODUCTS /
@@ -236,6 +251,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedBenefitYear: null,
     proposedInsurers: [],
     proposedPool: null,
+    proposedTpa: null,
     warnings: [],
     stage: null,
     live: null,
@@ -249,6 +265,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedBenefitYear?: ProposedBenefitYear;
     proposedInsurers?: ProposedInsurer[];
     proposedPool?: ProposedPool;
+    proposedTpa?: ProposedTpa;
     warnings?: string[];
     stage?: string;
     live?: {
@@ -278,6 +295,7 @@ export function aiBundleFromDraft(progress: unknown): WizardAiBundle {
     proposedBenefitYear: p.proposedBenefitYear ?? null,
     proposedInsurers: p.proposedInsurers ?? [],
     proposedPool: p.proposedPool ?? null,
+    proposedTpa: p.proposedTpa ?? null,
     warnings: p.warnings ?? [],
     stage: p.stage ?? null,
     live,
@@ -305,6 +323,33 @@ export function suggestionsFromDraft(progress: unknown): WizardSuggestions {
   return obj.suggestions ?? empty;
 }
 
+const EMPTY_NUMBER_FIELD: FieldEnvelope<number> = { value: null, confidence: 0 };
+const EMPTY_STRING_FIELD: FieldEnvelope<string> = { value: null, confidence: 0 };
+
+// Ensure all header fields introduced after v1 are present, so
+// downstream components can access them without optional-chaining.
+function normalizeProduct(raw: unknown): WizardExtractedProduct {
+  const p = raw as WizardExtractedProduct;
+  const h = (p.header ?? {}) as WizardExtractedProduct['header'] & Record<string, unknown>;
+  return {
+    ...p,
+    header: {
+      ...h,
+      ageLimitNoUnderwriting:
+        (h.ageLimitNoUnderwriting as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
+      aboveLastEntryAge:
+        (h.aboveLastEntryAge as FieldEnvelope<string> | undefined) ?? EMPTY_STRING_FIELD,
+      employeeAgeLimit:
+        (h.employeeAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
+      spouseAgeLimit:
+        (h.spouseAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
+      childAgeLimit: (h.childAgeLimit as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
+      childMinimumAge:
+        (h.childMinimumAge as FieldEnvelope<number> | undefined) ?? EMPTY_NUMBER_FIELD,
+    },
+  };
+}
+
 // Centralised read for ExtractedProduct[] off the draft. Uses Zod
 // safeParse to drop structurally invalid items without crashing the
 // wizard — a malformed product is logged and skipped rather than
@@ -315,7 +360,7 @@ export function extractedProductsFromDraft(raw: unknown): WizardExtractedProduct
   for (const [i, item] of raw.entries()) {
     const parsed = wizardExtractedProductSchema.safeParse(item);
     if (parsed.success) {
-      result.push(parsed.data as WizardExtractedProduct);
+      result.push(normalizeProduct(parsed.data));
     } else {
       console.warn(
         `[wizard] extractedProductsFromDraft: dropped item[${i}] — invalid shape:`,
@@ -329,6 +374,7 @@ export function extractedProductsFromDraft(raw: unknown): WizardExtractedProduct
 export const BROKER_OVERRIDE_NAMESPACES = [
   'insurers',
   'pool',
+  'tpa',
   'eligibility',
   'schemaDecisions',
   'reconciliation',

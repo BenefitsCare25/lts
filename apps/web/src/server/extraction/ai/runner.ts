@@ -46,6 +46,7 @@ import type {
   DiscoveryPolicyEntity,
   DiscoveryPool,
   DiscoveryProposedClient,
+  DiscoveryTpa,
   ProductManifestEntry,
 } from './schema-discovery';
 import {
@@ -65,6 +66,7 @@ export type AiOutputPolicyEntity = DiscoveryPolicyEntity;
 export type AiOutputBenefitYear = DiscoveryBenefitYear;
 export type AiOutputInsurer = DiscoveryInsurer;
 export type AiOutputPool = DiscoveryPool;
+export type AiOutputTpa = DiscoveryTpa;
 
 export type AiRunnerSuccess = {
   ok: true;
@@ -76,6 +78,7 @@ export type AiRunnerSuccess = {
   proposedBenefitYear: AiOutputBenefitYear;
   proposedInsurers: AiOutputInsurer[];
   proposedPool: AiOutputPool;
+  proposedTpa: AiOutputTpa;
   // Warnings from: serializer truncation + discovery pass + each
   // per-product pass + per-product failures (partial-success path).
   warnings: string[];
@@ -265,6 +268,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
       proposedBenefitYear: discovery.output.proposedBenefitYear,
       proposedInsurers: discovery.output.proposedInsurers,
       proposedPool: discovery.output.proposedPool,
+      proposedTpa: discovery.output.proposedTpa ?? null,
       warnings: [
         ...workbookText.warnings,
         ...discovery.output.warnings,
@@ -443,6 +447,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
     proposedBenefitYear: discovery.output.proposedBenefitYear,
     proposedInsurers: canonicalisedProposedInsurers,
     proposedPool: discovery.output.proposedPool,
+    proposedTpa: discovery.output.proposedTpa ?? null,
     warnings: combinedWarnings,
     meta: {
       model: discovery.model,

@@ -169,6 +169,21 @@ const proposedPoolSchema = {
   },
 } as const;
 
+const proposedTpaSchema = {
+  type: ['object', 'null'],
+  additionalProperties: false,
+  properties: {
+    name: { type: ['string', 'null'] },
+    tpaId: {
+      type: ['string', 'null'],
+      description: 'TPA.id from the catalogue TPA registry, or null if no match.',
+    },
+    rawLabel: { type: ['string', 'null'] },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    sourceRef: sourceRefSchema,
+  },
+} as const;
+
 export const discoveryOutputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -193,6 +208,7 @@ export const discoveryOutputSchema = {
     proposedBenefitYear: proposedBenefitYearSchema,
     proposedInsurers: proposedInsurersSchema,
     proposedPool: proposedPoolSchema,
+    proposedTpa: proposedTpaSchema,
     warnings: {
       type: 'array',
       items: { type: 'string' },
@@ -264,6 +280,14 @@ export type DiscoveryPool = {
   sourceRef?: { sheet?: string; cell?: string; range?: string };
 } | null;
 
+export type DiscoveryTpa = {
+  name: string | null;
+  tpaId: string | null;
+  rawLabel: string | null;
+  confidence: number;
+  sourceRef?: { sheet?: string; cell?: string; range?: string };
+} | null;
+
 export type DiscoveryOutput = {
   productManifest: ProductManifestEntry[];
   proposedClient: DiscoveryProposedClient;
@@ -271,6 +295,7 @@ export type DiscoveryOutput = {
   proposedBenefitYear: DiscoveryBenefitYear;
   proposedInsurers: DiscoveryInsurer[];
   proposedPool: DiscoveryPool;
+  proposedTpa?: DiscoveryTpa;
   warnings: string[];
 };
 

@@ -9,7 +9,6 @@ import type { AppRouter } from '@/server/trpc/router';
 import type { inferRouterOutputs } from '@trpc/server';
 import type { ComponentType } from 'react';
 import type { DraftFormState, SectionId } from './_registry';
-import { BenefitYearSection } from './benefit-year';
 import { ClientSection } from './client';
 import { InsurersPoolSection } from './insurers-pool';
 import { PolicyEntitiesSection } from './policy-entities';
@@ -46,7 +45,6 @@ export const SECTION_COMPONENTS: Record<SectionId, ComponentType<SectionRenderPr
   source: SourceSummarySection as ComponentType<SectionRenderProps>,
   client: ClientSection as ComponentType<SectionRenderProps>,
   entities: PolicyEntitiesSection as ComponentType<SectionRenderProps>,
-  benefit_year: BenefitYearSection as ComponentType<SectionRenderProps>,
   insurers: InsurersPoolSection as ComponentType<SectionRenderProps>,
   products: ProductsSection as ComponentType<SectionRenderProps>,
   schema_additions: SchemaAdditionsSection as ComponentType<SectionRenderProps>,

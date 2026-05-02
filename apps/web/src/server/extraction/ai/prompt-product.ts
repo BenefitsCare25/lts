@@ -160,6 +160,20 @@ export function buildProductUserPrompt(
     '- **bundledWithProductCode**: set to the productTypeCode of the carrier product when this',
     "  product's premium is rolled into another product's rates (e.g. SP premium listed under",
     '  "Part of GHS"). Leave null when this product has its own declared premium.',
+    '- **ageLimitNoUnderwriting**: the age at or below which new members are accepted without',
+    '  medical underwriting. Look for cells labelled "Age Limit for No Underwriting",',
+    '  "Non-Evidence Limit (Age)", or "NEL Age". Emit as a NumberField integer.',
+    '- **aboveLastEntryAge**: how members above the last entry age are treated. Look for a cell',
+    '  labelled "Above Last Entry Age", "Provisional", or "Members above LEA". Typical values:',
+    '  "Provisional basis", "Excluded". Emit as a StringField.',
+    '- **employeeAgeLimit**: maximum age an employee can remain covered. Look for',
+    '  "Employee Age Limit", "Age Limit (Employee)", "Max Age – Employee". NumberField.',
+    '- **spouseAgeLimit**: maximum age for a covered spouse. Look for "Spouse Age Limit",',
+    '  "Age Limit (Spouse)", "Max Age – Spouse". NumberField.',
+    '- **childAgeLimit**: maximum age for a covered child. Look for "Child Age Limit",',
+    '  "Age Limit (Child)", "Max Age – Child". NumberField.',
+    '- **childMinimumAge**: minimum age for a covered child (often 14 days or 1 month expressed',
+    '  as 0). Look for "Child Minimum Age", "Min Age (Child)", "Minimum Age – Child". NumberField.',
     '',
     ...anchorBlock,
     ...notesBlock,
@@ -210,6 +224,13 @@ function renderHeuristicSummary(p: ExtractedProduct): string {
   env('  currency', p.header.currency);
   env('  administrationType', p.header.administrationType);
   env('  lastEntryAge', p.header.lastEntryAge);
+  if (p.header.ageLimitNoUnderwriting)
+    env('  ageLimitNoUnderwriting', p.header.ageLimitNoUnderwriting);
+  if (p.header.aboveLastEntryAge) env('  aboveLastEntryAge', p.header.aboveLastEntryAge);
+  if (p.header.employeeAgeLimit) env('  employeeAgeLimit', p.header.employeeAgeLimit);
+  if (p.header.spouseAgeLimit) env('  spouseAgeLimit', p.header.spouseAgeLimit);
+  if (p.header.childAgeLimit) env('  childAgeLimit', p.header.childAgeLimit);
+  if (p.header.childMinimumAge) env('  childMinimumAge', p.header.childMinimumAge);
 
   lines.push('');
   lines.push('Policyholder:');

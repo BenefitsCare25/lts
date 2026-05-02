@@ -13,7 +13,6 @@ export type SectionId =
   | 'source'
   | 'client'
   | 'entities'
-  | 'benefit_year'
   | 'insurers'
   | 'products'
   | 'schema_additions'
@@ -24,7 +23,6 @@ export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: 'source', label: 'Source file' },
   { id: 'client', label: 'Client details' },
   { id: 'entities', label: 'Policy entities' },
-  { id: 'benefit_year', label: 'Benefit year' },
   { id: 'insurers', label: 'Insurers & pool' },
   { id: 'products', label: 'Products' },
   { id: 'schema_additions', label: 'Schema additions' },

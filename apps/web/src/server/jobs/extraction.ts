@@ -243,6 +243,7 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
         proposedBenefitYear: aiResult.proposedBenefitYear,
         proposedInsurers: aiResult.proposedInsurers,
         proposedPool: aiResult.proposedPool,
+        proposedTpa: aiResult.proposedTpa,
         warnings: aiResult.warnings,
         ai: {
           model: aiResult.meta.model,

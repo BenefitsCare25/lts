@@ -29,7 +29,7 @@ type Props = {
   applyReadiness: number;
 };
 
-const REQUIRED_FOR_APPLY: SectionId[] = ['client', 'entities', 'benefit_year'];
+const REQUIRED_FOR_APPLY: SectionId[] = ['client', 'entities'];
 
 export function ReviewSection({ form, draft, sectionStatus, applyReadiness }: Props) {
   const router = useRouter();

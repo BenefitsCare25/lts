@@ -38,7 +38,6 @@ const EMPTY_DIRTY_FLAGS: Record<SectionId, boolean> = {
   source: false,
   client: false,
   entities: false,
-  benefit_year: false,
   insurers: false,
   products: false,
   schema_additions: false,
@@ -173,10 +172,34 @@ export function WizardShell({ uploadId }: Props) {
     },
   );
 
-  // AI seeding lives per-section (ClientSection, PolicyEntitiesSection,
-  // BenefitYearSection each own their useEffect that reads
-  // aiBundle.proposed* and seeds the form once when AI proposals land).
-  // The shell does not re-seed centrally — single ownership.
+  // Seed benefit-year / policy fields from the AI discovery pass once per
+  // draft. BenefitYearSection was removed from the wizard nav; this
+  // useEffect takes over its seeding responsibility so the Review/Apply
+  // step still has the correct period, policy name, and age basis.
+  const seededByBenefitYearRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draft.data) return;
+    if (seededByBenefitYearRef.current === draft.data.id) return;
+    const bundle = aiBundleFromDraft(draft.data.progress);
+    const proposed = bundle.proposedBenefitYear;
+    if (!proposed) return;
+    seededByBenefitYearRef.current = draft.data.id;
+    setForm((prev) => ({
+      ...prev,
+      policy: {
+        name: prev.policy.name || proposed.policyName || '',
+        ageBasis:
+          prev.policy.ageBasis === 'POLICY_START' && proposed.ageBasis
+            ? proposed.ageBasis
+            : prev.policy.ageBasis,
+      },
+      benefitYear: {
+        ...prev.benefitYear,
+        startDate: prev.benefitYear.startDate || proposed.startDate || '',
+        endDate: prev.benefitYear.endDate || proposed.endDate || '',
+      },
+    }));
+  }, [draft.data]);
 
   const sectionStatus = useMemo(() => computeSectionStatus(form, draft.data), [form, draft.data]);
   const provenance = useMemo(
@@ -475,10 +498,6 @@ function computeProvenance(
       progress?.proposedClient != null,
     ),
     entities: tag(form.policyEntities.length > 0, proposedEntitiesCount > 0),
-    benefit_year: tag(
-      Boolean(form.benefitYear.startDate || form.benefitYear.endDate || form.policy.name),
-      progress?.proposedBenefitYear != null,
-    ),
     // Insurers can come from either the heuristic (template-matched
     // insurer codes inside extractedProducts) or the AI's discovery
     // pass (proposedInsurers). The AI tag wins when AI proposed any.
@@ -605,7 +624,6 @@ function computeSectionStatus(
     source: 'complete', // read-only summary; always complete once loaded
     client: 'pending',
     entities: 'pending',
-    benefit_year: 'pending',
     insurers: insurersStatus,
     products: productsStatus,
     schema_additions: schemaStatus,
@@ -630,20 +648,9 @@ function computeSectionStatus(
     result.entities = 'in_progress';
   }
 
-  // Benefit year
-  if (form.benefitYear.startDate && form.benefitYear.endDate && form.policy.name) {
-    result.benefit_year = 'complete';
-  } else if (form.benefitYear.startDate || form.benefitYear.endDate || form.policy.name) {
-    result.benefit_year = 'in_progress';
-  }
-
   // Review only completes once the apply has run; the section itself
   // tracks that via its own state.
-  if (
-    result.client === 'complete' &&
-    result.entities === 'complete' &&
-    result.benefit_year === 'complete'
-  ) {
+  if (result.client === 'complete' && result.entities === 'complete') {
     result.review = 'complete';
   }
 
@@ -679,8 +686,5 @@ function sectionsWithBrokerContent(form: DraftFormState): SectionId[] {
   const out: SectionId[] = [];
   if (form.client.legalName || form.client.uen || form.client.address) out.push('client');
   if (form.policyEntities.length > 0) out.push('entities');
-  if (form.benefitYear.startDate || form.benefitYear.endDate || form.policy.name) {
-    out.push('benefit_year');
-  }
   return out;
 }

@@ -40,7 +40,13 @@
         "administrationType": { "$ref": "#/definitions/StringField" },
         "currency": { "$ref": "#/definitions/StringField" },
         "declaredPremium": { "$ref": "#/definitions/NumberField" },
-        "nonEvidenceLimit": { "$ref": "#/definitions/StringField" }
+        "nonEvidenceLimit": { "$ref": "#/definitions/StringField" },
+        "ageLimitNoUnderwriting": { "$ref": "#/definitions/NumberField" },
+        "aboveLastEntryAge": { "$ref": "#/definitions/StringField" },
+        "employeeAgeLimit": { "$ref": "#/definitions/NumberField" },
+        "spouseAgeLimit": { "$ref": "#/definitions/NumberField" },
+        "childAgeLimit": { "$ref": "#/definitions/NumberField" },
+        "childMinimumAge": { "$ref": "#/definitions/NumberField" }
       }
     },
     "policyholder": {

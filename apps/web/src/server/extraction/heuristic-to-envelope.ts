@@ -123,6 +123,12 @@ export type ExtractedProduct = {
     currency: StringField;
     declaredPremium?: NumberField;
     nonEvidenceLimit?: StringField;
+    ageLimitNoUnderwriting?: NumberField;
+    aboveLastEntryAge?: StringField;
+    employeeAgeLimit?: NumberField;
+    spouseAgeLimit?: NumberField;
+    childAgeLimit?: NumberField;
+    childMinimumAge?: NumberField;
   };
   policyholder: {
     legalName: StringField;
