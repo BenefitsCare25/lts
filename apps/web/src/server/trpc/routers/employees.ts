@@ -8,11 +8,11 @@
 // enrollment lands when the engagement workflow is built).
 // =============================================================
 
-import { fieldToPropSchema } from '@/server/catalogue/employee-field-schema';
+import { deriveCoverTier } from '@/lib/cover-tier';
 import { safeCompile } from '@/server/catalogue/ajv';
+import { fieldToPropSchema } from '@/server/catalogue/employee-field-schema';
 import { prisma } from '@/server/db/client';
 import type { TenantDb } from '@/server/db/tenant';
-import { deriveCoverTier } from '@/lib/cover-tier';
 import type { EmployeeField } from '@insurance-saas/shared-types';
 import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
@@ -447,7 +447,9 @@ export const employeesRouter = router({
             select: { relation: true },
           });
           const newTier = deriveCoverTier(
-            updatedDeps.map((d) => ({ relationship: d.relation.toUpperCase() as 'SPOUSE' | 'CHILD' })),
+            updatedDeps.map((d) => ({
+              relationship: d.relation.toUpperCase() as 'SPOUSE' | 'CHILD',
+            })),
           );
 
           await Promise.all([

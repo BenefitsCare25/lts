@@ -20,6 +20,7 @@ import { placementSlipsRouter } from './routers/placement-slips';
 import { plansRouter } from './routers/plans';
 import { policiesRouter } from './routers/policies';
 import { poolsRouter } from './routers/pools';
+import { portalRouter } from './routers/portal';
 import { premiumRatesRouter } from './routers/premium-rates';
 import { productEligibilityRouter } from './routers/product-eligibility';
 import { productTypesRouter } from './routers/product-types';
@@ -27,7 +28,6 @@ import { productsRouter } from './routers/products';
 import { referenceDataRouter } from './routers/reference-data';
 import { reviewRouter } from './routers/review';
 import { tenantAiProviderRouter } from './routers/tenant-ai-provider';
-import { portalRouter } from './routers/portal';
 import { tpasRouter } from './routers/tpas';
 
 export const appRouter = router({

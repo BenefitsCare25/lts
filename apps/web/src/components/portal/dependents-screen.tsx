@@ -128,7 +128,10 @@ export function DependentsScreen() {
   async function submitAdd(values: FormValues) {
     setMutationError(null);
     try {
-      await addMutation.mutateAsync({ data: formValuesToDepData(values), relation: values.relation as Relation });
+      await addMutation.mutateAsync({
+        data: formValuesToDepData(values),
+        relation: values.relation as Relation,
+      });
       await utils.portal.dependents.pendingRequests.invalidate();
       setMode(null);
     } catch (err) {
@@ -139,7 +142,11 @@ export function DependentsScreen() {
   async function submitEdit(depId: string, values: FormValues) {
     setMutationError(null);
     try {
-      await editMutation.mutateAsync({ dependentId: depId, data: formValuesToDepData(values), relation: values.relation as Relation });
+      await editMutation.mutateAsync({
+        dependentId: depId,
+        data: formValuesToDepData(values),
+        relation: values.relation as Relation,
+      });
       await utils.portal.dependents.pendingRequests.invalidate();
       setMode(null);
     } catch (err) {

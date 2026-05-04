@@ -1,5 +1,5 @@
-import { requireSession } from '@/server/auth/session';
 import { DashboardScreen } from '@/components/portal/dashboard-screen';
+import { requireSession } from '@/server/auth/session';
 
 export default async function PortalDashboard() {
   const session = await requireSession();

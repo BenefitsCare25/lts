@@ -62,7 +62,13 @@ function FieldInput({
   return (
     <input
       id={field.name}
-      type={field.type === 'date' ? 'date' : field.type === 'integer' || field.type === 'number' ? 'number' : 'text'}
+      type={
+        field.type === 'date'
+          ? 'date'
+          : field.type === 'integer' || field.type === 'number'
+            ? 'number'
+            : 'text'
+      }
       className="input"
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -171,50 +177,51 @@ export function ProfileScreen() {
           )}
           {editableFields.length > 0 &&
             (isEditing ? (
-                <div className="flex flex-col gap-3">
-                  {editableFields.map((f) => (
-                    <div key={f.name} className="field">
-                      <label className="field-label" htmlFor={f.name}>
-                        {f.label}
-                      </label>
-                      <FieldInput
-                        field={f}
-                        value={formValues[f.name] ?? ''}
-                        onChange={(v) => setFormValues((prev) => ({ ...prev, [f.name]: v }))}
-                      />
-                    </div>
-                  ))}
-                  {saveError && <p className="field-error">{saveError}</p>}
-                  <div className="flex gap-2 mt-1">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      onClick={handleSave}
-                      disabled={updateMutation.isPending}
-                    >
-                      {updateMutation.isPending ? 'Saving…' : 'Save changes'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => setIsEditing(false)}
-                      disabled={updateMutation.isPending}
-                    >
-                      Cancel
-                    </button>
+              <div className="flex flex-col gap-3">
+                {editableFields.map((f) => (
+                  <div key={f.name} className="field">
+                    <label className="field-label" htmlFor={f.name}>
+                      {f.label}
+                    </label>
+                    <FieldInput
+                      field={f}
+                      value={formValues[f.name] ?? ''}
+                      onChange={(v) => setFormValues((prev) => ({ ...prev, [f.name]: v }))}
+                    />
                   </div>
+                ))}
+                {saveError && <p className="field-error">{saveError}</p>}
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleSave}
+                    disabled={updateMutation.isPending}
+                  >
+                    {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setIsEditing(false)}
+                    disabled={updateMutation.isPending}
+                  >
+                    Cancel
+                  </button>
                 </div>
-              ) : (
-                <dl className="field-dl">
-                  {editableFields.map((f) => (
-                    <div key={f.name} className="field-dl__row">
-                      <dt className="field-dl__label">{f.label}</dt>
-                      <dd className="field-dl__value">{formatValue(f.name, empData[f.name], fields)}</dd>
-                    </div>
-                  ))}
-                </dl>
-            )
-          )}
+              </div>
+            ) : (
+              <dl className="field-dl">
+                {editableFields.map((f) => (
+                  <div key={f.name} className="field-dl__row">
+                    <dt className="field-dl__label">{f.label}</dt>
+                    <dd className="field-dl__value">
+                      {formatValue(f.name, empData[f.name], fields)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ))}
         </div>
       )}
     </div>

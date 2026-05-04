@@ -1,5 +1,5 @@
-import { fieldToPropSchema } from '@/server/catalogue/employee-field-schema';
 import { safeCompile } from '@/server/catalogue/ajv';
+import { fieldToPropSchema } from '@/server/catalogue/employee-field-schema';
 import { prisma } from '@/server/db/client';
 import type { EmployeeField } from '@insurance-saas/shared-types';
 import type { Prisma } from '@prisma/client';
@@ -53,9 +53,7 @@ async function fetchEntitlements(_tenantId: string, employeeId: string) {
     const plan = planById.get(enr.planId);
     const group = groupById.get(enr.benefitGroupId);
     const matchingRate =
-      rateByKey.get(`${enr.planId}:${enr.coverTier}`) ??
-      rateByKey.get(`${enr.planId}:*`) ??
-      null;
+      rateByKey.get(`${enr.planId}:${enr.coverTier}`) ?? rateByKey.get(`${enr.planId}:*`) ?? null;
 
     return {
       enrollmentId: enr.id,

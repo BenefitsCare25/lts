@@ -64,9 +64,7 @@ export function EmployeeDetailScreen({
           onClick={() => setTab('changeRequests')}
         >
           Change Requests
-          {pendingCrCount > 0 && (
-            <span className="badge ml-2">{pendingCrCount}</span>
-          )}
+          {pendingCrCount > 0 && <span className="badge ml-2">{pendingCrCount}</span>}
         </button>
       </nav>
 
@@ -167,7 +165,6 @@ function EntitlementsTab({
 }
 
 function EntitlementCard({ row }: { row: EntitlementRow }) {
-
   return (
     <div className="card card-padded">
       <div className="flex items-center justify-between mb-2">
@@ -287,9 +284,7 @@ function ChangeRequestsTab({
                   {RELATION_LABEL[req.relation] ?? req.relation}
                   {req.action !== 'REMOVE' && ` — ${depName}`}
                 </p>
-                <p className="text-xs muted mt-0.5">
-                  Submitted {formatDate(req.createdAt)}
-                </p>
+                <p className="text-xs muted mt-0.5">Submitted {formatDate(req.createdAt)}</p>
                 {req.rejectionReason && (
                   <p className="text-xs muted mt-0.5">Reason: {req.rejectionReason}</p>
                 )}
@@ -314,7 +309,10 @@ function ChangeRequestsTab({
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => { setRejectingId(req.id); setRejectReason(''); }}
+                  onClick={() => {
+                    setRejectingId(req.id);
+                    setRejectReason('');
+                  }}
                   disabled={isBusy}
                 >
                   Reject
