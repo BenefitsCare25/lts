@@ -1,15 +1,3 @@
-// Extracts unique employee category labels from an employee listing workbook.
-//
-// Scans the first worksheet for a column whose header matches "category"
-// (case-insensitive, trimmed). Returns a sorted, deduplicated array of
-// non-empty string cell values from that column.
-//
-// Used by the import wizard to feed ground-truth employee categories into
-// the AI extraction prompt so the AI names benefit groups using the exact
-// labels that employees will have in their data — enabling simple
-// `{ "==": [{ "var": "employee.category" }, "Director"] }` predicates
-// rather than inferred Hay Grade / work-pass comparisons.
-
 import ExcelJS from 'exceljs';
 
 export class CategoryColumnNotFoundError extends Error {
@@ -32,29 +20,21 @@ export async function extractUniqueCategories(buffer: Buffer): Promise<string[]>
     throw new CategoryColumnNotFoundError();
   }
 
-  // Find the column index for "Category" by scanning the first (header) row.
-  const headerRow = sheet.getRow(1);
-  let categoryColIndex: number | null = null;
+  // getRow(1).values is a 1-based sparse array; findIndex short-circuits unlike eachCell.
+  const headerValues = sheet.getRow(1).values as (ExcelJS.CellValue | undefined)[];
+  const categoryColIndex = headerValues.findIndex(
+    (v) => v != null && String(v).trim().toLowerCase() === 'category',
+  );
 
-  headerRow.eachCell((cell, colNumber) => {
-    if (categoryColIndex !== null) return;
-    const raw = cell.value;
-    const text = raw == null ? '' : String(raw).trim().toLowerCase();
-    if (text === 'category') {
-      categoryColIndex = colNumber;
-    }
-  });
-
-  if (categoryColIndex === null) {
+  if (categoryColIndex === -1) {
     throw new CategoryColumnNotFoundError();
   }
 
   const seen = new Set<string>();
-  const col = categoryColIndex;
 
   sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return; // skip header
-    const cell = row.getCell(col);
+    if (rowNumber === 1) return;
+    const cell = row.getCell(categoryColIndex);
     const raw = cell.value;
     if (raw == null) return;
     const text = String(raw).trim();

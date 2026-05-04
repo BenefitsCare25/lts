@@ -1,15 +1,7 @@
 'use client';
 
-// EmployeeListingSection — optional employee listing upload within the
-// Source section. Extracts unique Category values from the file and stores
-// them on ExtractionDraft.employeeCategories so the AI extraction prompt
-// can use them as ground-truth employee group labels.
-//
-// The file itself is NOT persisted — only the extracted category strings.
-// The broker uploads the same file later via the employee import screen
-// to create the actual Employee rows.
-
 import { Card } from '@/components/ui';
+import { readFileAsBase64 } from '@/lib/file';
 import { trpc } from '@/lib/trpc/client';
 import { useRef, useState } from 'react';
 
@@ -39,19 +31,7 @@ export function EmployeeListingSection({
 
   const handleFile = (file: File) => {
     setError(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const arrayBuffer = e.target?.result;
-      if (!(arrayBuffer instanceof ArrayBuffer)) return;
-      const bytes = new Uint8Array(arrayBuffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i] as number);
-      }
-      const fileBase64 = btoa(binary);
-      attach.mutate({ draftId, fileBase64 });
-    };
-    reader.readAsArrayBuffer(file);
+    readFileAsBase64(file).then((fileBase64) => attach.mutate({ draftId, fileBase64 }));
   };
 
   return (

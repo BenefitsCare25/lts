@@ -405,12 +405,7 @@ export const extractionDraftsRouter = router({
         });
       }
 
-      let buffer: Buffer;
-      try {
-        buffer = Buffer.from(input.fileBase64, 'base64');
-      } catch {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid base64 file data.' });
-      }
+      const buffer = Buffer.from(input.fileBase64, 'base64');
 
       let categories: string[];
       try {

@@ -140,7 +140,7 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
                   : "AI extraction reads the workbook with your tenant's configured Claude/Foundry deployment and pre-fills the wizard's sections (client details, policy entities, benefit year, products, plans, premium rates, eligibility). Heuristic-extracted cells with full confidence are preserved; the AI fills the rest."}
               </p>
               {employeeCategories.length > 0 ? (
-                <p className="field-help mb-3" style={{ color: 'var(--color-good)' }}>
+                <p className="field-help text-good mb-3">
                   ✓ Employee listing attached — {employeeCategories.length}{' '}
                   {employeeCategories.length === 1 ? 'category' : 'categories'} will be used to
                   guide benefit group naming.

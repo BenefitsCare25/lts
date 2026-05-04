@@ -39,7 +39,10 @@ type ProductPlanMap = {
   assignments: ProductAssignmentRow[];
 };
 
-// Build a direct equality predicate for employee.category.
+// Sentinel: must exceed any real tokenMatches count from pattern-matching so
+// ground-truth category matches always win the deduplication priority sort.
+const GROUND_TRUTH_PRIORITY = 99;
+
 function categoryPredicate(label: string): Record<string, unknown> {
   return { '==': [{ var: 'employee.category' }, label] };
 }
@@ -48,8 +51,7 @@ export function deriveEmployeeCategories(
   suggestions: WizardSuggestions,
   knownCategories?: string[],
 ): DerivedCategory[] {
-  // Build a case-insensitive lookup map from the known employee listing categories.
-  const normalizedKnown = new Map<string, string>(); // lower → original
+  const normalizedKnown = new Map<string, string>(); // lower → original label
   if (knownCategories) {
     for (const k of knownCategories) {
       const trimmed = k.trim();
@@ -76,7 +78,7 @@ export function deriveEmployeeCategories(
           displayName: matchedCategory,
           description: g.description,
           predicate: categoryPredicate(matchedCategory),
-          tokenMatches: 99, // high confidence for ground-truth match
+          tokenMatches: GROUND_TRUTH_PRIORITY,
           sourceSuggestions: [g.suggestedName],
         });
       } else {
