@@ -48,6 +48,9 @@ const TENANT_MODELS = new Set([
   // Phase 1: per-AI-call cost history and applied-draft audit trail.
   'ExtractionAttempt',
   'AppliedDraftSnapshot',
+  // Employee portal: dependent change requests and invitation tokens.
+  'DependentChangeRequest',
+  'EmployeeInvitation',
 ]);
 
 export class UserNotProvisionedError extends Error {

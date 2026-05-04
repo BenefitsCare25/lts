@@ -66,6 +66,8 @@ model User {
   // doesn't block dev/staging where local credentials are the auth path.
   workosUserId String?  @unique
 
+  employee Employee? // inverse relation for portal access
+
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
@@ -469,15 +471,19 @@ model PremiumRate {
 model Employee {
   id              String         @id @default(cuid())
   clientId        String
+  userId          String?        @unique // FK to User; null until portal account activated
   data            Json // validated against tenant's EmployeeSchema
   status          EmployeeStatus @default(ACTIVE)
   hireDate        DateTime
   terminationDate DateTime?
 
-  client      Client            @relation(fields: [clientId], references: [id])
-  dependents  Dependent[]
-  enrollments Enrollment[]
-  exceptions  PolicyException[]
+  client         Client                  @relation(fields: [clientId], references: [id])
+  user           User?                   @relation(fields: [userId], references: [id])
+  dependents     Dependent[]
+  enrollments    Enrollment[]
+  exceptions     PolicyException[]
+  changeRequests DependentChangeRequest[]
+  invitations    EmployeeInvitation[]
 
   @@index([clientId])
 }
@@ -511,6 +517,50 @@ model Enrollment {
 
   employee Employee @relation(fields: [employeeId], references: [id])
 
+  @@index([employeeId])
+}
+
+// Employee-initiated dependent changes require broker approval because
+// they affect cover tier and premium rates. Lifecycle: PENDING →
+// APPROVED/REJECTED. On approval, the actual Dependent row is
+// created/updated/deleted and the Enrollment.coverTier recalculated.
+model DependentChangeRequest {
+  id              String    @id @default(cuid())
+  tenantId        String
+  employeeId      String
+  action          String // "ADD" | "EDIT" | "REMOVE"
+  dependentId     String? // null for ADD; set for EDIT/REMOVE
+  data            Json // proposed dependent data
+  relation        String // "spouse" | "child" | "parent"
+  status          String    @default("PENDING") // "PENDING" | "APPROVED" | "REJECTED"
+  reviewedBy      String? // userId of approving broker
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([employeeId])
+}
+
+// Invitation token for employee portal onboarding. Broker invites an
+// employee; system creates a User (role=EMPLOYEE, no password) and
+// generates a secure token. Employee clicks the link, sets their
+// password, and gains portal access.
+model EmployeeInvitation {
+  id         String    @id @default(cuid())
+  tenantId   String
+  employeeId String
+  email      String
+  token      String    @unique // SHA-256 hash of the actual token sent in email
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([tenantId])
   @@index([employeeId])
 }
 

@@ -27,6 +27,7 @@ import { productsRouter } from './routers/products';
 import { referenceDataRouter } from './routers/reference-data';
 import { reviewRouter } from './routers/review';
 import { tenantAiProviderRouter } from './routers/tenant-ai-provider';
+import { portalRouter } from './routers/portal';
 import { tpasRouter } from './routers/tpas';
 
 export const appRouter = router({
@@ -51,6 +52,7 @@ export const appRouter = router({
   review: reviewRouter,
   referenceData: referenceDataRouter,
   tenantAiProvider: tenantAiProviderRouter,
+  portal: portalRouter,
 });
 
 export type AppRouter = typeof appRouter;

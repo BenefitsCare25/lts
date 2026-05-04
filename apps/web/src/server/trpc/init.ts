@@ -15,6 +15,7 @@
 
 import { auditEvent, deriveEntity } from '@/server/audit';
 import { createTenantContextFromSession } from '@/server/db/tenant';
+import { resolveEmployeeFromUser } from '@/server/portal/employee-context';
 import { UserRole } from '@prisma/client';
 import { TRPCError, initTRPC } from '@trpc/server';
 import superjson from 'superjson';
@@ -136,3 +137,22 @@ export function roleGuard(allowed: ReadonlySet<UserRole>) {
 // tenantProcedure means ctx.db / ctx.userId / ctx.tenantId are
 // already populated and the audit middleware has fired.
 export const adminProcedure = tenantProcedure.use(roleGuard(BROKER_ROLES));
+
+// ─── Employee portal procedures ──────────────────────────────────
+// portalProcedure = tenantProcedure + portal role gate + employee
+// resolution. ctx gains employeeId and clientId, hard-scoping all
+// queries to the authenticated employee's own data.
+
+const PORTAL_ROLES = new Set<UserRole>([UserRole.CLIENT_HR, UserRole.EMPLOYEE]);
+
+const requireEmployeeMiddleware = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.session?.user) {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Sign in required.' });
+  }
+  const employeeCtx = await resolveEmployeeFromUser(ctx.session.user.id);
+  return next({ ctx: { ...ctx, ...employeeCtx } });
+});
+
+export const portalProcedure = tenantProcedure
+  .use(roleGuard(PORTAL_ROLES))
+  .use(requireEmployeeMiddleware);

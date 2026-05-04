@@ -35,6 +35,8 @@ export type EmployeeField = {
   enabled?: boolean;
   // Built-in only: indicates the value is computed (not user-entered).
   computed?: boolean;
+  // Portal: employee can update this field via self-service profile edit.
+  employeeEditable?: boolean;
   // Type-specific.
   enumValues?: string[];
   min?: number;

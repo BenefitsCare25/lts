@@ -8,9 +8,11 @@
 // enrollment lands when the engagement workflow is built).
 // =============================================================
 
+import { fieldToPropSchema } from '@/server/catalogue/employee-field-schema';
 import { safeCompile } from '@/server/catalogue/ajv';
 import { prisma } from '@/server/db/client';
 import type { TenantDb } from '@/server/db/tenant';
+import { deriveCoverTier } from '@/lib/cover-tier';
 import type { EmployeeField } from '@insurance-saas/shared-types';
 import type { Prisma } from '@prisma/client';
 import { TRPCError } from '@trpc/server';
@@ -18,41 +20,12 @@ import jsonLogic from 'json-logic-js';
 import { z } from 'zod';
 import { adminProcedure, router, tenantProcedure } from '../init';
 
-// Build a JSON Schema from the tenant's EmployeeSchema fields.
-// Used to validate Employee.data on every write.
 function fieldsToJsonSchema(fields: EmployeeField[]): Record<string, unknown> {
   const properties: Record<string, unknown> = {};
   const required: string[] = [];
   for (const f of fields) {
     if (f.tier === 'STANDARD' && f.enabled === false) continue;
-    const prop: Record<string, unknown> = {};
-    switch (f.type) {
-      case 'string':
-        prop.type = 'string';
-        break;
-      case 'integer':
-        prop.type = 'integer';
-        if (f.min !== undefined) prop.minimum = f.min;
-        if (f.max !== undefined) prop.maximum = f.max;
-        break;
-      case 'number':
-        prop.type = 'number';
-        if (f.min !== undefined) prop.minimum = f.min;
-        if (f.max !== undefined) prop.maximum = f.max;
-        break;
-      case 'boolean':
-        prop.type = 'boolean';
-        break;
-      case 'date':
-        prop.type = 'string';
-        prop.format = 'date';
-        break;
-      case 'enum':
-        prop.type = 'string';
-        if (f.enumValues && f.enumValues.length > 0) prop.enum = f.enumValues;
-        break;
-    }
-    properties[f.name] = prop;
+    properties[f.name] = fieldToPropSchema(f);
     if (f.required && !f.computed) required.push(f.name);
   }
   return { type: 'object', properties, required };
@@ -426,4 +399,91 @@ export const employeesRouter = router({
       }
       return { createdCount, failures };
     }),
+
+  changeRequests: router({
+    listByEmployee: tenantProcedure
+      .input(z.object({ employeeId: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const emp = await prisma.employee.findFirst({
+          where: { id: input.employeeId, client: { tenantId: ctx.tenantId } },
+          select: { id: true },
+        });
+        if (!emp) throw new TRPCError({ code: 'NOT_FOUND', message: 'Employee not found.' });
+        return ctx.db.dependentChangeRequest.findMany({
+          where: { employeeId: input.employeeId },
+          orderBy: { createdAt: 'desc' },
+        });
+      }),
+
+    approve: adminProcedure
+      .input(z.object({ requestId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const req = await ctx.db.dependentChangeRequest.findFirst({
+          where: { id: input.requestId, status: 'PENDING' },
+        });
+        if (!req) throw new TRPCError({ code: 'NOT_FOUND', message: 'Change request not found.' });
+
+        const reviewedAt = new Date();
+        await prisma.$transaction(async (tx) => {
+          if (req.action === 'ADD') {
+            await tx.dependent.create({
+              data: {
+                employeeId: req.employeeId,
+                data: req.data as Prisma.InputJsonValue,
+                relation: req.relation,
+              },
+            });
+          } else if (req.action === 'EDIT' && req.dependentId) {
+            await tx.dependent.update({
+              where: { id: req.dependentId },
+              data: { data: req.data as Prisma.InputJsonValue, relation: req.relation },
+            });
+          } else if (req.action === 'REMOVE' && req.dependentId) {
+            await tx.dependent.delete({ where: { id: req.dependentId } });
+          }
+
+          const updatedDeps = await tx.dependent.findMany({
+            where: { employeeId: req.employeeId },
+            select: { relation: true },
+          });
+          const newTier = deriveCoverTier(
+            updatedDeps.map((d) => ({ relationship: d.relation.toUpperCase() as 'SPOUSE' | 'CHILD' })),
+          );
+
+          await Promise.all([
+            tx.enrollment.updateMany({
+              where: { employeeId: req.employeeId, effectiveTo: null },
+              data: { coverTier: newTier },
+            }),
+            tx.dependentChangeRequest.update({
+              where: { id: input.requestId },
+              data: { status: 'APPROVED', reviewedBy: ctx.userId, reviewedAt },
+            }),
+          ]);
+        });
+
+        return { ok: true };
+      }),
+
+    reject: adminProcedure
+      .input(z.object({ requestId: z.string().min(1), reason: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const req = await ctx.db.dependentChangeRequest.findFirst({
+          where: { id: input.requestId, status: 'PENDING' },
+        });
+        if (!req) throw new TRPCError({ code: 'NOT_FOUND', message: 'Change request not found.' });
+
+        await ctx.db.dependentChangeRequest.update({
+          where: { id: input.requestId },
+          data: {
+            status: 'REJECTED',
+            reviewedBy: ctx.userId,
+            reviewedAt: new Date(),
+            ...(input.reason ? { rejectionReason: input.reason } : {}),
+          },
+        });
+
+        return { ok: true };
+      }),
+  }),
 });

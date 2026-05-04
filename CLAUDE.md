@@ -4,7 +4,7 @@ Persistent context for Claude Code working in this repository. Read this first o
 
 ## What this is
 
-A multi-agency white-label SaaS platform for insurance brokerage agencies. Brokers ingest placement slips (Excel workbooks) from insurers, manage structured policy data via a metadata-driven product catalogue, and publish versioned configurations ready for employee-facing consumption (employee portal is Phase 2, not in this repo yet). Replaces an older system called Inspro.
+A multi-agency white-label SaaS platform for insurance brokerage agencies. Brokers ingest placement slips (Excel workbooks) from insurers, manage structured policy data via a metadata-driven product catalogue, and publish versioned configurations for employee consumption. The employee portal (Phase 2) is live in the same app at `/portal`. Replaces an older system called Inspro.
 
 The single most important design idea: **the product catalogue is data, not code.** Every insurer product (GTL, GHS, GPA, and so on) is defined by a JSON Schema stored in the database. Product instances are JSONB validated against that schema on every write. Adding a new product never requires a code deploy. If you catch yourself writing product-specific `if` branches in application code, stop — extend the catalogue instead.
 
@@ -24,13 +24,17 @@ apps/web/              Next.js app
     (auth)/            sign-in, callbacks
     admin/             broker admin surfaces, tenant-scoped
       settings/        tenant-level config (ai-provider, …)
+    portal/            employee-facing portal (Phase 2)
+                       dashboard, benefits, dependents, profile, documents
     api/               route handlers
   src/server/          server-only code
     auth/              session helpers (Auth.js for Phase 1)
     db/                Prisma client + tenant helpers
     catalogue/         ProductType logic, schema validation (Ajv singleton)
+                       employee-field-schema.ts — shared JSON Schema prop builder
     ingestion/         Excel parser + AI extraction pipeline
     policies/          lifecycle, publish workflow
+    portal/            employee-context.ts — resolves Employee from User.id
     security/          app-level encryption (secret-cipher.ts)
     storage/           SharePoint client (sharepoint.ts)
     jobs/              BullMQ workers
@@ -40,7 +44,11 @@ apps/web/              Next.js app
     ui/                centralised primitives (ScreenShell, Card, Field,
                        ConfidenceBadge, Form). New screens MUST consume
                        these instead of inventing layouts.
+    portal/            employee portal components (benefit-card, dependents-screen,
+                       profile-screen, dashboard-screen, portal-nav, …)
   src/lib/             shared client+server utilities
+                       format-rate.ts — formatRate(rate) → string
+                       dependent-labels.ts — RELATION_LABEL, ACTION_LABEL
   tests/               unit, integration, e2e
 docker/                container entrypoint scripts
 packages/catalogue-schemas/   seed JSON Schemas (GHS, GTL, …) + extracted-product.json
@@ -62,6 +70,8 @@ pnpm install                    install dependencies
 ./scripts/dev-setup.sh          bootstrap local environment (Docker Postgres + Redis, migrations, seed)
 pnpm dev                        run app at localhost:3000
 pnpm test                       run Vitest unit + integration
+pnpm vitest run <file>          run a single test file (e.g. pnpm vitest run apps/web/src/server/catalogue/product-type.test.ts)
+pnpm vitest run -t "<name>"     run tests matching a name pattern
 pnpm test:e2e                   run Playwright end-to-end
 pnpm lint                       Biome lint
 pnpm format                     Biome format
@@ -84,7 +94,14 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Data access.** Prisma for all database access. Never write raw SQL except in rare performance-driven cases, which must come with a comment explaining why.
 
-**Tenant scoping.** Every tenant-scoped Prisma query goes through `requireTenantContext()` which returns a tenant-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack a `tenantId` filter — bypass is not possible. Postgres row-level security policies enforce the same boundary at the database layer (defence-in-depth). If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use. **Inside routers always reach for `ctx.db` (the tenant-scoped extension), never the bare `prisma` client, when touching one of the 14 TENANT_MODELS** (User, EmployeeSchema, Insurer, TPA, Pool, ProductType, Client, AuditLog, TenantAiProvider, ExtractionDraft, BenefitGroupPreset, EndorsementCatalogue, ExclusionCatalogue, PlacementSlipUpload) — the bare client bypasses the auto-injected tenantId filter and is reserved for non-tenant-scoped models which gate via parent FK joins.
+**tRPC procedure types.** Four procedure tiers — do not pick the wrong one:
+  - `publicProcedure`: no auth required (avoid; there are almost no legitimate uses in this app).
+  - `tenantProcedure`: requires auth + valid tenant session; auto-injects `ctx.db` (tenant-scoped) and fires audit middleware on mutations (fire-and-forget).
+  - `adminProcedure`: `tenantProcedure` + role gate; only `TENANT_ADMIN`, `BROKER_ADMIN`, or `CATALOGUE_ADMIN` may call it. Use for all broker-admin write operations.
+  - `portalProcedure`: `tenantProcedure` + `EMPLOYEE`/`CLIENT_HR` role gate + employee resolution. Adds `ctx.employeeId` and `ctx.clientId`; every portal query is hard-scoped to the authenticated employee's own data. Never accept a caller-supplied `employeeId` on portal procedures.
+  The router is composed in `apps/web/src/server/trpc/` — add new routers in `routers/` and register in `router.ts`.
+
+**Tenant scoping.** Every tenant-scoped Prisma query goes through `requireTenantContext()` which returns a tenant-scoped client. A Prisma middleware rejects queries on tenant-scoped tables that lack a `tenantId` filter — bypass is not possible. Postgres row-level security policies enforce the same boundary at the database layer (defence-in-depth). If a query genuinely needs cross-tenant read (like platform-level admin dashboards), use `__requireServiceContext()` explicitly and log its use. **Inside routers always reach for `ctx.db` (the tenant-scoped extension), never the bare `prisma` client, when touching one of the 16 TENANT_MODELS** (User, EmployeeSchema, Insurer, TPA, Pool, ProductType, Client, AuditLog, TenantAiProvider, ExtractionDraft, BenefitGroupPreset, EndorsementCatalogue, ExclusionCatalogue, PlacementSlipUpload, DependentChangeRequest, EmployeeInvitation) — the bare client bypasses the auto-injected tenantId filter and is reserved for non-tenant-scoped models which gate via parent FK joins.
 
 **Connection pooling — pooler mode matters.** RLS scope is set per connection via `SELECT set_config('app.current_tenant_id', …, false)` (session-level). The application connects through Azure Database for PostgreSQL with the bundled connection pooler (Supavisor / pgBouncer). **The pooler MUST run in `session` mode, not `transaction` mode** — in transaction mode the connection bound to a request can be released back to the pool and re-issued to the next request with the previous tenant's GUC still set, leaking RLS scope across tenants. The Bicep templates pin session mode; if you ever override the connection string by hand (or migrate to a different pooler), verify mode before pointing prod at it. Production should additionally connect as the non-superuser `app_user` role (created in migration `20260430120000_app_user_role_and_force_rls`) so RLS policies actually apply — superusers bypass RLS regardless of mode.
 
@@ -100,7 +117,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Secrets at rest.** Tenant-supplied secrets (Azure AI Foundry keys today; future BYOK creds) are encrypted with AES-256-GCM via `apps/web/src/server/security/secret-cipher.ts`. The master key comes from `APP_SECRET_KEY` (Container App secret in prod, `.env.local` in dev — set with `openssl rand -base64 48`). The cipher format is `v1.<base64url(iv ‖ ciphertext ‖ authTag)>` so we can rotate later without breaking old rows. Never log plaintext keys, never persist them outside the encrypted column, and never echo them back from a tRPC procedure — `getMasked` returns `keyLastFour` only.
 
-**Forms.** Admin forms are generated from catalogue JSON Schemas via `@rjsf/core` for product-specific data. Hand-written forms are only for metadata (Client name + UEN, User profile, Insurer label, AI provider config) — and those use the `<Form>` + `<Field>` primitives in `apps/web/src/components/ui/` (react-hook-form + Zod under the hood). Do not invent a third form pattern; do not roll `useState`-driven forms in new code.
+**Forms.** Admin forms are generated from catalogue JSON Schemas via `@rjsf/core` for product-specific data. Hand-written forms are only for metadata (Client name + UEN, User profile, Insurer label, AI provider config) — and those use the `<Form>` + `<Field>` primitives in `apps/web/src/components/ui/` (react-hook-form + Zod under the hood). Portal forms that are schema-driven from `EmployeeField[]` at runtime use `useState`-driven `formValues` with `<Field>` for layout — the only permitted exception to no-useState-forms, because the field list isn't known at compile time. Do not invent new patterns beyond these three.
 
 **UI primitives.** Every new admin screen consumes the `components/ui/` layer: `<ScreenShell>` for compact page header (title + optional one-line context + right-docked actions; no descriptive paragraph slot — the rail tells users where they are), `<Card>` for surfaces, `<Field>` for labelled inputs, `<ConfidenceBadge>` for AI-extraction confidence chips, `<Form>` for hand-written forms. Spacing comes from utility classes (`gap-*`, `mb-*`, `p-*`, `flex`, `items-center`, `justify-between`) mapped to `--space-*` tokens — do not reach for inline `style={{}}`. There is no app-wide breadcrumb — pages that need a back link use a contextual `<Link>` inside the page (e.g. a `Cancel` button on edit forms).
 
@@ -155,7 +172,9 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **Adding a new field to a relational core table.** Prisma migration, update dependent TypeScript types, update seed if needed, update tests.
 
-**Adding a new route.** Create under `apps/web/src/app/(admin)/`. Add to the side nav if user-facing. Protect via the existing `(admin)` layout — do not re-implement auth per route.
+**Adding a new admin route.** Create under `apps/web/src/app/admin/`. Add to the side nav if user-facing. The middleware and layout protect the whole `/admin` prefix — do not re-implement auth per route.
+
+**Adding a new portal route.** Create under `apps/web/src/app/portal/`. Register the nav link in `src/components/portal/portal-nav.tsx`. Use `portalProcedure` for all data access — never accept a caller-supplied employee ID. The portal layout at `src/app/portal/layout.tsx` handles the shell and nav.
 
 **Adding a new background job.** Define in `apps/web/src/server/jobs/`. Register the worker. Queue from server actions via a typed helper. Every job has retry policy and dead-letter behaviour.
 
@@ -185,11 +204,29 @@ Never silently invent behaviour. If a requirement is ambiguous, ask. If you made
 
 **Benefit groups use JSONLogic, not a custom DSL.** `BenefitGroup.predicate` is a JSONLogic JSON expression. Evaluator is `json-logic-js`. Do not invent a DSL — keep in step with a standard format that has implementations in every language we might need downstream.
 
+**EmployeeSchema is a single JSON array per tenant, not a table of rows.** `EmployeeSchema.fields` is one JSONB column holding all field definitions. Fields are discriminated by `field.tier`:
+  - `BUILT_IN` — immutable core fields (e.g. `full_name`, `date_of_birth`). Never delete or rename.
+  - `STANDARD` — pre-defined optional fields brokers can toggle on/off.
+  - `CUSTOM` — tenant-defined fields with full CRUD.
+  Every save bumps a version counter. Downstream consumers (Ajv schema compilation, Excel parser, predicate evaluator) cache by `tenantId:version` — bumping version is the only correct cache-invalidation mechanism. Do not bypass the version counter by patching `fields` directly.
+
+**Cover tiers.** The four values are `EO` (employee only), `ES` (employee + spouse), `EC` (employee + child), `EF` (employee + family). `deriveCoverTier(dependents)` computes the tier from an employee's dependent list. Some products only support `EO`/`EF` — call `collapseTier(tier, supported)` to map `ES`/`EC` → `EF` for those products. Premium rate lookup keys are `${planId}:${coverTier}` with a `${planId}:*` wildcard fallback for flat-rate plans.
+
 **Six metadata registries drive every dropdown.** Global Reference (Country/Currency/Industry), Insurer Registry, TPA Registry, Pool Registry, Product Catalogue, Operator Library, and the per-tenant Employee Schema. None of these dropdowns are hardcoded in UI code. See v2 plan §1.2 and §3 for sources of truth.
 
 **Policy, BenefitYear, Product, Plan — four different things.** A `Policy` is the abstract policy. A `BenefitYear` is a specific draft or published configuration for a benefit year (`DRAFT` / `PUBLISHED` / `ARCHIVED`). A `Product` is an instance of a `ProductType` under that `BenefitYear`. A `Plan` is one option within a Product (and may stack on another via `stacksOn`). The hierarchy is Tenant > Client > Policy > BenefitYear > Product > {Plans, PremiumRates, ProductEligibility}, with `PolicyEntity` rows sitting under Policy for multi-entity master policies (e.g. STM's three legal entities).
 
 For extraction pipeline internals, Create Client wizard, and benefit group / predicate details see **[docs/EXTRACTION.md](docs/EXTRACTION.md)**.
+
+### Employee portal
+
+**`Employee.userId` is how the portal authenticates an employee.** An `Employee` row has a nullable `userId` FK. Until that FK is set, the employee cannot log into the portal — `requireEmployeeFromUser()` in `server/portal/employee-context.ts` throws FORBIDDEN if the session user has no linked Employee row. Setting `Employee.userId` is what "activates" a portal account. The invitation flow (EmployeeInvitation model) is reserved for future welcome-email setup and is not wired to any UI yet.
+
+**DependentChangeRequest approval is a four-step atomic transaction.** When a broker approves a request, the server: (1) applies the ADD/EDIT/REMOVE to the `Dependent` table, (2) refetches all dependents for that employee, (3) calls `deriveCoverTier()` to compute the new tier, then (4) parallelises `enrollment.updateMany` (new cover tier) and `dependentChangeRequest.update` (status=APPROVED) inside a single `prisma.$transaction`. If the transaction fails, neither the Dependent row nor the request status changes. Rejection only stamps the request status — no dependent mutation.
+
+**Portal forms use `<Field>` but not `<Form>`.** Admin metadata forms use the full `<Form>` + `<Field>` stack (react-hook-form + Zod). Portal profile editing is schema-driven from `EmployeeField[]` and uses `useState`-driven `formValues` instead — that's the one intentional exception to the "no useState-driven forms" rule, because the fields are dynamic and the Zod schema can't be statically typed. Still uses `<Field>` for label+input layout; still validates through Ajv server-side on `profile.update`.
+
+**`employeeEditable` is a flag on individual fields, not on the schema.** In `EmployeeSchema.fields`, each field has an optional `employeeEditable?: boolean`. Only fields with this flag set are shown in the edit form on the portal profile page; the rest are read-only. The `profile.update` mutation enforces the same set server-side — it silently drops any submitted key not in `editableNames` before running Ajv.
 
 ### Deployment & infra
 
@@ -199,9 +236,9 @@ For extraction pipeline internals, Create Client wizard, and benefit group / pre
 
 ### UI & shared utilities
 
-**Shared front-end utilities — use these, don't re-implement.** `src/lib/format-date.ts` exports `formatDate(d: Date | string | null | undefined): string` (ISO date or "—"). `src/lib/employee-display.ts` exports `employeeDisplayLabel(data)` (reads `employee.full_name`, falls back to first non-empty string field, then "(no name)"). `src/lib/cover-tier.ts` exports `deriveCoverTier(dependents)` and `collapseTier(tier, supported)`. `src/lib/employee-import.ts` exports `UPLOAD_TEMPLATE_COLUMNS`, `PLAN_OVERRIDE_COLUMNS`, and transform helpers for the broker CSV template.
+**Shared front-end utilities — use these, don't re-implement.** `src/lib/format-date.ts` exports `formatDate(d: Date | string | null | undefined): string` (ISO date or "—"). `src/lib/employee-display.ts` exports `employeeDisplayLabel(data)` (reads `employee.full_name`, falls back to first non-empty string field, then "(no name)"). `src/lib/cover-tier.ts` exports `deriveCoverTier(dependents)` and `collapseTier(tier, supported)`. `src/lib/employee-import.ts` exports `UPLOAD_TEMPLATE_COLUMNS`, `PLAN_OVERRIDE_COLUMNS`, and transform helpers for the broker CSV template. `src/lib/format-rate.ts` exports `formatRate(rate: RateShape): string` — renders premium rates as either "X.XXXX per $1,000 SI" or "X.XX / yr"; use for any rate display in admin and portal. `src/lib/dependent-labels.ts` exports `RELATION_LABEL` and `ACTION_LABEL` record maps for dependent change request display.
 
-**Employee detail page has Profile + Entitlements tabs.** `/admin/clients/[id]/employees/[employeeId]` renders `EmployeeDetailScreen` which eagerly fetches both `employees.byId` and `employees.entitlements`. The entitlements query returns enriched enrollment rows (product type, plan, benefit group, cover tier, matching premium rate). Rate lookup uses a Map keyed by `planId:coverTier` with a `planId:*` wildcard fallback for null-coverTier rates.
+**Employee detail page has Profile + Entitlements + Change Requests tabs.** `/admin/clients/[id]/employees/[employeeId]` renders `EmployeeDetailScreen` which eagerly fetches `employees.byId`, `employees.entitlements`, and `employees.changeRequests.listByEmployee`. The entitlements query returns enriched enrollment rows (product type, plan, benefit group, cover tier, matching premium rate). Rate lookup uses a Map keyed by `planId:coverTier` with a `planId:*` wildcard fallback for null-coverTier rates. The Change Requests tab shows pending `DependentChangeRequest` rows — brokers approve or reject inline; approval atomically applies the dependent mutation and recalculates the cover tier via `prisma.$transaction`.
 
 ---
 
