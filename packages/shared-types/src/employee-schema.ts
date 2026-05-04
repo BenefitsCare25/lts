@@ -201,6 +201,16 @@ export const STANDARD_FIELDS: EmployeeField[] = [
     selectableForPredicates: true,
     enabled: false,
   },
+  {
+    name: 'employee.category',
+    label: 'Category',
+    type: 'string',
+    tier: 'STANDARD',
+    required: false,
+    pii: false,
+    selectableForPredicates: true,
+    enabled: true,
+  },
 ];
 
 export const DEFAULT_EMPLOYEE_FIELDS: EmployeeField[] = [...BUILTIN_FIELDS, ...STANDARD_FIELDS];

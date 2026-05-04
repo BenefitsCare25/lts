@@ -120,6 +120,9 @@ export type RunAiExtractionInput = {
   workbookBuffer: Buffer;
   // The heuristic baseline. Empty array when no template matched.
   heuristicProducts: ExtractedProduct[];
+  // Unique Category values from an uploaded employee listing. When present,
+  // each per-product pass receives them as ground-truth group label context.
+  employeeCategories?: string[];
   // Optional progress sink — the job uses this to stream events into
   // ExtractionDraft.progress so the wizard's poll sees live status.
   onProgress?: RunnerProgressHandler;
@@ -151,7 +154,7 @@ export type RunnerProgressEvent =
     };
 
 export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRunnerResult> {
-  const { db, tenantSlug, workbookBuffer, heuristicProducts, onProgress } = input;
+  const { db, tenantSlug, workbookBuffer, heuristicProducts, onProgress, employeeCategories } = input;
   const wallStart = Date.now();
 
   // Provider, workbook serialization, and catalogue context are
@@ -346,6 +349,7 @@ export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRu
       apiKey,
       systemPrompt,
       workbookText: flattened,
+      ...(employeeCategories && employeeCategories.length > 0 ? { employeeCategories } : {}),
     },
     manifests,
     concurrency: 3,

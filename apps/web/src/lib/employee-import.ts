@@ -132,6 +132,11 @@ export const UPLOAD_TEMPLATE_COLUMNS: ColumnMapping[] = [
     fieldPath: 'employee.staff_id',
     description: 'Custom field — broker must add to EmployeeSchema before import',
   },
+  {
+    header: 'Category',
+    fieldPath: 'employee.category',
+    description: 'Broker-defined employee group label; drives benefit group predicate matching',
+  },
 ];
 
 // Plan override columns — values are raw Inspro plan codes (e.g. "24x", "B").

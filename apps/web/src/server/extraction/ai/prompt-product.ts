@@ -27,6 +27,7 @@ export function buildProductUserPrompt(
   manifest: ProductManifestEntry,
   heuristicProduct: ExtractedProduct | null,
   retryHint: string | undefined,
+  employeeCategories?: string[],
 ): string {
   const retryBlock = retryHint
     ? [
@@ -71,6 +72,26 @@ export function buildProductUserPrompt(
       : [];
 
   const notesBlock = manifest.notes ? ['## Discovery notes', '', manifest.notes, ''] : [];
+
+  const employeeCategoriesBlock =
+    employeeCategories && employeeCategories.length > 0
+      ? [
+          '## Employee listing — actual category labels (ground truth)',
+          '',
+          'The broker uploaded the employee listing for this client. These exact labels appear',
+          'in the employees\' "Category" field (stored as employee.category):',
+          ...employeeCategories.map((c) => `  - ${c}`),
+          '',
+          'When naming benefit groups in eligibility.categories[].category, prefer these exact',
+          'labels over the placement slip\'s internal labels where there is a clear correspondence.',
+          'Example: if "Board of Directors" on the slip maps to "Director" in the listing, output',
+          'category: "Director" — not "Board of Directors". This allows the system to evaluate',
+          'predicates directly against employee.category without fuzzy matching.',
+          '',
+          'If a slip category has no obvious match among the listing labels, use the slip label unchanged.',
+          '',
+        ]
+      : [];
 
   return [
     'You are running a PER-PRODUCT extraction pass. Extract ONE product from the workbook:',
@@ -224,6 +245,7 @@ export function buildProductUserPrompt(
     '  If the slip states a number of days (e.g. "15 days"), emit 0. Leave null when not stated.',
     '  NumberField.',
     '',
+    ...employeeCategoriesBlock,
     ...anchorBlock,
     ...notesBlock,
     ...heuristicBlock,

@@ -13,7 +13,7 @@ import { PlansRatesTab } from './products/plans-rates-tab';
 import type { ProductPatcher } from './products/shared';
 
 type Props = {
-  draft: { id: string; extractedProducts: unknown; progress: unknown };
+  draft: { id: string; extractedProducts: unknown; progress: unknown; employeeCategories?: string[] };
   markSectionDirty?: (id: SectionId) => void;
 };
 

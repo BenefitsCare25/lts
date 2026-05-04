@@ -230,10 +230,13 @@ export function GroupsTab({
   draft,
 }: {
   product: WizardExtractedProduct;
-  draft: { id: string; progress: unknown };
+  draft: { id: string; progress: unknown; employeeCategories?: string[] };
 }) {
   const suggestions = useMemo(() => suggestionsFromDraft(draft.progress), [draft.progress]);
-  const baseCategories = useMemo(() => deriveEmployeeCategories(suggestions), [suggestions]);
+  const baseCategories = useMemo(
+    () => deriveEmployeeCategories(suggestions, draft.employeeCategories),
+    [suggestions, draft.employeeCategories],
+  );
 
   const [override, setOverride] = useState<EligibilityOverride>(() => {
     const persisted = readBrokerOverride<EligibilityOverride>(draft.progress, 'eligibility', {

@@ -187,6 +187,7 @@ export async function processAiExtraction(job: Job<AiExtractionJobData>): Promis
     tenantSlug: tenant.slug,
     workbookBuffer: buffer,
     heuristicProducts: heuristic.extractedProducts,
+    employeeCategories: draft.employeeCategories,
     onProgress: async (event) => {
       applyEventToLive(liveState, event);
       await persistLiveState(uploadId, liveState);

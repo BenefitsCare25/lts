@@ -39,25 +39,61 @@ type ProductPlanMap = {
   assignments: ProductAssignmentRow[];
 };
 
-export function deriveEmployeeCategories(suggestions: WizardSuggestions): DerivedCategory[] {
-  const byFingerprint = new Map<string, DerivedCategory>();
+// Build a direct equality predicate for employee.category.
+function categoryPredicate(label: string): Record<string, unknown> {
+  return { '==': [{ var: 'employee.category' }, label] };
+}
+
+export function deriveEmployeeCategories(
+  suggestions: WizardSuggestions,
+  knownCategories?: string[],
+): DerivedCategory[] {
+  // Build a case-insensitive lookup map from the known employee listing categories.
+  const normalizedKnown = new Map<string, string>(); // lower → original
+  if (knownCategories) {
+    for (const k of knownCategories) {
+      const trimmed = k.trim();
+      if (trimmed.length > 0) normalizedKnown.set(trimmed.toLowerCase(), trimmed);
+    }
+  }
+  const matchedLower = new Set<string>(); // tracks which known categories were matched
+
+  const byKey = new Map<string, DerivedCategory>();
 
   for (const g of suggestions.benefitGroups) {
-    const fp = predicateFingerprint(g.predicate);
+    const suggestedLower = g.suggestedName.trim().toLowerCase();
+    const matchedCategory = normalizedKnown.get(suggestedLower);
 
-    if (fp === '{}') {
-      byFingerprint.set(`__empty_${g.suggestedName}`, {
-        key: g.suggestedName,
-        displayName: g.suggestedName,
-        description: g.description,
-        predicate: g.predicate,
-        tokenMatches: g.tokenMatches,
-        sourceSuggestions: [g.suggestedName],
-      });
+    if (matchedCategory) {
+      // Exact match against a known employee category — use a direct equality
+      // predicate regardless of what the heuristic pattern-matching inferred.
+      matchedLower.add(suggestedLower);
+      const key = `category:${matchedCategory}`;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, {
+          key: matchedCategory,
+          displayName: matchedCategory,
+          description: g.description,
+          predicate: categoryPredicate(matchedCategory),
+          tokenMatches: 99, // high confidence for ground-truth match
+          sourceSuggestions: [g.suggestedName],
+        });
+      } else {
+        byKey.set(key, {
+          ...existing,
+          sourceSuggestions: [...existing.sourceSuggestions, g.suggestedName],
+        });
+      }
       continue;
     }
 
-    const existing = byFingerprint.get(fp);
+    // No match against known categories — fall back to the existing
+    // predicate-fingerprint dedup logic.
+    const fp = predicateFingerprint(g.predicate);
+    const mapKey = fp === '{}' ? `__empty_${g.suggestedName}` : fp;
+
+    const existing = byKey.get(mapKey);
     if (existing) {
       const merged: DerivedCategory = {
         ...existing,
@@ -68,9 +104,9 @@ export function deriveEmployeeCategories(suggestions: WizardSuggestions): Derive
         merged.description = g.description;
         merged.tokenMatches = g.tokenMatches;
       }
-      byFingerprint.set(fp, merged);
+      byKey.set(mapKey, merged);
     } else {
-      byFingerprint.set(fp, {
+      byKey.set(mapKey, {
         key: g.suggestedName,
         displayName: g.suggestedName,
         description: g.description,
@@ -81,7 +117,24 @@ export function deriveEmployeeCategories(suggestions: WizardSuggestions): Derive
     }
   }
 
-  return Array.from(byFingerprint.values());
+  // Add any known categories that weren't matched to a suggestion.
+  // This handles employee categories that exist in the listing but don't
+  // appear in the placement slip (e.g. a new grade not yet on the slip).
+  for (const [lower, original] of normalizedKnown) {
+    if (matchedLower.has(lower)) continue;
+    const key = `category:${original}`;
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      key: original,
+      displayName: original,
+      description: '',
+      predicate: categoryPredicate(original),
+      tokenMatches: 1, // low but non-zero so it's included by default
+      sourceSuggestions: [],
+    });
+  }
+
+  return Array.from(byKey.values());
 }
 
 export function buildProductAssignments(

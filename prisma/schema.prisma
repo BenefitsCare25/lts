@@ -589,17 +589,18 @@ model PlacementSlipUpload {
 //
 // RLS policy mirrors other tenant-scoped tables (Story S3 pattern).
 model ExtractionDraft {
-  id                String    @id @default(cuid())
-  tenantId          String
-  uploadId          String    @unique
-  status            String // "QUEUED" | "EXTRACTING" | "READY" | "APPLIED" | "DISCARDED" | "FAILED"
-  progress          Json
-  extractedProducts Json
-  validationIssues  Json?
-  appliedAt         DateTime?
-  appliedById       String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  tenantId           String
+  uploadId           String    @unique
+  status             String // "QUEUED" | "EXTRACTING" | "READY" | "APPLIED" | "DISCARDED" | "FAILED"
+  progress           Json
+  extractedProducts  Json
+  validationIssues   Json?
+  employeeCategories String[]  // unique Category values extracted from an uploaded employee listing
+  appliedAt          DateTime?
+  appliedById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   tenant           Tenant               @relation(fields: [tenantId], references: [id])
   upload           PlacementSlipUpload  @relation(fields: [uploadId], references: [id])

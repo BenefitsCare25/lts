@@ -16,6 +16,10 @@
 // =============================================================
 
 import { prisma } from '@/server/db/client';
+import {
+  CategoryColumnNotFoundError,
+  extractUniqueCategories,
+} from '@/server/extraction/employee-category-extractor';
 import { applyWizardDraft } from '@/server/ingestion/apply/wizard-apply';
 import { enqueueAiExtraction } from '@/server/jobs/extraction';
 import { isRedisConfigured } from '@/server/jobs/redis';
@@ -369,6 +373,64 @@ export const extractionDraftsRouter = router({
       });
 
       return { ok: true, jobId };
+    }),
+
+  // Attach an employee listing to a draft. The file is parsed in-memory
+  // to extract unique "Category" column values; those values are stored
+  // on ExtractionDraft.employeeCategories so the AI extraction prompt
+  // can include them as ground-truth employee group labels.
+  //
+  // The file itself is NOT stored — only the extracted category strings.
+  // The broker uploads the same file later via the employee import screen
+  // to create the actual Employee rows.
+  //
+  // Guard: draft must not yet be APPLIED or DISCARDED. Re-uploading a
+  // listing after extraction has already run replaces the stored
+  // categories; the broker would need to re-run extraction for the new
+  // categories to influence AI output.
+  attachEmployeeListing: adminProcedure
+    .input(
+      z.object({
+        draftId: z.string().min(1),
+        // Base64-encoded Excel (.xlsx / .xls) or CSV file bytes.
+        fileBase64: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const draft = await loadDraftForTenant(ctx.tenantId, input.draftId);
+      if (draft.status === 'APPLIED' || draft.status === 'DISCARDED') {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Cannot attach an employee listing to a draft with status "${draft.status}".`,
+        });
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(input.fileBase64, 'base64');
+      } catch {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid base64 file data.' });
+      }
+
+      let categories: string[];
+      try {
+        categories = await extractUniqueCategories(buffer);
+      } catch (err) {
+        if (err instanceof CategoryColumnNotFoundError) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Failed to parse employee listing: ${err instanceof Error ? err.message : 'unknown error'}`,
+        });
+      }
+
+      await prisma.extractionDraft.update({
+        where: { id: input.draftId },
+        data: { employeeCategories: categories },
+      });
+
+      return { categories };
     }),
 
   // Hard-delete an orphan draft and its underlying upload. Used by the

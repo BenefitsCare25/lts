@@ -67,6 +67,7 @@ export type ProductPassInput = {
   workbookText: string;
   manifest: ProductManifestEntry;
   heuristicProduct: ExtractedProduct | null;
+  employeeCategories?: string[];
 };
 
 export async function runProductPass(input: ProductPassInput): Promise<ProductPassResult> {
@@ -196,12 +197,14 @@ async function singleAttempt(args: {
   retryHint: string | undefined;
   maxOutputTokens: number;
   timeoutMs?: number;
+  employeeCategories?: string[];
 }): Promise<SingleAttempt> {
   const userPrompt = buildProductUserPrompt(
     args.workbookText,
     args.manifest,
     args.heuristicProduct,
     args.retryHint,
+    args.employeeCategories,
   );
   const result = await callFoundry(args.provider, args.apiKey, {
     system: args.systemPrompt,

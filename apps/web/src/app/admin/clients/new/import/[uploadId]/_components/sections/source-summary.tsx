@@ -21,6 +21,7 @@ import type { inferRouterOutputs } from '@trpc/server';
 import Link from 'next/link';
 import { useState } from 'react';
 import { aiBundleFromDraft } from './_types';
+import { EmployeeListingSection } from './employee-listing-section';
 
 type DraftQuery = inferRouterOutputs<AppRouter>['extractionDrafts']['byUploadId'];
 
@@ -33,6 +34,9 @@ interface ParseResultLite {
 }
 
 export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
+  const [employeeCategories, setEmployeeCategories] = useState<string[]>(
+    draft.employeeCategories ?? [],
+  );
   const upload = draft.upload;
   const parseResult = (upload.parseResult as ParseResultLite | null) ?? null;
   const sheets = parseResult?.raw?.sheets ?? [];
@@ -104,6 +108,12 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
         </Card>
       </section>
 
+      <EmployeeListingSection
+        draftId={draft.id}
+        initialCategories={employeeCategories}
+        onCategoriesUpdated={setEmployeeCategories}
+      />
+
       <section className="section">
         <Card className="card-padded">
           <h3 className="mb-3">AI extraction</h3>
@@ -127,8 +137,15 @@ export function SourceSummarySection({ draft }: { draft: DraftQuery }) {
               <p className="field-help mb-3">
                 {aiBundle.ai
                   ? formatLastRunLine(aiBundle.ai)
-                  : 'AI extraction reads the workbook with your tenant’s configured Claude/Foundry deployment and pre-fills the wizard’s sections (client details, policy entities, benefit year, products, plans, premium rates, eligibility). Heuristic-extracted cells with full confidence are preserved; the AI fills the rest.'}
+                  : "AI extraction reads the workbook with your tenant's configured Claude/Foundry deployment and pre-fills the wizard's sections (client details, policy entities, benefit year, products, plans, premium rates, eligibility). Heuristic-extracted cells with full confidence are preserved; the AI fills the rest."}
               </p>
+              {employeeCategories.length > 0 ? (
+                <p className="field-help mb-3" style={{ color: 'var(--color-good)' }}>
+                  ✓ Employee listing attached — {employeeCategories.length}{' '}
+                  {employeeCategories.length === 1 ? 'category' : 'categories'} will be used to
+                  guide benefit group naming.
+                </p>
+              ) : null}
               {aiBundle.ai?.workbookTruncated ? (
                 <p className="field-help mb-3">
                   <strong>Note:</strong> the workbook exceeded the AI input cap and was truncated.
