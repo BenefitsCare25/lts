@@ -82,11 +82,7 @@ export function EmployeeListingSection({
         {categories.length > 0 ? (
           <div className="mt-3" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.375rem' }}>
             {categories.map((c) => (
-              <span
-                key={c}
-                className="pill pill-muted"
-                style={{ fontSize: 'var(--font-sm)' }}
-              >
+              <span key={c} className="pill pill-muted" style={{ fontSize: 'var(--font-sm)' }}>
                 {c}
               </span>
             ))}

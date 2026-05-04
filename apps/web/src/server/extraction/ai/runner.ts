@@ -154,7 +154,8 @@ export type RunnerProgressEvent =
     };
 
 export async function runAiExtraction(input: RunAiExtractionInput): Promise<AiRunnerResult> {
-  const { db, tenantSlug, workbookBuffer, heuristicProducts, onProgress, employeeCategories } = input;
+  const { db, tenantSlug, workbookBuffer, heuristicProducts, onProgress, employeeCategories } =
+    input;
   const wallStart = Date.now();
 
   // Provider, workbook serialization, and catalogue context are

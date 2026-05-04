@@ -83,7 +83,7 @@ export function buildProductUserPrompt(
           ...employeeCategories.map((c) => `  - ${c}`),
           '',
           'When naming benefit groups in eligibility.categories[].category, prefer these exact',
-          'labels over the placement slip\'s internal labels where there is a clear correspondence.',
+          "labels over the placement slip's internal labels where there is a clear correspondence.",
           'Example: if "Board of Directors" on the slip maps to "Director" in the listing, output',
           'category: "Director" — not "Board of Directors". This allows the system to evaluate',
           'predicates directly against employee.category without fuzzy matching.',
