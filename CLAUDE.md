@@ -32,7 +32,18 @@ apps/web/              Next.js app
     db/                Prisma client + tenant helpers
     catalogue/         ProductType logic, schema validation (Ajv singleton)
                        employee-field-schema.ts — shared JSON Schema prop builder
+    engines/           benefits processing engines (NOT tenant-scoped models)
+                       processor.ts — orchestrates all engines; call processEmployeeBenefits()
+                       loadRuleTables() — batch-loads all rule tables for a BenefitYear
+                       engine-insurance.ts — resolves insurance plan per employee/product
+                       engine-flex.ts — resolves flex wallet credit tier from dependents
+                       engine-participation.ts — resolves cover tier (EO/ES/EC/EF)
+                       classify-employee.ts — maps grade/salary → StandardBand + EmploymentType
+                       types.ts — ProcessingResult, EngineStats, StandardBand, etc.
     ingestion/         Excel parser + AI extraction pipeline
+                       employee-upload.ts — bulk employee Excel import (Staff ID lookup)
+                       dependent-upload.ts — bulk dependent Excel import; validates
+                         spouse uniqueness, relation normalisation (wife→spouse, son→child)
     policies/          lifecycle, publish workflow
     portal/            employee-context.ts — resolves Employee from User.id
     security/          app-level encryption (secret-cipher.ts)
@@ -40,6 +51,7 @@ apps/web/              Next.js app
     jobs/              BullMQ workers
     tenant/            middleware + scoping helpers
     trpc/              router composition + role guards
+                       routers/rule-tables.ts — CRUD for all rule tables + engine ops
   src/components/      React components
     ui/                centralised primitives (ScreenShell, Card, Field,
                        ConfidenceBadge, Form). New screens MUST consume
@@ -121,7 +133,7 @@ Always run `pnpm typecheck && pnpm lint && pnpm test` before pushing. CI will ru
 
 **UI primitives.** Every new admin screen consumes the `components/ui/` layer: `<ScreenShell>` for compact page header (title + optional one-line context + right-docked actions; no descriptive paragraph slot — the rail tells users where they are), `<Card>` for surfaces, `<Field>` for labelled inputs, `<ConfidenceBadge>` for AI-extraction confidence chips, `<Form>` for hand-written forms. Spacing comes from utility classes (`gap-*`, `mb-*`, `p-*`, `flex`, `items-center`, `justify-between`) mapped to `--space-*` tokens — do not reach for inline `style={{}}`. There is no app-wide breadcrumb — pages that need a back link use a contextual `<Link>` inside the page (e.g. a `Cancel` button on edit forms).
 
-**Navigation.** Top nav has three sections — **Clients**, **Catalogue**, **Settings** — rendered by `<TopNav>` in `apps/web/src/components/admin/top-nav.tsx`. A persistent left rail (`<SectionRail>` in `apps/web/src/components/admin/section-rail.tsx`) auto-renders the sub-page list for the current section: Catalogue rail lists Employee Schema / Product Types / Insurers / TPAs / Pools; Settings rail lists AI Provider; Clients rail shows "All clients" on the list page and switches to per-client sub-pages (Policies / Imports / Employees / Claims / Edit details) with the client name as a heading on detail pages. To add a new sub-page, register it in the relevant nav array — do not invent per-page nav widgets.
+**Navigation.** Top nav has three sections — **Clients**, **Catalogue**, **Settings** — rendered by `<TopNav>` in `apps/web/src/components/admin/top-nav.tsx`. A persistent left rail (`<SectionRail>` in `apps/web/src/components/admin/section-rail.tsx`) auto-renders the sub-page list for the current section: Catalogue rail lists Employee Schema / Product Types / Insurers / TPAs / Pools; Settings rail lists AI Provider; Clients rail shows "All clients" on the list page and switches to per-client sub-pages (Policies / Imports / Employees / Rules / Claims / Edit details) with the client name as a heading on detail pages. To add a new sub-page, register it in the relevant nav array — do not invent per-page nav widgets.
 
 **Error handling.** Server-side errors log with structured context (tenant id, user id, request id, action). Client-side error boundaries present a friendly message and a reference id. Never expose raw error messages to end users.
 
@@ -217,6 +229,20 @@ Never silently invent behaviour. If a requirement is ambiguous, ask. If you made
 **Policy, BenefitYear, Product, Plan — four different things.** A `Policy` is the abstract policy. A `BenefitYear` is a specific draft or published configuration for a benefit year (`DRAFT` / `PUBLISHED` / `ARCHIVED`). A `Product` is an instance of a `ProductType` under that `BenefitYear`. A `Plan` is one option within a Product (and may stack on another via `stacksOn`). The hierarchy is Tenant > Client > Policy > BenefitYear > Product > {Plans, PremiumRates, ProductEligibility}, with `PolicyEntity` rows sitting under Policy for multi-entity master policies (e.g. STM's three legal entities).
 
 For extraction pipeline internals, Create Client wizard, and benefit group / predicate details see **[docs/EXTRACTION.md](docs/EXTRACTION.md)**.
+
+### Rules screen and benefits processing
+
+**The Rules screen (`/admin/clients/[id]/rules/`) is the per-client configuration hub for the benefits processing engine.** It has 8 tabs: Grade Map, Salary Bands, Plan Assignment (InsurancePlanRule), Employment Class (EmploymentClassPlanOverride), Nationality (NationalityPlanOverride), Flex Wallet (FlexWalletRule), Data Upload, and Error Queue. All are benefit-year-scoped except Data Upload (client-scoped). The screen exposes "Dry Run" (no DB writes) and "Process" (writes Enrollment + ProcessingError rows) buttons that call `ruleTables.engine.processBenefitYear` and `ruleTables.engine.dryRun` tRPC mutations.
+
+**Three engines run sequentially per employee inside `processEmployeeBenefits()`.** They are completely independent — they don't call each other. Call order: (1) `classifyEmployee()` → `StandardBand` + `EmploymentType`, (2) `resolveFlexWallet()` → credit tier from dependent composition, (3) `resolveInsurancePlans()` → one plan per product. Each engine returns an error object on failure, never throws. `processor.ts` collects all results and writes in a single `$transaction`. Engine errors surface in `ProcessingError` rows (status `OPEN`) and in the Error Queue tab.
+
+**`loadRuleTables()` is the only place rule tables are fetched** — it batch-loads all 8 rule table types + products + benefit year policy in one `Promise.all`. Never re-fetch rule tables per-employee. The returned `RuleTables` object uses `ReadonlyMap` / `ReadonlyArray` — do not mutate.
+
+**`gbtEligible` gates whether an enrollment row is created.** In `engine-insurance.ts`, all error-return paths set `gbtEligible: false`. Only employees with a successfully resolved plan AND `gbtEligible: true` get an enrollment created. `dependantEligible` from `EmploymentClassPlanOverride` then feeds `resolveParticipationType()` to determine the cover tier.
+
+**Employee and dependent bulk uploads are client-scoped, not benefit-year-scoped.** `employee-upload.ts` upserts `Employee` rows by Staff ID. `dependent-upload.ts` upserts `Dependent` rows matched by employee Staff ID + identification number; it pre-loads existing spouse counts via `db.dependent.groupBy()` to enforce the one-spouse-per-employee constraint across batches, not just within the upload file. Valid relations in the upload are: spouse / wife / husband → `"spouse"`, child / son / daughter → `"child"`.
+
+**`ProcessingError` rows are always cleared for re-processed employees.** `deleteMany({ where: { status: 'OPEN', employeeId: { in: processedIds } } })` runs unconditionally before writing new errors — even if no new errors exist. This prevents stale errors from a previous run persisting after an employee's issue is resolved.
 
 ### Employee portal
 

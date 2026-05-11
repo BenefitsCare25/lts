@@ -27,6 +27,7 @@ import { productTypesRouter } from './routers/product-types';
 import { productsRouter } from './routers/products';
 import { referenceDataRouter } from './routers/reference-data';
 import { reviewRouter } from './routers/review';
+import { ruleTablesRouter } from './routers/rule-tables';
 import { tenantAiProviderRouter } from './routers/tenant-ai-provider';
 import { tpasRouter } from './routers/tpas';
 
@@ -52,6 +53,7 @@ export const appRouter = router({
   review: reviewRouter,
   referenceData: referenceDataRouter,
   tenantAiProvider: tenantAiProviderRouter,
+  ruleTables: ruleTablesRouter,
   portal: portalRouter,
 });
 

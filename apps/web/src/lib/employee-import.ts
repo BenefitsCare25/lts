@@ -91,53 +91,55 @@ export function applyTransform(raw: unknown, transform: ColumnTransform): unknow
 // appended here when known. Header names are case-insensitive matched
 // in the import UI.
 export const UPLOAD_TEMPLATE_COLUMNS: ColumnMapping[] = [
-  {
-    header: 'Employee Name',
-    fieldPath: 'employee.full_name',
-    required: true,
-  },
-  {
-    header: 'Date of Birth',
-    fieldPath: 'employee.date_of_birth',
-    transform: 'date_dmy',
-  },
-  {
-    header: 'Date of Hire',
-    fieldPath: 'employee.hire_date',
-    transform: 'date_dmy',
-  },
+  { header: 'Staff ID', fieldPath: 'employee.staff_id', required: true },
+  { header: 'Employee Name', fieldPath: 'employee.full_name', required: true },
+  { header: 'Date of Birth', fieldPath: 'employee.date_of_birth', transform: 'date_dmy' },
+  { header: 'Date of Hire', fieldPath: 'employee.hire_date', transform: 'date_dmy' },
   {
     header: 'Foreigner Employment Pass',
     fieldPath: 'employee.work_pass_type',
     transform: 'work_pass',
   },
-  {
-    header: 'Nationality',
-    fieldPath: 'employee.nationality',
-    description: 'ISO nationality code; broker normalises to EmployeeSchema enum',
-  },
-  {
-    header: 'Monthly Salary',
-    fieldPath: 'employee.last_drawn_salary',
-    transform: 'number',
-  },
-  {
-    header: 'Hay Job Grade',
-    fieldPath: 'employee.hay_job_grade',
-    transform: 'integer',
-    description: 'Broker adds this column; maps to STANDARD field for predicate evaluation',
-  },
-  {
-    header: 'Staff ID',
-    fieldPath: 'employee.staff_id',
-    description: 'Custom field — broker must add to EmployeeSchema before import',
-  },
-  {
-    header: 'Category',
-    fieldPath: 'employee.category',
-    description: 'Broker-defined employee group label; drives benefit group predicate matching',
-  },
+  { header: 'Nationality', fieldPath: 'employee.nationality' },
+  { header: 'Monthly Salary', fieldPath: 'employee.last_drawn_salary', transform: 'number' },
+  { header: 'Hay Job Grade', fieldPath: 'employee.hay_job_grade' },
+  { header: 'Employment Class', fieldPath: 'employee.employment_type' },
+  { header: 'Salary Band Override', fieldPath: 'employee.salary_band_override' },
+  { header: 'Marital Status', fieldPath: 'employee.marital_status' },
+  { header: 'Entity', fieldPath: 'employee.entity' },
+  { header: 'Division', fieldPath: 'employee.division' },
+  { header: 'Department', fieldPath: 'employee.department' },
+  { header: 'Cost Centre', fieldPath: 'employee.cost_centre' },
+  { header: 'Identification No.', fieldPath: 'employee.identification_no' },
+  { header: 'Gender', fieldPath: 'employee.gender' },
+  { header: 'Confirmation Date', fieldPath: 'employee.confirmation_date', transform: 'date_dmy' },
+  { header: 'Email Address', fieldPath: 'employee.email' },
+  { header: 'Mobile Phone', fieldPath: 'employee.mobile_phone' },
+  { header: 'Bank Code', fieldPath: 'employee.bank_code' },
+  { header: 'Branch Code', fieldPath: 'employee.branch_code' },
+  { header: 'Bank Account No.', fieldPath: 'employee.bank_account_no' },
+  { header: 'Category', fieldPath: 'employee.category' },
 ];
+
+// Shared header-to-column map builder used by employee and dependent upload parsers.
+// Case-insensitive header matching.
+export function buildHeaderMap(
+  headerRow: import('exceljs').Row,
+  columns: ColumnMapping[],
+): Map<number, ColumnMapping> {
+  const map = new Map<number, ColumnMapping>();
+  const headerLookup = new Map(columns.map((c) => [c.header.toLowerCase(), c]));
+
+  headerRow.eachCell((cell, colNumber) => {
+    const headerText = String(cell.value ?? '')
+      .trim()
+      .toLowerCase();
+    const mapping = headerLookup.get(headerText);
+    if (mapping) map.set(colNumber, mapping);
+  });
+
+  return map;
+}
 
 // Plan override columns — values are raw Inspro plan codes (e.g. "24x", "B").
 // Stored in employee.data._plan_overrides.{productTypeCode} during import for

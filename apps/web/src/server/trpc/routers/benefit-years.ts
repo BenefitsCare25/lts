@@ -104,6 +104,19 @@ export const benefitYearsRouter = router({
       });
     }),
 
+  listByClient: tenantProcedure
+    .input(z.object({ clientId: z.string().min(1) }))
+    .query(async ({ ctx, input }) =>
+      prisma.benefitYear.findMany({
+        where: { policy: { clientId: input.clientId, client: { tenantId: ctx.tenantId } } },
+        orderBy: { startDate: 'desc' },
+        include: {
+          policy: { select: { id: true, name: true } },
+          _count: { select: { products: true } },
+        },
+      }),
+    ),
+
   byId: tenantProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ ctx, input }) => {
     const by = await prisma.benefitYear.findFirst({
       where: { id: input.id, policy: { client: { tenantId: ctx.tenantId } } },

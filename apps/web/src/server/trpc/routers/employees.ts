@@ -253,7 +253,11 @@ export const employeesRouter = router({
 
       const productIds = [...new Set(enrollments.map((e) => e.productId))];
       const planIds = [...new Set(enrollments.map((e) => e.planId))];
-      const groupIds = [...new Set(enrollments.map((e) => e.benefitGroupId))];
+      const groupIds = [
+        ...new Set(
+          enrollments.map((e) => e.benefitGroupId).filter((id): id is string => id != null),
+        ),
+      ];
 
       const [products, plans, groups, rates] = await Promise.all([
         prisma.product.findMany({
@@ -287,7 +291,7 @@ export const employeesRouter = router({
       return enrollments.map((enr) => {
         const product = productById.get(enr.productId);
         const plan = planById.get(enr.planId);
-        const group = groupById.get(enr.benefitGroupId);
+        const group = enr.benefitGroupId ? groupById.get(enr.benefitGroupId) : undefined;
 
         const matchingRate =
           rateByKey.get(`${enr.planId}:${enr.coverTier}`) ??

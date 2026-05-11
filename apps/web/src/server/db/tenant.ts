@@ -51,6 +51,8 @@ const TENANT_MODELS = new Set([
   // Employee portal: dependent change requests and invitation tokens.
   'DependentChangeRequest',
   'EmployeeInvitation',
+  // Benefit assignment engine: processing errors carry direct tenantId.
+  'ProcessingError',
 ]);
 
 export class UserNotProvisionedError extends Error {

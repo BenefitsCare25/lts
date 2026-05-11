@@ -85,6 +85,7 @@ function ClientDetailRail({ clientId, pathname }: { clientId: string; pathname: 
   const items: ReadonlyArray<NavItem> = [
     { label: 'Policies', href: `/admin/clients/${clientId}/policies` },
     { label: 'Imports', href: `/admin/clients/${clientId}/imports` },
+    { label: 'Rules', href: `/admin/clients/${clientId}/rules` },
     { label: 'Employees', href: `/admin/clients/${clientId}/employees` },
     { label: 'Claims', href: `/admin/clients/${clientId}/claims` },
     { label: 'Edit details', href: `/admin/clients/${clientId}/edit`, exact: true },

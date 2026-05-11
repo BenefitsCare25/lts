@@ -36,21 +36,21 @@ model Tenant {
   slug      String   @unique
   createdAt DateTime @default(now())
 
-  users                User[]
-  clients              Client[]
-  employeeSchemas      EmployeeSchema[]
-  productTypes         ProductType[]
-  insurers             Insurer[]
-  tpas                 TPA[]
-  pools                Pool[]
+  users                 User[]
+  clients               Client[]
+  employeeSchemas       EmployeeSchema[]
+  productTypes          ProductType[]
+  insurers              Insurer[]
+  tpas                  TPA[]
+  pools                 Pool[]
   extractionDrafts      ExtractionDraft[]
   extractionAttempts    ExtractionAttempt[]
   appliedDraftSnapshots AppliedDraftSnapshot[]
   aiProvider            TenantAiProvider?
-  benefitGroupPresets  BenefitGroupPreset[]
-  endorsementCatalogue EndorsementCatalogue[]
-  exclusionCatalogue   ExclusionCatalogue[]
-  placementSlipUploads PlacementSlipUpload[]
+  benefitGroupPresets   BenefitGroupPreset[]
+  endorsementCatalogue  EndorsementCatalogue[]
+  exclusionCatalogue    ExclusionCatalogue[]
+  placementSlipUploads  PlacementSlipUpload[]
 }
 
 model User {
@@ -280,15 +280,16 @@ enum ClientStatus {
 }
 
 model Policy {
-  id        String   @id @default(cuid())
-  clientId  String
-  name      String
-  versionId Int      @default(1) // optimistic locking
+  id          String   @id @default(cuid())
+  clientId    String
+  name        String
+  versionId   Int      @default(1) // optimistic locking
   // How an employee's age-next-birthday is computed for eligibility:
   //   POLICY_START — age at policy start date (Inspro default)
   //   HIRE_DATE    — age at the employee's hire date
   //   AS_AT_EVENT  — recomputed at each enrolment / claim event
-  ageBasis  AgeBasis @default(POLICY_START)
+  ageBasis    AgeBasis @default(POLICY_START)
+  childMaxAge Int      @default(21) // max age for child dependents; some clients use 25
 
   client        Client            @relation(fields: [clientId], references: [id])
   benefitYears  BenefitYear[]
@@ -323,6 +324,15 @@ model BenefitYear {
   products         Product[]
   carryForwardFrom BenefitYear?  @relation("CarryForwardChain", fields: [carryForwardFromYearId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   carryForwardTo   BenefitYear[] @relation("CarryForwardChain")
+
+  // Rule engine tables (Phase 2 — benefit assignment engine)
+  gradeNormalisationMap        GradeNormalisationMap[]
+  salaryBandRules              SalaryBandRule[]
+  insurancePlanRules           InsurancePlanRule[]
+  employmentClassPlanOverrides EmploymentClassPlanOverride[]
+  nationalityPlanOverrides     NationalityPlanOverride[]
+  flexWalletRules              FlexWalletRule[]
+  processingErrors             ProcessingError[]
 
   @@unique([policyId, startDate])
   @@index([policyId])
@@ -386,6 +396,11 @@ model Product {
   exceptions      PolicyException[]
   flexBundlePlans FlexBundlePlan[]
 
+  // Rule engine relations
+  insurancePlanRules           InsurancePlanRule[]
+  employmentClassPlanOverrides EmploymentClassPlanOverride[]
+  nationalityPlanOverrides     NationalityPlanOverride[]
+
   @@index([benefitYearId])
   @@index([productTypeId])
 }
@@ -412,6 +427,11 @@ model Plan {
   exceptions        PolicyException[]
   flexBundlePlans   FlexBundlePlan[]
 
+  // Rule engine relations
+  insurancePlanRules           InsurancePlanRule[]
+  employmentClassPlanOverrides EmploymentClassPlanOverride[]
+  nationalityPlanOverrides     NationalityPlanOverride[]
+
   @@unique([productId, code])
   @@index([productId])
 }
@@ -425,7 +445,7 @@ model PlanStack {
   childId  String
   parentId String
 
-  child  Plan @relation("StacksOnAsChild",  fields: [childId],  references: [id], onDelete: Cascade)
+  child  Plan @relation("StacksOnAsChild", fields: [childId], references: [id], onDelete: Cascade)
   parent Plan @relation("StacksOnAsParent", fields: [parentId], references: [id], onDelete: Restrict)
 
   @@id([childId, parentId])
@@ -477,13 +497,14 @@ model Employee {
   hireDate        DateTime
   terminationDate DateTime?
 
-  client         Client                  @relation(fields: [clientId], references: [id])
-  user           User?                   @relation(fields: [userId], references: [id])
-  dependents     Dependent[]
-  enrollments    Enrollment[]
-  exceptions     PolicyException[]
-  changeRequests DependentChangeRequest[]
-  invitations    EmployeeInvitation[]
+  client           Client                   @relation(fields: [clientId], references: [id])
+  user             User?                    @relation(fields: [userId], references: [id])
+  dependents       Dependent[]
+  enrollments      Enrollment[]
+  exceptions       PolicyException[]
+  changeRequests   DependentChangeRequest[]
+  invitations      EmployeeInvitation[]
+  processingErrors ProcessingError[]
 
   @@index([clientId])
 }
@@ -510,8 +531,9 @@ model Enrollment {
   employeeId     String
   productId      String
   planId         String
-  benefitGroupId String
+  benefitGroupId String?
   coverTier      String? // "EO" | "ES" | "EC" | "EF"
+  resolutionPath String? // "class_override" | "nationality_override" | "band_rule" | "manual"
   effectiveFrom  DateTime
   effectiveTo    DateTime?
 
@@ -646,16 +668,16 @@ model ExtractionDraft {
   progress           Json
   extractedProducts  Json
   validationIssues   Json?
-  employeeCategories String[]  // unique Category values extracted from an uploaded employee listing
+  employeeCategories String[] // unique Category values extracted from an uploaded employee listing
   appliedAt          DateTime?
   appliedById        String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  tenant           Tenant               @relation(fields: [tenantId], references: [id])
-  upload           PlacementSlipUpload  @relation(fields: [uploadId], references: [id])
-  attempts         ExtractionAttempt[]
-  appliedSnapshot  AppliedDraftSnapshot?
+  tenant          Tenant                @relation(fields: [tenantId], references: [id])
+  upload          PlacementSlipUpload   @relation(fields: [uploadId], references: [id])
+  attempts        ExtractionAttempt[]
+  appliedSnapshot AppliedDraftSnapshot?
 
   @@index([tenantId, status])
 }
@@ -855,6 +877,139 @@ model ProductAttachment {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+}
+
+// ================================================================
+// Benefit assignment engine — rule tables
+// ================================================================
+//
+// Deterministic rule tables that drive automatic plan assignment
+// and flex wallet resolution. All scoped to BenefitYear; tenant
+// isolation is via BenefitYear → Policy → Client → Tenant chain.
+// ProcessingError carries a direct tenantId for RLS.
+
+// Maps company-specific grade codes to standard bands.
+// gradeCode is String to support both numeric ("8") and text ("A1", "B3", "MSH").
+model GradeNormalisationMap {
+  id            String @id @default(cuid())
+  benefitYearId String
+  gradeCode     String
+  standardBand  String // LOW | MID | HIGH | SENIOR | EXEC
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+
+  @@unique([benefitYearId, gradeCode])
+  @@index([benefitYearId])
+}
+
+// Fallback band resolution when grade is unavailable.
+// Salary ranges must not overlap within a benefit year.
+model SalaryBandRule {
+  id            String   @id @default(cuid())
+  benefitYearId String
+  minSalary     Decimal  @db.Decimal(14, 2)
+  maxSalary     Decimal? @db.Decimal(14, 2) // null = uncapped
+  standardBand  String // LOW | MID | HIGH | SENIOR | EXEC
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+
+  @@index([benefitYearId])
+}
+
+// Core mapping: standard band + employment type → plan, per product.
+// gmmBundled flags GMM included within a GHS plan (common for FW).
+// gbtEligible flags GBT exclusion for specific band/type combos.
+model InsurancePlanRule {
+  id             String  @id @default(cuid())
+  benefitYearId  String
+  standardBand   String // LOW | MID | HIGH | SENIOR | EXEC
+  employmentType String // LOCAL | FW
+  productId      String
+  planId         String
+  gmmBundled     Boolean @default(false)
+  gbtEligible    Boolean @default(true)
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  plan        Plan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([benefitYearId, standardBand, employmentType, productId])
+  @@index([benefitYearId])
+}
+
+// Override plan assignment for special employment classes.
+// These take precedence over InsurancePlanRule (early exit).
+model EmploymentClassPlanOverride {
+  id                String  @id @default(cuid())
+  benefitYearId     String
+  employmentClass   String // BARGAINABLE | INTERN | APPRENTICE | SGUNITED_TRAINEE
+  employmentType    String // LOCAL | FW
+  productId         String
+  planId            String
+  gbtEligible       Boolean @default(true)
+  dependantEligible Boolean @default(false)
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  plan        Plan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([benefitYearId, employmentClass, employmentType, productId])
+  @@index([benefitYearId])
+}
+
+// Override plan assignment for specific nationalities per band.
+model NationalityPlanOverride {
+  id            String @id @default(cuid())
+  benefitYearId String
+  nationality   String // ISO alpha-2: AU, ID, PK, TH, VN, etc.
+  standardBand  String // LOW | MID | HIGH | SENIOR | EXEC
+  productId     String
+  planId        String
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  plan        Plan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([benefitYearId, nationality, standardBand, productId])
+  @@index([benefitYearId])
+}
+
+// Maps flex tier key to wallet credit amounts per benefit year.
+model FlexWalletRule {
+  id            String  @id @default(cuid())
+  benefitYearId String
+  flexTierKey   String // SINGLE_LOCAL | MARRIED_0_FW | MARRIED_1_LOCAL | MARRIED_2PLUS_FW | etc.
+  creditAmount  Decimal @db.Decimal(14, 2)
+  tierLabel     String // display: "Single", "Married + 1 Child", etc.
+  currencyCode  String  @default("SGD")
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+
+  @@unique([benefitYearId, flexTierKey])
+  @@index([benefitYearId])
+}
+
+// Error queue for employees the engines cannot resolve.
+// Direct tenantId for RLS (same pattern as DependentChangeRequest).
+model ProcessingError {
+  id               String    @id @default(cuid())
+  tenantId         String
+  benefitYearId    String
+  employeeId       String
+  engine           String // FLEX_WALLET | INSURANCE_PLAN | PARTICIPATION
+  errorCode        String // MISSING_GRADE | NO_GRADE_MAP | NO_PLAN_RULE | NO_FLEX_RULE | NO_CLASS_OVERRIDE | INVALID_EMPLOYMENT_TYPE
+  errorMessage     String
+  employeeSnapshot Json // employee.data at processing time
+  status           String    @default("OPEN") // OPEN | RESOLVED | IGNORED
+  resolvedBy       String?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  benefitYear BenefitYear @relation(fields: [benefitYearId], references: [id], onDelete: Cascade)
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, benefitYearId, status])
+  @@index([employeeId])
 }
 
 // System-level taxonomy of every issue the wizard / parser / extractor
